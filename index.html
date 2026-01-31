@@ -413,7 +413,7 @@
             level: 1,
             kills: 0,
             score: 0,
-            time: 0,
+            pendingLevelUps: 0,
             
             // Player stats (upgradeable)
             stats: {
@@ -437,7 +437,6 @@
         
         // Input state
         const keys = {};
-        let mouseX = 0, mouseY = 0;
         let cameraAngleX = 0, cameraAngleY = 0.3;
         let isPointerLocked = false;
         
@@ -925,6 +924,8 @@
                             // Enemy died
                             spawnXpGem(enemy.position, enemy.xpValue);
                             spawnParticle(enemy.position, 0xff6644, 10);
+                            enemy.geometry.dispose();
+                            enemy.material.dispose();
                             scene.remove(enemy);
                             enemies.splice(j, 1);
                             gameState.kills++;
@@ -938,6 +939,8 @@
                 }
                 
                 if (hit || proj.life <= 0) {
+                    proj.geometry.dispose();
+                    proj.material.dispose();
                     scene.remove(proj);
                     projectiles.splice(i, 1);
                 }
@@ -969,12 +972,20 @@
                     // Collect
                     gameState.xp += gem.value;
                     spawnParticle(gem.position, 0x44ff44, 5);
+                    gem.geometry.dispose();
+                    gem.material.dispose();
                     scene.remove(gem);
                     xpGems.splice(i, 1);
                     
-                    // Check level up (handle multiple level ups)
+                    // Check level up (queue multiple level ups)
                     while (gameState.xp >= gameState.xpToLevel) {
                         gameState.xp -= gameState.xpToLevel;
+                        gameState.pendingLevelUps = (gameState.pendingLevelUps || 0) + 1;
+                        gameState.xpToLevel = Math.floor(gameState.xpToLevel * 1.5);
+                    }
+                    
+                    // Show upgrade menu if pending and not already paused
+                    if (gameState.pendingLevelUps > 0 && !gameState.paused) {
                         levelUp();
                     }
                     
@@ -993,6 +1004,8 @@
                 particle.material.opacity = particle.life / 30;
                 
                 if (particle.life <= 0) {
+                    particle.geometry.dispose();
+                    particle.material.dispose();
                     scene.remove(particle);
                     particles.splice(i, 1);
                 }
@@ -1029,8 +1042,8 @@
 
         function levelUp() {
             gameState.level++;
-            gameState.xpToLevel = Math.floor(gameState.xpToLevel * 1.5);
             gameState.score += 50;
+            gameState.pendingLevelUps = Math.max(0, (gameState.pendingLevelUps || 1) - 1);
             
             // Heal a bit on level up
             gameState.health = Math.min(gameState.health + 10, gameState.maxHealth);
@@ -1081,7 +1094,13 @@
             }
             
             document.getElementById('upgrade-menu').style.display = 'none';
-            gameState.paused = false;
+            
+            // Check if more level ups pending
+            if (gameState.pendingLevelUps > 0) {
+                levelUp();
+            } else {
+                gameState.paused = false;
+            }
             updateUI();
         }
 
@@ -1150,16 +1169,19 @@
                 xpMultiplier: 1
             };
             
-            // Clear entities
-            enemies.forEach(e => scene.remove(e));
-            projectiles.forEach(p => scene.remove(p));
-            xpGems.forEach(g => scene.remove(g));
-            particles.forEach(p => scene.remove(p));
+            // Clear entities and dispose memory
+            enemies.forEach(e => { e.geometry.dispose(); e.material.dispose(); scene.remove(e); });
+            projectiles.forEach(p => { p.geometry.dispose(); p.material.dispose(); scene.remove(p); });
+            xpGems.forEach(g => { g.geometry.dispose(); g.material.dispose(); scene.remove(g); });
+            particles.forEach(p => { p.geometry.dispose(); p.material.dispose(); scene.remove(p); });
             
             enemies = [];
             projectiles = [];
             xpGems = [];
             particles = [];
+            
+            // Reset pending level ups
+            gameState.pendingLevelUps = 0;
             
             // Reset player position
             player.position.set(0, 1, 0);

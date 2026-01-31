@@ -10,7 +10,7 @@ A browser-based 3D roguelike survival game inspired by Megabonk. No installation
 3. Play!
 
 ### Option 2: GitHub Pages
-Visit: `https://[username].github.io/cursor/`
+Visit: `https://finalflick.github.io/cursor/` (after enabling GitHub Pages in repo settings)
 
 ## Controls
 
@@ -21,6 +21,7 @@ Visit: `https://[username].github.io/cursor/`
 | **SHIFT** | Dash |
 | **Mouse** | Look around |
 | **Click** | Lock mouse (for camera control) |
+| **ESC** | Release mouse (pauses game) |
 
 ## Gameplay
 
@@ -57,6 +58,11 @@ Works in all modern browsers with WebGL support:
 - Firefox 75+
 - Edge 80+
 - Safari 14+
+
+## Known Limitations
+
+- **Desktop only** - No touch/mobile controls
+- **Requires internet on first load** - Three.js loaded via CDN (cached after)
 
 ---
 
