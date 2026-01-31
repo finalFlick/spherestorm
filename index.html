@@ -95,7 +95,7 @@
         <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p></div>
         <div id="upgrade-menu"><h2>LEVEL UP!</h2><div class="upgrade-options" id="upgrade-options"></div></div>
         <div id="game-over"><h2>GAME OVER</h2><div class="final-stats"><div>Time Survived: <span id="final-time"></span></div><div>Arena Reached: <span id="final-arena"></span></div><div>Level Reached: <span id="final-level"></span></div><div>Enemies Killed: <span id="final-kills"></span></div><div>Final Score: <span id="final-score"></span></div></div><button id="restart-btn">Play Again</button></div>
-        <div id="start-screen"><h1>MEGABONK 3D</h1><p>Survive the arenas. Defeat the bosses. Unlock new challenges.</p><button id="start-btn">START GAME</button><div class="controls-info"><div><span>WASD</span> Move <span>SPACE</span> Jump <span>SHIFT</span> Dash</div><div><span>MOUSE</span> Look around <span>CLICK</span> Lock cursor</div></div></div>
+        <div id="start-screen"><h1>MEGABONK 3D</h1><p>Survive the arenas. Defeat the bosses. Unlock new challenges.</p><button id="start-btn">START GAME</button><div class="controls-info"><div><span>WASD</span> Move <span>SPACE</span> Jump <span>SHIFT</span> Dash</div><div><span>MOUSE</span> Look around <span>CLICK</span> Lock cursor</div><div style="margin-top: 15px;"><span>M</span> Toggle Music</div></div></div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
@@ -171,6 +171,1106 @@
             { name: 'Bullet Speed', icon: '💨', desc: '+25% projectile speed', stat: 'projectileSpeed', mult: 1.25 }
         ];
 
+        // ============================================================================
+        // PULSE ADAPTIVE MUSIC SYSTEM - Generic, Data-Driven, Diegetic
+        // Automatically adapts to changes in ARENA_CONFIG, ENEMY_TYPES, BOSS_CONFIG
+        // ============================================================================
+        
+        const PulseMusic = {
+            // Audio context and nodes
+            ctx: null,
+            masterGain: null,
+            musicBus: null,
+            sfxBus: null,
+            compressor: null,
+            
+            // State
+            initialized: false,
+            enabled: true,
+            currentArenaId: null,
+            currentProfile: null,
+            activeOscillators: [],
+            activeLayers: {},
+            scheduledEvents: [],
+            
+            // Timing
+            bpm: 120,
+            beatDuration: 0.5,
+            barDuration: 2,
+            lastBeat: 0,
+            beatCount: 0,
+            nextBarTime: 0,
+            
+            // Adaptive state
+            intensity: 0,
+            targetIntensity: 0,
+            filterCutoff: 8000,
+            targetFilterCutoff: 8000,
+            harmonicTension: 0,
+            bossPhase: 0,
+            
+            // Hysteresis
+            lastLayerChange: 0,
+            lastIntensityChange: 0,
+            
+            // Musical scales (intervals from root)
+            SCALES: {
+                dorian: [0, 2, 3, 5, 7, 9, 10],
+                phrygian: [0, 1, 3, 5, 7, 8, 10],
+                lydian: [0, 2, 4, 6, 7, 9, 11],
+                mixolydian: [0, 2, 4, 5, 7, 9, 10],
+                locrian: [0, 1, 3, 5, 6, 8, 10],
+                minor: [0, 2, 3, 5, 7, 8, 10],
+                major: [0, 2, 4, 5, 7, 9, 11],
+                chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            },
+            
+            // Root notes (MIDI note numbers, octave 3)
+            ROOTS: { 'C': 48, 'C#': 49, 'D': 50, 'D#': 51, 'E': 52, 'F': 53, 'F#': 54, 'G': 55, 'G#': 56, 'A': 57, 'A#': 58, 'B': 59 },
+            
+            // Leitmotif: The Pulse (relative intervals)
+            LEITMOTIF: [0, 3, 5, 7], // Minor 3rd up, Major 2nd up, Major 2nd up
+            LEITMOTIF_RHYTHM: [1, 1, 1.5, 0.5], // Beat durations
+            
+            // ============================================================================
+            // INITIALIZATION
+            // ============================================================================
+            
+            init() {
+                if (this.initialized) return;
+                try {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    // Master chain
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.gain.value = 0.6;
+                    
+                    this.compressor = this.ctx.createDynamicsCompressor();
+                    this.compressor.threshold.value = -24;
+                    this.compressor.knee.value = 30;
+                    this.compressor.ratio.value = 4;
+                    this.compressor.attack.value = 0.003;
+                    this.compressor.release.value = 0.25;
+                    
+                    // Music bus with filter
+                    this.musicBus = this.ctx.createGain();
+                    this.musicBus.gain.value = 0.7;
+                    this.musicFilter = this.ctx.createBiquadFilter();
+                    this.musicFilter.type = 'lowpass';
+                    this.musicFilter.frequency.value = 8000;
+                    this.musicFilter.Q.value = 1;
+                    
+                    // SFX bus
+                    this.sfxBus = this.ctx.createGain();
+                    this.sfxBus.gain.value = 0.5;
+                    
+                    // Connect chain
+                    this.musicBus.connect(this.musicFilter);
+                    this.musicFilter.connect(this.masterGain);
+                    this.sfxBus.connect(this.masterGain);
+                    this.masterGain.connect(this.compressor);
+                    this.compressor.connect(this.ctx.destination);
+                    
+                    // Generate profiles from game config
+                    this.generateAllProfiles();
+                    
+                    this.initialized = true;
+                    console.log('[PulseMusic] Initialized with', Object.keys(this.arenaProfiles).length, 'arena profiles');
+                } catch (e) {
+                    console.warn('[PulseMusic] Web Audio not available:', e);
+                    this.enabled = false;
+                }
+            },
+            
+            // Resume audio context (required after user interaction)
+            resume() {
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            
+            // ============================================================================
+            // PROFILE GENERATION - Reads from game config automatically
+            // ============================================================================
+            
+            arenaProfiles: {},
+            enemySfxProfiles: {},
+            bossProfiles: {},
+            
+            generateAllProfiles() {
+                // Generate arena profiles from ARENA_CONFIG
+                const arenaIds = Object.keys(ARENA_CONFIG.arenas);
+                arenaIds.forEach((id, index) => {
+                    this.arenaProfiles[id] = this.generateArenaProfile(parseInt(id), ARENA_CONFIG.arenas[id], index, arenaIds.length);
+                });
+                
+                // Generate enemy SFX profiles from ENEMY_TYPES
+                Object.keys(ENEMY_TYPES).forEach((typeName, index) => {
+                    this.enemySfxProfiles[typeName] = this.generateEnemySfxProfile(typeName, ENEMY_TYPES[typeName], index);
+                });
+                
+                // Generate boss profiles from BOSS_CONFIG
+                Object.keys(BOSS_CONFIG).forEach((id, index) => {
+                    this.bossProfiles[id] = this.generateBossProfile(parseInt(id), BOSS_CONFIG[id], index);
+                });
+            },
+            
+            // Hash function for deterministic generation
+            hashString(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                return Math.abs(hash);
+            },
+            
+            // Generate arena music profile from config
+            generateArenaProfile(arenaId, arenaData, index, totalArenas) {
+                const hash = this.hashString(arenaData.name + JSON.stringify(arenaData.features));
+                const scaleKeys = Object.keys(this.SCALES);
+                const rootKeys = Object.keys(this.ROOTS);
+                
+                // Deterministic selection based on hash
+                const rootNote = rootKeys[hash % rootKeys.length];
+                const scale = scaleKeys[(hash >> 4) % scaleKeys.length];
+                
+                // Tempo increases with arena progression
+                const baseTempo = 115 + (index * 4) + (hash % 10);
+                
+                // Color-derived characteristics
+                const r = (arenaData.color >> 16) & 0xFF;
+                const g = (arenaData.color >> 8) & 0xFF;
+                const b = arenaData.color & 0xFF;
+                const brightness = (r + g + b) / 3;
+                
+                // Feature-based musical characteristics
+                const hasVerticality = arenaData.features.includes('vertical');
+                const hasTunnels = arenaData.features.includes('tunnels');
+                const hasHazards = arenaData.features.includes('hazards');
+                const complexity = arenaData.features.length;
+                
+                return {
+                    arenaId,
+                    name: arenaData.name,
+                    
+                    // Tonality
+                    rootNote,
+                    rootMidi: this.ROOTS[rootNote],
+                    scale,
+                    scaleIntervals: this.SCALES[scale],
+                    
+                    // Tempo
+                    baseTempo,
+                    tempoRange: [baseTempo - 3, baseTempo + 5],
+                    
+                    // Timbre characteristics (0-1)
+                    brightness: brightness / 255,
+                    warmth: r / 255,
+                    tension: hasHazards ? 0.8 : (hasTunnels ? 0.6 : 0.3),
+                    depth: hasVerticality ? 0.7 : 0.4,
+                    
+                    // Layer configuration
+                    maxLayers: 3 + Math.floor(complexity / 2),
+                    layerThresholds: this.generateLayerThresholds(complexity),
+                    
+                    // Leitmotif variation
+                    leitmotifOctave: hasVerticality ? 5 : 4,
+                    leitmotifSpeed: hasTunnels ? 0.8 : 1.0,
+                    
+                    // Filter settings
+                    baseFilterCutoff: 4000 + (brightness * 40),
+                    filterResonance: hasTunnels ? 3 : 1,
+                    
+                    // Generated hash for consistency check
+                    profileHash: hash
+                };
+            },
+            
+            generateLayerThresholds(complexity) {
+                const thresholds = [];
+                const baseEnemies = 3;
+                for (let i = 0; i <= complexity + 2; i++) {
+                    thresholds.push({
+                        layer: i,
+                        minEnemies: i * baseEnemies,
+                        maxEnemies: (i + 1) * baseEnemies + 2
+                    });
+                }
+                return thresholds;
+            },
+            
+            // Generate enemy SFX profile from config
+            generateEnemySfxProfile(typeName, enemyData, index) {
+                const hash = this.hashString(typeName + enemyData.behavior);
+                
+                // Map behaviors to musical roles
+                const behaviorRoles = {
+                    'chase': { role: 'rhythmic', pitchRange: [0, 4], rhythmDiv: 4 },
+                    'shooter': { role: 'melodic', pitchRange: [4, 8], rhythmDiv: 8 },
+                    'bouncer': { role: 'syncopation', pitchRange: [7, 11], rhythmDiv: 16 },
+                    'shieldBreaker': { role: 'accent', pitchRange: [0, 2], rhythmDiv: 2 },
+                    'waterBalloon': { role: 'pad', pitchRange: [0, 7], rhythmDiv: 1 },
+                    'teleporter': { role: 'glitch', pitchRange: [5, 11], rhythmDiv: 32 }
+                };
+                
+                const roleData = behaviorRoles[enemyData.behavior] || behaviorRoles['chase'];
+                
+                // Color-derived pitch offset
+                const r = (enemyData.color >> 16) & 0xFF;
+                const g = (enemyData.color >> 8) & 0xFF;
+                const colorPitch = Math.floor((r + g) / 50);
+                
+                return {
+                    typeName,
+                    behavior: enemyData.behavior,
+                    
+                    // Musical role
+                    role: roleData.role,
+                    pitchClass: (hash % 12),
+                    pitchRange: roleData.pitchRange,
+                    rhythmDivision: roleData.rhythmDiv,
+                    
+                    // Volume and spatial
+                    baseVolume: enemyData.damage > 15 ? 0.8 : 0.5,
+                    spatialWidth: enemyData.speed > 0.05 ? 0.8 : 0.4,
+                    
+                    // Timbre
+                    waveform: enemyData.damageReduction ? 'square' : (enemyData.speed > 0.08 ? 'sawtooth' : 'triangle'),
+                    attack: enemyData.behavior === 'shieldBreaker' ? 0.01 : 0.05,
+                    release: enemyData.behavior === 'waterBalloon' ? 0.5 : 0.15,
+                    
+                    // Is this an elite-type enemy?
+                    isElite: enemyData.spawnWeight < 10,
+                    
+                    // Color pitch modifier
+                    colorPitchMod: colorPitch
+                };
+            },
+            
+            // Generate boss music profile from config
+            generateBossProfile(bossId, bossData, index) {
+                const hash = this.hashString(bossData.name + bossData.ai);
+                
+                // AI-based musical characteristics
+                const aiCharacteristics = {
+                    'pillarGuardian': { intensity: 0.7, chaos: 0.3, melodic: true },
+                    'slimeQueen': { intensity: 0.6, chaos: 0.5, melodic: false },
+                    'teleportingTyrant': { intensity: 0.8, chaos: 0.7, melodic: true },
+                    'balloonKing': { intensity: 0.5, chaos: 0.4, melodic: false },
+                    'tunnelWyrm': { intensity: 0.9, chaos: 0.6, melodic: false },
+                    'chaosIncarnate': { intensity: 1.0, chaos: 1.0, melodic: true }
+                };
+                
+                const aiData = aiCharacteristics[bossData.ai] || { intensity: 0.7, chaos: 0.5, melodic: true };
+                
+                return {
+                    bossId,
+                    name: bossData.name,
+                    ai: bossData.ai,
+                    
+                    // Intensity scaling
+                    baseIntensity: aiData.intensity,
+                    chaosLevel: aiData.chaos,
+                    useMelody: aiData.melodic,
+                    
+                    // Phase configurations
+                    phases: {
+                        1: { tempoMult: 1.0, layerMult: 1.0, filterMod: 0 },
+                        2: { tempoMult: 1.05, layerMult: 1.3, filterMod: 1000 },
+                        3: { tempoMult: 1.12, layerMult: 1.6, filterMod: 3000 }
+                    },
+                    
+                    // Size affects sub-bass prominence
+                    bassBoost: bossData.size / 4,
+                    
+                    // Color for visual sync
+                    color: bossData.color
+                };
+            },
+            
+            // ============================================================================
+            // MUSIC PLAYBACK
+            // ============================================================================
+            
+            loadArena(arenaId) {
+                if (!this.enabled || !this.initialized) return;
+                
+                // Get profile (generate if arena doesn't exist in config)
+                let profile = this.arenaProfiles[arenaId];
+                if (!profile) {
+                    // Dynamic arena - generate profile on the fly
+                    const arenaData = ARENA_CONFIG.arenas[arenaId];
+                    if (arenaData) {
+                        profile = this.generateArenaProfile(arenaId, arenaData, arenaId - 1, Object.keys(ARENA_CONFIG.arenas).length);
+                        this.arenaProfiles[arenaId] = profile;
+                    } else {
+                        // Fallback to arena 1 profile
+                        profile = this.arenaProfiles[1] || this.generateArenaProfile(1, { name: 'Unknown', features: ['flat'], color: 0x333333 }, 0, 1);
+                    }
+                }
+                
+                this.currentArenaId = arenaId;
+                this.currentProfile = profile;
+                this.bpm = profile.baseTempo;
+                this.beatDuration = 60 / this.bpm;
+                this.barDuration = this.beatDuration * 4;
+                this.filterCutoff = profile.baseFilterCutoff;
+                this.targetFilterCutoff = profile.baseFilterCutoff;
+                
+                console.log('[PulseMusic] Loaded arena', arenaId, profile.name, '- Key:', profile.rootNote, profile.scale, '- BPM:', this.bpm);
+            },
+            
+            start() {
+                if (!this.enabled || !this.initialized) return;
+                this.resume();
+                this.lastBeat = this.ctx.currentTime;
+                this.nextBarTime = this.ctx.currentTime;
+                this.beatCount = 0;
+                this.startMusicLoop();
+            },
+            
+            stop() {
+                this.stopAllSounds();
+                this.scheduledEvents = [];
+            },
+            
+            stopAllSounds() {
+                this.activeOscillators.forEach(osc => {
+                    try {
+                        osc.stop();
+                        osc.disconnect();
+                    } catch (e) {}
+                });
+                this.activeOscillators = [];
+            },
+            
+            // ============================================================================
+            // MUSIC GENERATION LOOP
+            // ============================================================================
+            
+            startMusicLoop() {
+                if (!this.enabled) return;
+                this.musicLoopId = setInterval(() => this.musicTick(), 50);
+            },
+            
+            stopMusicLoop() {
+                if (this.musicLoopId) {
+                    clearInterval(this.musicLoopId);
+                    this.musicLoopId = null;
+                }
+            },
+            
+            musicTick() {
+                if (!this.currentProfile || !this.ctx) return;
+                
+                const now = this.ctx.currentTime;
+                
+                // Schedule events for the next bar
+                if (now >= this.nextBarTime - 0.1) {
+                    this.scheduleBar(this.nextBarTime);
+                    this.nextBarTime += this.barDuration;
+                }
+                
+                // Smooth filter transitions
+                this.filterCutoff += (this.targetFilterCutoff - this.filterCutoff) * 0.05;
+                this.musicFilter.frequency.setValueAtTime(this.filterCutoff, now);
+                
+                // Smooth intensity transitions
+                this.intensity += (this.targetIntensity - this.intensity) * 0.03;
+                
+                // Clean up finished oscillators
+                this.activeOscillators = this.activeOscillators.filter(osc => {
+                    try {
+                        return osc.context.currentTime < osc.endTime;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+            },
+            
+            scheduleBar(barStartTime) {
+                const profile = this.currentProfile;
+                if (!profile) return;
+                
+                // Base layer: kick drum pattern
+                this.scheduleKickPattern(barStartTime, profile);
+                
+                // Bass layer (always on, follows intensity)
+                if (this.intensity > 0.1) {
+                    this.scheduleBassline(barStartTime, profile);
+                }
+                
+                // Harmonic layer (wave 3+)
+                if (this.intensity > 0.3) {
+                    this.scheduleChords(barStartTime, profile);
+                }
+                
+                // Melodic layer (wave 5+)
+                if (this.intensity > 0.5) {
+                    this.scheduleMelody(barStartTime, profile);
+                }
+                
+                // High intensity layer (wave 7+ or boss)
+                if (this.intensity > 0.7 || this.bossPhase > 0) {
+                    this.scheduleArpeggio(barStartTime, profile);
+                }
+                
+                // Boss-specific layers
+                if (this.bossPhase > 0) {
+                    this.scheduleBossLayer(barStartTime, profile);
+                }
+            },
+            
+            // ============================================================================
+            // MUSICAL ELEMENT GENERATORS
+            // ============================================================================
+            
+            scheduleKickPattern(startTime, profile) {
+                const kickTimes = [0, 1, 2, 3]; // 4-on-the-floor
+                kickTimes.forEach(beat => {
+                    const time = startTime + (beat * this.beatDuration);
+                    this.playDrum('kick', time, profile);
+                });
+                
+                // Snare on 2 and 4
+                if (this.intensity > 0.2) {
+                    [1, 3].forEach(beat => {
+                        const time = startTime + (beat * this.beatDuration);
+                        this.playDrum('snare', time, profile);
+                    });
+                }
+                
+                // Hi-hats based on intensity
+                if (this.intensity > 0.4) {
+                    for (let i = 0; i < 8; i++) {
+                        const time = startTime + (i * this.beatDuration / 2);
+                        this.playDrum('hihat', time, profile, i % 2 === 0 ? 0.4 : 0.2);
+                    }
+                }
+            },
+            
+            scheduleBassline(startTime, profile) {
+                const root = profile.rootMidi;
+                const scale = profile.scaleIntervals;
+                
+                // Simple bass pattern following root and 5th
+                const bassNotes = [0, 0, 4, 4]; // Root, root, 5th, 5th (scale degrees)
+                bassNotes.forEach((degree, i) => {
+                    const time = startTime + (i * this.beatDuration);
+                    const note = root - 12 + scale[degree % scale.length];
+                    this.playBass(note, time, this.beatDuration * 0.9, profile);
+                });
+            },
+            
+            scheduleChords(startTime, profile) {
+                const root = profile.rootMidi;
+                const scale = profile.scaleIntervals;
+                
+                // Build chord from scale
+                const chordDegrees = [0, 2, 4]; // 1-3-5
+                const tension = this.harmonicTension;
+                if (tension > 0.5) chordDegrees.push(6); // Add 7th
+                
+                const chordNotes = chordDegrees.map(d => root + scale[d % scale.length]);
+                
+                // Play chord as pad
+                this.playChord(chordNotes, startTime, this.barDuration * 0.95, profile);
+            },
+            
+            scheduleMelody(startTime, profile) {
+                const root = profile.rootMidi + 12; // Octave up
+                const scale = profile.scaleIntervals;
+                
+                // Use leitmotif with variation based on beat count
+                const variation = (this.beatCount / 4) % 4;
+                const motif = [...this.LEITMOTIF];
+                
+                // Vary the motif
+                if (variation === 1) motif.reverse();
+                if (variation === 2) motif[2] += 2;
+                if (variation === 3) motif[0] += 5;
+                
+                let time = startTime;
+                motif.forEach((interval, i) => {
+                    const duration = this.LEITMOTIF_RHYTHM[i] * this.beatDuration * profile.leitmotifSpeed;
+                    const scaleDegree = interval % scale.length;
+                    const note = root + scale[scaleDegree] + Math.floor(interval / scale.length) * 12;
+                    
+                    this.playLead(note, time, duration * 0.8, profile);
+                    time += duration;
+                });
+            },
+            
+            scheduleArpeggio(startTime, profile) {
+                const root = profile.rootMidi + 12;
+                const scale = profile.scaleIntervals;
+                const arpPattern = [0, 2, 4, 2]; // Up and down
+                
+                const noteDuration = this.beatDuration / 4;
+                for (let i = 0; i < 16; i++) {
+                    const time = startTime + (i * noteDuration);
+                    const degree = arpPattern[i % arpPattern.length] + Math.floor(i / 4);
+                    const note = root + scale[degree % scale.length] + Math.floor(degree / scale.length) * 12;
+                    this.playArp(note, time, noteDuration * 0.7, profile);
+                }
+            },
+            
+            scheduleBossLayer(startTime, profile) {
+                // Sub-bass drone
+                const bossProfile = this.bossProfiles[this.currentArenaId];
+                if (!bossProfile) return;
+                
+                const subNote = profile.rootMidi - 24; // Two octaves down
+                this.playSubBass(subNote, startTime, this.barDuration, profile, bossProfile.bassBoost);
+                
+                // Phase-specific additions
+                if (this.bossPhase >= 2) {
+                    // Add tension stabs
+                    [0.5, 2.5].forEach(beat => {
+                        const time = startTime + (beat * this.beatDuration);
+                        this.playStab(profile.rootMidi + profile.scaleIntervals[5], time, profile);
+                    });
+                }
+                
+                if (this.bossPhase >= 3) {
+                    // Chaotic fills
+                    for (let i = 0; i < 4; i++) {
+                        const time = startTime + (Math.random() * this.barDuration);
+                        const note = profile.rootMidi + profile.scaleIntervals[Math.floor(Math.random() * profile.scaleIntervals.length)];
+                        this.playGlitch(note, time, 0.1, profile);
+                    }
+                }
+            },
+            
+            // ============================================================================
+            // SOUND GENERATORS
+            // ============================================================================
+            
+            midiToFreq(midi) {
+                return 440 * Math.pow(2, (midi - 69) / 12);
+            },
+            
+            playDrum(type, time, profile, volumeMod = 1) {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                if (type === 'kick') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, time);
+                    osc.frequency.exponentialRampToValueAtTime(40, time + 0.1);
+                    gain.gain.setValueAtTime(0.8 * volumeMod, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+                } else if (type === 'snare') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(200, time);
+                    gain.gain.setValueAtTime(0.4 * volumeMod, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+                } else if (type === 'hihat') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(8000, time);
+                    gain.gain.setValueAtTime(0.1 * volumeMod, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+                }
+                
+                osc.connect(gain);
+                gain.connect(this.musicBus);
+                osc.start(time);
+                osc.stop(time + 0.5);
+                osc.endTime = time + 0.5;
+                this.activeOscillators.push(osc);
+            },
+            
+            playBass(note, time, duration, profile) {
+                const freq = this.midiToFreq(note);
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                const filter = this.ctx.createBiquadFilter();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, time);
+                
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(800 + (profile.warmth * 400), time);
+                
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(0.35 * this.intensity, time + 0.02);
+                gain.gain.setValueAtTime(0.3 * this.intensity, time + duration * 0.8);
+                gain.gain.linearRampToValueAtTime(0, time + duration);
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.musicBus);
+                osc.start(time);
+                osc.stop(time + duration + 0.1);
+                osc.endTime = time + duration + 0.1;
+                this.activeOscillators.push(osc);
+            },
+            
+            playChord(notes, time, duration, profile) {
+                notes.forEach((note, i) => {
+                    const freq = this.midiToFreq(note);
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, time);
+                    
+                    // Slight detune for width
+                    osc.detune.setValueAtTime((i - 1) * 5, time);
+                    
+                    const vol = 0.12 * this.intensity * (1 - this.harmonicTension * 0.3);
+                    gain.gain.setValueAtTime(0, time);
+                    gain.gain.linearRampToValueAtTime(vol, time + 0.2);
+                    gain.gain.setValueAtTime(vol * 0.8, time + duration * 0.8);
+                    gain.gain.linearRampToValueAtTime(0, time + duration);
+                    
+                    osc.connect(gain);
+                    gain.connect(this.musicBus);
+                    osc.start(time);
+                    osc.stop(time + duration + 0.1);
+                    osc.endTime = time + duration + 0.1;
+                    this.activeOscillators.push(osc);
+                });
+            },
+            
+            playLead(note, time, duration, profile) {
+                const freq = this.midiToFreq(note);
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = profile.brightness > 0.5 ? 'square' : 'triangle';
+                osc.frequency.setValueAtTime(freq, time);
+                
+                const vol = 0.18 * this.intensity;
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(vol, time + 0.02);
+                gain.gain.setValueAtTime(vol * 0.7, time + duration * 0.5);
+                gain.gain.linearRampToValueAtTime(0, time + duration);
+                
+                osc.connect(gain);
+                gain.connect(this.musicBus);
+                osc.start(time);
+                osc.stop(time + duration + 0.1);
+                osc.endTime = time + duration + 0.1;
+                this.activeOscillators.push(osc);
+            },
+            
+            playArp(note, time, duration, profile) {
+                const freq = this.midiToFreq(note);
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, time);
+                
+                const vol = 0.08 * this.intensity;
+                gain.gain.setValueAtTime(vol, time);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
+                
+                osc.connect(gain);
+                gain.connect(this.musicBus);
+                osc.start(time);
+                osc.stop(time + duration + 0.05);
+                osc.endTime = time + duration + 0.05;
+                this.activeOscillators.push(osc);
+            },
+            
+            playSubBass(note, time, duration, profile, boost = 1) {
+                const freq = this.midiToFreq(note);
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, time);
+                
+                gain.gain.setValueAtTime(0.4 * boost, time);
+                gain.gain.setValueAtTime(0.35 * boost, time + duration * 0.9);
+                gain.gain.linearRampToValueAtTime(0.3 * boost, time + duration);
+                
+                osc.connect(gain);
+                gain.connect(this.musicBus);
+                osc.start(time);
+                osc.stop(time + duration + 0.1);
+                osc.endTime = time + duration + 0.1;
+                this.activeOscillators.push(osc);
+            },
+            
+            playStab(note, time, profile) {
+                const freq = this.midiToFreq(note);
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, time);
+                
+                gain.gain.setValueAtTime(0.3, time);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+                
+                osc.connect(gain);
+                gain.connect(this.musicBus);
+                osc.start(time);
+                osc.stop(time + 0.2);
+                osc.endTime = time + 0.2;
+                this.activeOscillators.push(osc);
+            },
+            
+            playGlitch(note, time, duration, profile) {
+                const freq = this.midiToFreq(note);
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(freq, time);
+                osc.frequency.setValueAtTime(freq * 1.5, time + duration * 0.3);
+                osc.frequency.setValueAtTime(freq * 0.5, time + duration * 0.6);
+                
+                gain.gain.setValueAtTime(0.15, time);
+                gain.gain.setValueAtTime(0, time + duration);
+                
+                osc.connect(gain);
+                gain.connect(this.musicBus);
+                osc.start(time);
+                osc.stop(time + duration + 0.05);
+                osc.endTime = time + duration + 0.05;
+                this.activeOscillators.push(osc);
+            },
+            
+            // ============================================================================
+            // ENEMY SFX - Integrated with music
+            // ============================================================================
+            
+            playEnemySound(enemy, eventType) {
+                if (!this.enabled || !this.initialized || !this.currentProfile) return;
+                
+                const typeName = enemy.enemyType || 'grunt';
+                let sfxProfile = this.enemySfxProfiles[typeName];
+                
+                // Generate profile on-the-fly if enemy type is new
+                if (!sfxProfile && ENEMY_TYPES[typeName]) {
+                    sfxProfile = this.generateEnemySfxProfile(typeName, ENEMY_TYPES[typeName], Object.keys(this.enemySfxProfiles).length);
+                    this.enemySfxProfiles[typeName] = sfxProfile;
+                }
+                
+                if (!sfxProfile) sfxProfile = this.enemySfxProfiles['grunt'] || { pitchClass: 0, baseVolume: 0.3, waveform: 'triangle', attack: 0.05, release: 0.15 };
+                
+                const profile = this.currentProfile;
+                const now = this.ctx.currentTime;
+                
+                // Quantize to next 16th note for rhythmic integration
+                const quantize = this.beatDuration / 4;
+                const quantizedTime = Math.ceil(now / quantize) * quantize;
+                
+                // Calculate pitch from scale
+                const scaleDegree = sfxProfile.pitchClass % profile.scaleIntervals.length;
+                const octaveOffset = eventType === 'death' ? 12 : (eventType === 'spawn' ? -12 : 0);
+                const note = profile.rootMidi + profile.scaleIntervals[scaleDegree] + octaveOffset + sfxProfile.colorPitchMod;
+                const freq = this.midiToFreq(note);
+                
+                // Create sound
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = sfxProfile.waveform;
+                osc.frequency.setValueAtTime(freq, quantizedTime);
+                
+                // Event-specific modifications
+                let volume = sfxProfile.baseVolume * 0.5;
+                let duration = 0.15;
+                
+                if (eventType === 'death') {
+                    // Death: pitch bend down, longer release
+                    osc.frequency.exponentialRampToValueAtTime(freq * 0.5, quantizedTime + 0.2);
+                    duration = 0.3;
+                    volume *= 1.5;
+                } else if (eventType === 'spawn') {
+                    // Spawn: pitch bend up
+                    osc.frequency.setValueAtTime(freq * 0.7, quantizedTime);
+                    osc.frequency.exponentialRampToValueAtTime(freq, quantizedTime + 0.1);
+                    duration = 0.15;
+                } else if (eventType === 'attack') {
+                    // Attack: sharp transient
+                    duration = 0.1;
+                    volume *= 1.2;
+                }
+                
+                gain.gain.setValueAtTime(0, quantizedTime);
+                gain.gain.linearRampToValueAtTime(volume, quantizedTime + sfxProfile.attack);
+                gain.gain.exponentialRampToValueAtTime(0.01, quantizedTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(this.sfxBus);
+                osc.start(quantizedTime);
+                osc.stop(quantizedTime + duration + 0.1);
+                osc.endTime = quantizedTime + duration + 0.1;
+                this.activeOscillators.push(osc);
+            },
+            
+            // ============================================================================
+            // STINGERS AND ONE-SHOTS
+            // ============================================================================
+            
+            playWaveStinger() {
+                if (!this.enabled || !this.initialized || !this.currentProfile) return;
+                
+                const profile = this.currentProfile;
+                const now = this.ctx.currentTime;
+                
+                // Play ascending leitmotif
+                let time = now;
+                this.LEITMOTIF.forEach((interval, i) => {
+                    const note = profile.rootMidi + 12 + profile.scaleIntervals[interval % profile.scaleIntervals.length];
+                    this.playLead(note, time, 0.15, profile);
+                    time += 0.12;
+                });
+            },
+            
+            playBossStinger() {
+                if (!this.enabled || !this.initialized || !this.currentProfile) return;
+                
+                const profile = this.currentProfile;
+                const now = this.ctx.currentTime;
+                
+                // Dramatic descending phrase
+                const notes = [7, 5, 3, 0].map(d => profile.rootMidi + profile.scaleIntervals[d % profile.scaleIntervals.length]);
+                
+                let time = now;
+                notes.forEach((note, i) => {
+                    this.playStab(note, time, profile);
+                    time += 0.2;
+                });
+                
+                // Sub impact
+                this.playSubBass(profile.rootMidi - 24, now + 0.8, 1.5, profile, 1.5);
+            },
+            
+            playVictoryStinger() {
+                if (!this.enabled || !this.initialized || !this.currentProfile) return;
+                
+                const profile = this.currentProfile;
+                const now = this.ctx.currentTime;
+                
+                // Triumphant ascending phrase
+                const majorScale = [0, 2, 4, 5, 7, 9, 11];
+                const notes = [0, 2, 4, 7].map(d => profile.rootMidi + 12 + majorScale[d % majorScale.length]);
+                
+                let time = now;
+                notes.forEach((note, i) => {
+                    this.playLead(note, time, 0.25, profile);
+                    time += 0.15;
+                });
+                
+                // Final chord
+                const chord = [0, 4, 7].map(d => profile.rootMidi + majorScale[d]);
+                this.playChord(chord, now + 0.6, 1.5, profile);
+            },
+            
+            playDamageStinger(healthPercent) {
+                if (!this.enabled || !this.initialized || !this.currentProfile) return;
+                
+                const profile = this.currentProfile;
+                const now = this.ctx.currentTime;
+                
+                // Dissonant hit
+                const note = profile.rootMidi + 6; // Tritone
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(this.midiToFreq(note), now);
+                osc.frequency.exponentialRampToValueAtTime(this.midiToFreq(note - 12), now + 0.2);
+                
+                const vol = 0.3 * (1 - healthPercent); // Louder at low health
+                gain.gain.setValueAtTime(vol, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                
+                osc.connect(gain);
+                gain.connect(this.sfxBus);
+                osc.start(now);
+                osc.stop(now + 0.25);
+                osc.endTime = now + 0.25;
+                this.activeOscillators.push(osc);
+            },
+            
+            playLevelUpStinger() {
+                if (!this.enabled || !this.initialized || !this.currentProfile) return;
+                
+                const profile = this.currentProfile;
+                const now = this.ctx.currentTime;
+                
+                // Bright ascending arpeggio
+                const notes = [0, 4, 7, 12].map(interval => profile.rootMidi + 12 + profile.scaleIntervals[interval % profile.scaleIntervals.length] + Math.floor(interval / profile.scaleIntervals.length) * 12);
+                
+                let time = now;
+                notes.forEach((note, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(this.midiToFreq(note), time);
+                    
+                    gain.gain.setValueAtTime(0.25, time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+                    
+                    osc.connect(gain);
+                    gain.connect(this.sfxBus);
+                    osc.start(time);
+                    osc.stop(time + 0.35);
+                    osc.endTime = time + 0.35;
+                    this.activeOscillators.push(osc);
+                    
+                    time += 0.08;
+                });
+            },
+            
+            // ============================================================================
+            // ADAPTIVE STATE UPDATES
+            // ============================================================================
+            
+            update(gameStateRef, enemiesRef, bossRef) {
+                if (!this.enabled || !this.initialized) return;
+                
+                const now = Date.now();
+                
+                // Calculate target intensity from enemy count
+                const enemyCount = enemiesRef.length;
+                const maxEnemiesForIntensity = 20;
+                let enemyIntensity = Math.min(1, enemyCount / maxEnemiesForIntensity);
+                
+                // Wave progress adds base intensity
+                const wavesTotal = ARENA_CONFIG.wavesPerArena || 10;
+                const waveIntensity = (gameStateRef.currentWave - 1) / wavesTotal;
+                
+                // Combine intensities
+                this.targetIntensity = Math.min(1, (enemyIntensity * 0.6) + (waveIntensity * 0.4));
+                
+                // Boss active overrides
+                if (bossRef && gameStateRef.bossActive) {
+                    this.targetIntensity = 0.9;
+                    
+                    // Calculate boss phase
+                    const healthPercent = bossRef.health / bossRef.maxHealth;
+                    if (healthPercent < 0.33) this.bossPhase = 3;
+                    else if (healthPercent < 0.66) this.bossPhase = 2;
+                    else this.bossPhase = 1;
+                } else {
+                    this.bossPhase = 0;
+                }
+                
+                // Health affects filter (low health = muffled/tense)
+                const healthPercent = gameStateRef.health / gameStateRef.maxHealth;
+                if (this.currentProfile) {
+                    const baseFilter = this.currentProfile.baseFilterCutoff;
+                    this.targetFilterCutoff = baseFilter * (0.3 + healthPercent * 0.7);
+                    
+                    // Boss phase opens filter more
+                    if (this.bossPhase > 0) {
+                        const bossProfile = this.bossProfiles[this.currentArenaId];
+                        if (bossProfile) {
+                            this.targetFilterCutoff += bossProfile.phases[this.bossPhase].filterMod;
+                        }
+                    }
+                }
+                
+                // Harmonic tension increases through waves
+                this.harmonicTension = waveIntensity * 0.7 + (this.bossPhase > 0 ? 0.3 : 0);
+                
+                // Update beat counter
+                this.beatCount++;
+            },
+            
+            // ============================================================================
+            // EVENT HANDLERS - Called by game code
+            // ============================================================================
+            
+            onArenaChange(arenaId) {
+                this.loadArena(arenaId);
+            },
+            
+            onWaveStart(waveNum) {
+                this.playWaveStinger();
+            },
+            
+            onWaveClear() {
+                // Brief musical resolution
+                if (this.currentProfile) {
+                    const now = this.ctx.currentTime;
+                    const chord = [0, 4, 7].map(d => this.currentProfile.rootMidi + this.currentProfile.scaleIntervals[d % this.currentProfile.scaleIntervals.length]);
+                    this.playChord(chord, now, 0.8, this.currentProfile);
+                }
+            },
+            
+            onBossStart(arenaId) {
+                this.bossPhase = 1;
+                this.playBossStinger();
+            },
+            
+            onBossPhaseChange(phase) {
+                this.bossPhase = phase;
+                // Musical transition for phase change
+                if (this.currentProfile) {
+                    this.playStab(this.currentProfile.rootMidi + 12, this.ctx.currentTime, this.currentProfile);
+                }
+            },
+            
+            onBossDefeat() {
+                this.bossPhase = 0;
+                this.playVictoryStinger();
+            },
+            
+            onEnemySpawn(enemy) {
+                this.playEnemySound(enemy, 'spawn');
+            },
+            
+            onEnemyDeath(enemy) {
+                this.playEnemySound(enemy, 'death');
+            },
+            
+            onEnemyAttack(enemy) {
+                this.playEnemySound(enemy, 'attack');
+            },
+            
+            onPlayerDamage(healthPercent) {
+                this.playDamageStinger(healthPercent);
+            },
+            
+            onLevelUp() {
+                this.playLevelUpStinger();
+            },
+            
+            onGameOver() {
+                this.stopMusicLoop();
+                // Sad descending phrase
+                if (this.currentProfile && this.ctx) {
+                    const now = this.ctx.currentTime;
+                    const notes = [7, 5, 3, 0].map(d => this.currentProfile.rootMidi + this.currentProfile.scaleIntervals[d % this.currentProfile.scaleIntervals.length]);
+                    let time = now;
+                    notes.forEach(note => {
+                        this.playLead(note, time, 0.5, this.currentProfile);
+                        time += 0.4;
+                    });
+                }
+            },
+            
+            // ============================================================================
+            // UTILITY
+            // ============================================================================
+            
+            setMasterVolume(vol) {
+                if (this.masterGain) {
+                    this.masterGain.gain.setValueAtTime(Math.max(0, Math.min(1, vol)), this.ctx.currentTime);
+                }
+            },
+            
+            setEnabled(enabled) {
+                this.enabled = enabled;
+                if (!enabled) {
+                    this.stop();
+                }
+            }
+        };
+
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x1a1a2e);
@@ -203,7 +1303,18 @@
             createPlayer();
             initTrailPool();
 
-            document.addEventListener('keydown', (e) => keys[e.code] = true);
+            document.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                // M key toggles music
+                if (e.code === 'KeyM') {
+                    PulseMusic.setEnabled(!PulseMusic.enabled);
+                    if (PulseMusic.enabled && gameState.running) {
+                        PulseMusic.resume();
+                        PulseMusic.start();
+                    }
+                    console.log('[PulseMusic] Music', PulseMusic.enabled ? 'enabled' : 'disabled');
+                }
+            });
             document.addEventListener('keyup', (e) => keys[e.code] = false);
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('click', () => { if (gameState.running && !isPointerLocked) renderer.domElement.requestPointerLock(); });
@@ -220,6 +1331,10 @@
             window.addEventListener('resize', onWindowResize);
             document.getElementById('start-btn').addEventListener('click', startGame);
             document.getElementById('restart-btn').addEventListener('click', restartGame);
+            
+            // Initialize PULSE Music System
+            PulseMusic.init();
+            
             renderer.render(scene, camera);
         }
 
@@ -419,7 +1534,10 @@
         }
         
         function handleWaveIntro() {
-            if (gameState.waveTimer === 0) showWaveAnnouncement();
+            if (gameState.waveTimer === 0) {
+                showWaveAnnouncement();
+                PulseMusic.onWaveStart(gameState.currentWave);
+            }
             gameState.waveTimer++;
             if (gameState.waveTimer > 120) {
                 gameState.waveState = WAVE_STATE.WAVE_ACTIVE;
@@ -448,6 +1566,9 @@
         }
         
         function handleWaveClear() {
+            if (gameState.waveTimer === 0) {
+                PulseMusic.onWaveClear();
+            }
             gameState.waveTimer++;
             if (gameState.waveTimer > 90) {
                 if (gameState.currentWave >= WAVES_PER_ARENA) gameState.waveState = WAVE_STATE.BOSS_INTRO;
@@ -458,7 +1579,10 @@
         }
         
         function handleBossIntro() {
-            if (gameState.waveTimer === 0) showBossAnnouncement();
+            if (gameState.waveTimer === 0) {
+                showBossAnnouncement();
+                PulseMusic.onBossStart(gameState.currentArena);
+            }
             gameState.waveTimer++;
             if (gameState.waveTimer > 180) {
                 spawnBoss(gameState.currentArena);
@@ -489,6 +1613,10 @@
                 player.velocity.set(0, 0, 0);
                 gameState.waveState = WAVE_STATE.WAVE_INTRO;
                 gameState.waveTimer = 0;
+                
+                // Load new arena music profile
+                PulseMusic.onArenaChange(gameState.currentArena);
+                
                 updateUI();
             }
         }
@@ -556,6 +1684,9 @@
             
             scene.add(enemy);
             enemies.push(enemy);
+            
+            // Enemy spawn sound
+            PulseMusic.onEnemySpawn(enemy);
         }
         
         function spawnSplitEnemy(position, parentSize) {
@@ -831,6 +1962,10 @@
             gameState.bossActive = false;
             hideBossHealthBar();
             gameState.kills++; gameState.score += 750;
+            
+            // Boss defeated music
+            PulseMusic.onBossDefeat();
+            
             updateUI();
         }
 
@@ -942,6 +2077,9 @@
             projectile.damage = enemy.damage * 0.5;
             projectile.life = 150;
             scene.add(projectile); enemyProjectiles.push(projectile);
+            
+            // Enemy attack sound
+            PulseMusic.onEnemyAttack(enemy);
         }
 
         function spawnXpGem(position, value) {
@@ -1230,6 +2368,10 @@
                             spawnParticle(enemy.position, enemy.baseColor, 10);
                             if (Math.random() < (enemy.isElite ? HEART_DROP_CHANCE.elite : HEART_DROP_CHANCE.normal))
                                 spawnHeart(enemy.position.clone(), enemy.isElite ? HEART_HEAL.elite : HEART_HEAL.normal);
+                            
+                            // Enemy death sound
+                            PulseMusic.onEnemyDeath(enemy);
+                            
                             enemy.geometry.dispose(); enemy.material.dispose(); scene.remove(enemy);
                             enemies.splice(j, 1);
                             gameState.kills++; gameState.score += enemy.isElite ? 30 : 10;
@@ -1337,6 +2479,10 @@
                 player.bodyMaterial.emissiveIntensity = 1;
                 setTimeout(() => { if (player && player.bodyMaterial) { player.bodyMaterial.emissive.setHex(0x224488); player.bodyMaterial.emissiveIntensity = 0.3; } }, DAMAGE_COOLDOWN);
             }
+            
+            // Player damage sound
+            PulseMusic.onPlayerDamage(gameState.health / gameState.maxHealth);
+            
             if (gameState.health <= 0) { gameState.health = 0; gameOver(); }
         }
 
@@ -1344,6 +2490,10 @@
             gameState.level++; gameState.score += 50;
             gameState.pendingLevelUps = Math.max(0, gameState.pendingLevelUps - 1);
             gameState.health = Math.min(gameState.health + 10, gameState.maxHealth);
+            
+            // Level up sound
+            PulseMusic.onLevelUp();
+            
             showUpgradeMenu();
         }
 
@@ -1375,6 +2525,10 @@
         function gameOver() {
             gameState.running = false;
             document.exitPointerLock();
+            
+            // Game over music
+            PulseMusic.onGameOver();
+            
             const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
             document.getElementById('final-time').textContent = Math.floor(elapsed/60) + ':' + (elapsed%60).toString().padStart(2, '0');
             document.getElementById('final-arena').textContent = gameState.currentArena;
@@ -1391,6 +2545,12 @@
             gameState.waveState = WAVE_STATE.WAVE_INTRO;
             gameState.waveTimer = 0;
             gameStartTime = Date.now();
+            
+            // Start PULSE Music
+            PulseMusic.resume();
+            PulseMusic.loadArena(1);
+            PulseMusic.start();
+            
             animate();
         }
 
@@ -1417,6 +2577,12 @@
             document.getElementById('pause-indicator').style.display = 'none';
             document.getElementById('boss-health-container').style.display = 'none';
             lastDamageTime = 0; lastShot = 0; lastDash = 0; isDashing = false; cameraAngleX = 0; cameraAngleY = 0.3;
+            
+            // Restart PULSE Music
+            PulseMusic.stop();
+            PulseMusic.loadArena(1);
+            PulseMusic.start();
+            
             gameState.running = true; gameStartTime = Date.now(); updateUI(); animate();
         }
 
@@ -1447,6 +2613,10 @@
                 updateHazardZones();
                 updateWaveSystem();
                 shootProjectile();
+                
+                // Update PULSE Music System
+                PulseMusic.update(gameState, enemies, currentBoss);
+                
                 const now = Date.now();
                 if (now - lastUIUpdate > UI_UPDATE_INTERVAL) { updateUI(); lastUIUpdate = now; }
             }
