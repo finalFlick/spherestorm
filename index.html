@@ -586,17 +586,34 @@
         }
 
         function createPlayer() {
-            // Player body
-            const bodyGeometry = new THREE.CapsuleGeometry(0.4, 0.8, 8, 16);
+            // Player body (cylinder with spheres for capsule-like shape)
+            player = new THREE.Group();
+            
             const bodyMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x44aaff,
                 emissive: 0x224488,
                 emissiveIntensity: 0.3
             });
-            player = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            player.position.y = 1;
-            player.castShadow = true;
-            scene.add(player);
+            
+            // Main cylinder body
+            const bodyGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.8, 16);
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.castShadow = true;
+            player.add(body);
+            
+            // Top sphere
+            const topGeometry = new THREE.SphereGeometry(0.4, 16, 8);
+            const top = new THREE.Mesh(topGeometry, bodyMaterial);
+            top.position.y = 0.4;
+            top.castShadow = true;
+            player.add(top);
+            
+            // Bottom sphere
+            const bottomGeometry = new THREE.SphereGeometry(0.4, 16, 8);
+            const bottom = new THREE.Mesh(bottomGeometry, bodyMaterial);
+            bottom.position.y = -0.4;
+            bottom.castShadow = true;
+            player.add(bottom);
 
             // Player glow
             const glowGeometry = new THREE.SphereGeometry(0.8, 16, 16);
@@ -608,6 +625,11 @@
             const glow = new THREE.Mesh(glowGeometry, glowMaterial);
             player.add(glow);
             
+            player.position.y = 1;
+            scene.add(player);
+            
+            // Store material reference for damage flash
+            player.bodyMaterial = bodyMaterial;
             player.velocity = new THREE.Vector3();
             player.isGrounded = true;
         }
@@ -1021,13 +1043,13 @@
             setTimeout(() => flash.style.opacity = '0', 100);
             
             // Player flash effect (blink during invincibility)
-            if (player) {
-                player.material.emissive.setHex(0xff0000);
-                player.material.emissiveIntensity = 1;
+            if (player && player.bodyMaterial) {
+                player.bodyMaterial.emissive.setHex(0xff0000);
+                player.bodyMaterial.emissiveIntensity = 1;
                 setTimeout(() => {
-                    if (player && player.material) {
-                        player.material.emissive.setHex(0x224488);
-                        player.material.emissiveIntensity = 0.3;
+                    if (player && player.bodyMaterial) {
+                        player.bodyMaterial.emissive.setHex(0x224488);
+                        player.bodyMaterial.emissiveIntensity = 0.3;
                     }
                 }, DAMAGE_COOLDOWN);
             }
