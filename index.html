@@ -5,462 +5,62 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Megabonk 3D POC</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            overflow: hidden;
-            background: #000;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        #game-container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-        }
-        
-        #hud {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            padding: 20px;
-            pointer-events: none;
-            z-index: 100;
-        }
-        
-        .hud-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-        }
-        
-        .hud-left, .hud-right {
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px 20px;
-            border-radius: 10px;
-            color: white;
-        }
-        
-        .hud-center {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 25px;
-            border-radius: 10px;
-            color: white;
-            text-align: center;
-        }
-        
-        .arena-info {
-            font-size: 14px;
-            color: #ffdd44;
-            margin-bottom: 5px;
-        }
-        
-        .wave-info {
-            font-size: 18px;
-            font-weight: bold;
-        }
-        
-        .stat-label {
-            font-size: 12px;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-        }
-        
-        .health-bar-container {
-            width: 200px;
-            height: 20px;
-            background: #333;
-            border-radius: 10px;
-            overflow: hidden;
-            margin-top: 5px;
-        }
-        
-        .health-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #ff4444, #ff6666);
-            transition: width 0.3s ease;
-        }
-        
-        .xp-bar-container {
-            width: 200px;
-            height: 12px;
-            background: #333;
-            border-radius: 6px;
-            overflow: hidden;
-            margin-top: 5px;
-        }
-        
-        .xp-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #44ff44, #88ff88);
-            transition: width 0.3s ease;
-        }
-        
-        .level-display {
-            color: #ffdd44;
-            font-size: 18px;
-            margin-top: 5px;
-        }
-        
-        #crosshair {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 20px;
-            height: 20px;
-            pointer-events: none;
-            z-index: 100;
-        }
-        
-        #crosshair::before, #crosshair::after {
-            content: '';
-            position: absolute;
-            background: rgba(255, 255, 255, 0.8);
-        }
-        
-        #crosshair::before {
-            width: 2px;
-            height: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        #crosshair::after {
-            width: 100%;
-            height: 2px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-        
-        #upgrade-menu {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95);
-            padding: 30px;
-            border-radius: 15px;
-            border: 2px solid #ffdd44;
-            display: none;
-            z-index: 200;
-            pointer-events: auto;
-        }
-        
-        #upgrade-menu h2 {
-            color: #ffdd44;
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: 28px;
-        }
-        
-        .upgrade-options {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .upgrade-card {
-            width: 180px;
-            padding: 20px;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            border: 2px solid #444;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-align: center;
-            color: white;
-        }
-        
-        .upgrade-card:hover {
-            border-color: #ffdd44;
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(255, 221, 68, 0.3);
-        }
-        
-        .upgrade-icon {
-            font-size: 40px;
-            margin-bottom: 10px;
-        }
-        
-        .upgrade-name {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #ffdd44;
-        }
-        
-        .upgrade-desc {
-            font-size: 12px;
-            color: #aaa;
-        }
-        
-        #start-screen {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, #0a0a1a, #1a1a3e);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 300;
-            color: white;
-        }
-        
-        #start-screen h1 {
-            font-size: 64px;
-            color: #ffdd44;
-            text-shadow: 0 0 30px rgba(255, 221, 68, 0.5);
-            margin-bottom: 20px;
-        }
-        
-        #start-screen p {
-            font-size: 18px;
-            color: #888;
-            margin-bottom: 40px;
-        }
-        
-        #start-btn {
-            padding: 20px 60px;
-            font-size: 24px;
-            background: linear-gradient(135deg, #ffdd44, #ffaa00);
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            color: #000;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-        
-        #start-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 10px 40px rgba(255, 221, 68, 0.5);
-        }
-        
-        .controls-info {
-            margin-top: 40px;
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-        }
-        
-        .controls-info span {
-            display: inline-block;
-            background: #333;
-            padding: 5px 12px;
-            border-radius: 5px;
-            margin: 3px;
-        }
-        
-        #game-over {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95);
-            padding: 40px 60px;
-            border-radius: 15px;
-            border: 2px solid #ff4444;
-            display: none;
-            z-index: 250;
-            text-align: center;
-            color: white;
-        }
-        
-        #game-over h2 {
-            color: #ff4444;
-            font-size: 48px;
-            margin-bottom: 20px;
-        }
-        
-        .final-stats {
-            margin: 20px 0;
-            font-size: 18px;
-        }
-        
-        .final-stats div {
-            margin: 10px 0;
-        }
-        
-        #restart-btn {
-            padding: 15px 40px;
-            font-size: 20px;
-            background: linear-gradient(135deg, #ff4444, #ff6666);
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            color: white;
-            font-weight: bold;
-            margin-top: 20px;
-            transition: all 0.3s ease;
-        }
-        
-        #restart-btn:hover {
-            transform: scale(1.05);
-        }
-        
-        #kill-counter {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 30px;
-            border-radius: 20px;
-            color: white;
-            font-size: 18px;
-            z-index: 100;
-        }
-        
-        #damage-flash {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255, 0, 0, 0.3);
-            pointer-events: none;
-            opacity: 0;
-            z-index: 50;
-            transition: opacity 0.1s ease;
-        }
-        
-        #pause-indicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 30px 50px;
-            border-radius: 15px;
-            color: white;
-            font-size: 24px;
-            text-align: center;
-            z-index: 150;
-            display: none;
-        }
-        
-        #pause-indicator p {
-            margin-top: 15px;
-            font-size: 16px;
-            color: #888;
-        }
-        
-        /* Wave announcement overlay */
-        #wave-announcement {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            pointer-events: none;
-            z-index: 120;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        #wave-announcement.visible {
-            opacity: 1;
-        }
-        
-        #wave-announcement .wave-text {
-            font-size: 64px;
-            font-weight: bold;
-            color: #ffdd44;
-            text-shadow: 0 0 30px rgba(255, 221, 68, 0.7);
-        }
-        
-        #wave-announcement .arena-text {
-            font-size: 24px;
-            color: #aaa;
-            margin-top: 10px;
-        }
-        
-        /* Boss health bar */
-        #boss-health-container {
-            position: absolute;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 400px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px 20px;
-            border-radius: 10px;
-            border: 2px solid #ff4444;
-            display: none;
-            z-index: 100;
-        }
-        
-        #boss-name {
-            text-align: center;
-            color: #ff4444;
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-        
-        #boss-health-bar-bg {
-            width: 100%;
-            height: 20px;
-            background: #333;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        
-        #boss-health-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #ff2222, #ff6644);
-            transition: width 0.3s ease;
-            width: 100%;
-        }
-        
-        /* Unlock notification */
-        #unlock-notification {
-            position: absolute;
-            top: 30%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: linear-gradient(135deg, rgba(68, 255, 68, 0.9), rgba(34, 180, 34, 0.9));
-            padding: 20px 40px;
-            border-radius: 15px;
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            text-align: center;
-            z-index: 130;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.5s ease;
-        }
-        
-        #unlock-notification.visible {
-            opacity: 1;
-        }
-        
-        #unlock-notification .unlock-title {
-            font-size: 16px;
-            color: rgba(255,255,255,0.8);
-            margin-bottom: 5px;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #game-container { width: 100vw; height: 100vh; position: relative; }
+        #hud { position: absolute; top: 0; left: 0; right: 0; padding: 20px; pointer-events: none; z-index: 100; }
+        .hud-top { display: flex; justify-content: space-between; align-items: flex-start; }
+        .hud-left, .hud-right { background: rgba(0, 0, 0, 0.7); padding: 15px 20px; border-radius: 10px; color: white; }
+        .hud-center { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.7); padding: 10px 25px; border-radius: 10px; color: white; text-align: center; }
+        .arena-info { font-size: 14px; color: #ffdd44; margin-bottom: 5px; }
+        .wave-info { font-size: 18px; font-weight: bold; }
+        .stat-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-value { font-size: 24px; font-weight: bold; }
+        .health-bar-container { width: 200px; height: 20px; background: #333; border-radius: 10px; overflow: hidden; margin-top: 5px; }
+        .health-bar { height: 100%; background: linear-gradient(90deg, #ff4444, #ff6666); transition: width 0.3s ease; }
+        .xp-bar-container { width: 200px; height: 12px; background: #333; border-radius: 6px; overflow: hidden; margin-top: 5px; }
+        .xp-bar { height: 100%; background: linear-gradient(90deg, #44ff44, #88ff88); transition: width 0.3s ease; }
+        .level-display { color: #ffdd44; font-size: 18px; margin-top: 5px; }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; pointer-events: none; z-index: 100; }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255, 255, 255, 0.8); }
+        #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+        #crosshair::after { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+        #upgrade-menu { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.95); padding: 30px; border-radius: 15px; border: 2px solid #ffdd44; display: none; z-index: 200; pointer-events: auto; }
+        #upgrade-menu h2 { color: #ffdd44; text-align: center; margin-bottom: 20px; font-size: 28px; }
+        .upgrade-options { display: flex; gap: 15px; }
+        .upgrade-card { width: 180px; padding: 20px; background: linear-gradient(135deg, #1a1a2e, #16213e); border: 2px solid #444; border-radius: 10px; cursor: pointer; transition: all 0.3s ease; text-align: center; color: white; }
+        .upgrade-card:hover { border-color: #ffdd44; transform: translateY(-5px); box-shadow: 0 10px 30px rgba(255, 221, 68, 0.3); }
+        .upgrade-icon { font-size: 40px; margin-bottom: 10px; }
+        .upgrade-name { font-size: 16px; font-weight: bold; margin-bottom: 8px; color: #ffdd44; }
+        .upgrade-desc { font-size: 12px; color: #aaa; }
+        #start-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, #0a0a1a, #1a1a3e); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 300; color: white; }
+        #start-screen h1 { font-size: 64px; color: #ffdd44; text-shadow: 0 0 30px rgba(255, 221, 68, 0.5); margin-bottom: 20px; }
+        #start-screen p { font-size: 18px; color: #888; margin-bottom: 40px; }
+        #start-btn { padding: 20px 60px; font-size: 24px; background: linear-gradient(135deg, #ffdd44, #ffaa00); border: none; border-radius: 10px; cursor: pointer; color: #000; font-weight: bold; transition: all 0.3s ease; }
+        #start-btn:hover { transform: scale(1.1); box-shadow: 0 10px 40px rgba(255, 221, 68, 0.5); }
+        .controls-info { margin-top: 40px; text-align: center; color: #666; font-size: 14px; }
+        .controls-info span { display: inline-block; background: #333; padding: 5px 12px; border-radius: 5px; margin: 3px; }
+        #game-over { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.95); padding: 40px 60px; border-radius: 15px; border: 2px solid #ff4444; display: none; z-index: 250; text-align: center; color: white; }
+        #game-over h2 { color: #ff4444; font-size: 48px; margin-bottom: 20px; }
+        .final-stats { margin: 20px 0; font-size: 18px; }
+        .final-stats div { margin: 10px 0; }
+        #restart-btn { padding: 15px 40px; font-size: 20px; background: linear-gradient(135deg, #ff4444, #ff6666); border: none; border-radius: 10px; cursor: pointer; color: white; font-weight: bold; margin-top: 20px; transition: all 0.3s ease; }
+        #restart-btn:hover { transform: scale(1.05); }
+        #kill-counter { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.7); padding: 10px 30px; border-radius: 20px; color: white; font-size: 18px; z-index: 100; }
+        #damage-flash { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 0, 0, 0.3); pointer-events: none; opacity: 0; z-index: 50; transition: opacity 0.1s ease; }
+        #pause-indicator { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.8); padding: 30px 50px; border-radius: 15px; color: white; font-size: 24px; text-align: center; z-index: 150; display: none; }
+        #pause-indicator p { margin-top: 15px; font-size: 16px; color: #888; }
+        #wave-announcement { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 120; opacity: 0; transition: opacity 0.3s ease; }
+        #wave-announcement.visible { opacity: 1; }
+        #wave-announcement .wave-text { font-size: 64px; font-weight: bold; color: #ffdd44; text-shadow: 0 0 30px rgba(255, 221, 68, 0.7); }
+        #wave-announcement .arena-text { font-size: 24px; color: #aaa; margin-top: 10px; }
+        #boss-health-container { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); width: 400px; background: rgba(0, 0, 0, 0.8); padding: 15px 20px; border-radius: 10px; border: 2px solid #ff4444; display: none; z-index: 100; }
+        #boss-name { text-align: center; color: #ff4444; font-size: 20px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
+        #boss-health-bar-bg { width: 100%; height: 20px; background: #333; border-radius: 10px; overflow: hidden; }
+        #boss-health-bar { height: 100%; background: linear-gradient(90deg, #ff2222, #ff6644); transition: width 0.3s ease; width: 100%; }
+        #unlock-notification { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(68, 255, 68, 0.9), rgba(34, 180, 34, 0.9)); padding: 20px 40px; border-radius: 15px; color: white; font-size: 24px; font-weight: bold; text-align: center; z-index: 130; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
+        #unlock-notification.visible { opacity: 1; }
+        #unlock-notification .unlock-title { font-size: 16px; color: rgba(255,255,255,0.8); margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -470,14 +70,10 @@
             <div class="hud-top">
                 <div class="hud-left">
                     <div class="stat-label">Health</div>
-                    <div class="health-bar-container">
-                        <div class="health-bar" id="health-bar"></div>
-                    </div>
+                    <div class="health-bar-container"><div class="health-bar" id="health-bar"></div></div>
                     <div class="level-display">Level <span id="level">1</span></div>
                     <div class="stat-label" style="margin-top: 10px;">XP</div>
-                    <div class="xp-bar-container">
-                        <div class="xp-bar" id="xp-bar"></div>
-                    </div>
+                    <div class="xp-bar-container"><div class="xp-bar" id="xp-bar"></div></div>
                 </div>
                 <div class="hud-center">
                     <div class="arena-info">Arena <span id="arena-num">1</span> - <span id="arena-name">The Proving Grounds</span></div>
@@ -493,191 +89,77 @@
         </div>
         <div id="crosshair"></div>
         <div id="kill-counter">Kills: <span id="kills">0</span></div>
-        
-        <div id="wave-announcement">
-            <div class="wave-text">WAVE 1</div>
-            <div class="arena-text">Arena 1 - The Proving Grounds</div>
-        </div>
-        
-        <div id="boss-health-container">
-            <div id="boss-name">THE GUARDIAN</div>
-            <div id="boss-health-bar-bg">
-                <div id="boss-health-bar"></div>
-            </div>
-        </div>
-        
-        <div id="unlock-notification">
-            <div class="unlock-title">NEW MECHANIC UNLOCKED</div>
-            <div id="unlock-text">PILLARS & COVER</div>
-        </div>
-        
-        <div id="pause-indicator">
-            PAUSED
-            <p>Click anywhere to resume</p>
-        </div>
-        
-        <div id="upgrade-menu">
-            <h2>LEVEL UP!</h2>
-            <div class="upgrade-options" id="upgrade-options"></div>
-        </div>
-        
-        <div id="game-over">
-            <h2>GAME OVER</h2>
-            <div class="final-stats">
-                <div>Time Survived: <span id="final-time"></span></div>
-                <div>Arena Reached: <span id="final-arena"></span></div>
-                <div>Level Reached: <span id="final-level"></span></div>
-                <div>Enemies Killed: <span id="final-kills"></span></div>
-                <div>Final Score: <span id="final-score"></span></div>
-            </div>
-            <button id="restart-btn">Play Again</button>
-        </div>
-        
-        <div id="start-screen">
-            <h1>MEGABONK 3D</h1>
-            <p>Survive the arenas. Defeat the bosses. Unlock new challenges.</p>
-            <button id="start-btn">START GAME</button>
-            <div class="controls-info">
-                <div><span>WASD</span> Move <span>SPACE</span> Jump <span>SHIFT</span> Dash</div>
-                <div><span>MOUSE</span> Look around <span>CLICK</span> Lock cursor</div>
-            </div>
-        </div>
+        <div id="wave-announcement"><div class="wave-text">WAVE 1</div><div class="arena-text">Arena 1 - The Proving Grounds</div></div>
+        <div id="boss-health-container"><div id="boss-name">THE GUARDIAN</div><div id="boss-health-bar-bg"><div id="boss-health-bar"></div></div></div>
+        <div id="unlock-notification"><div class="unlock-title">NEW MECHANIC UNLOCKED</div><div id="unlock-text">PILLARS & COVER</div></div>
+        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p></div>
+        <div id="upgrade-menu"><h2>LEVEL UP!</h2><div class="upgrade-options" id="upgrade-options"></div></div>
+        <div id="game-over"><h2>GAME OVER</h2><div class="final-stats"><div>Time Survived: <span id="final-time"></span></div><div>Arena Reached: <span id="final-arena"></span></div><div>Level Reached: <span id="final-level"></span></div><div>Enemies Killed: <span id="final-kills"></span></div><div>Final Score: <span id="final-score"></span></div></div><button id="restart-btn">Play Again</button></div>
+        <div id="start-screen"><h1>MEGABONK 3D</h1><p>Survive the arenas. Defeat the bosses. Unlock new challenges.</p><button id="start-btn">START GAME</button><div class="controls-info"><div><span>WASD</span> Move <span>SPACE</span> Jump <span>SHIFT</span> Dash</div><div><span>MOUSE</span> Look around <span>CLICK</span> Lock cursor</div></div></div>
     </div>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
-        // ===========================================
-        // ARENA CONFIGURATION
-        // ===========================================
+        'use strict';
+        const WAVES_PER_ARENA = 10, DAMAGE_COOLDOWN = 500, PLAYER_JUMP_VELOCITY = 0.4, PLAYER_GRAVITY = 0.018;
+        const BOUNCE_FACTORS = [0.45, 0.2, 0.08], TRAIL_MAX = 60, TRAIL_LIFETIME = 90, TRAIL_SPAWN_DISTANCE = 0.3;
+        const HEART_DROP_CHANCE = { normal: 0.03, elite: 0.10, boss: 1.0 };
+        const HEART_HEAL = { normal: 15, elite: 25, boss: 50 }, HEART_TTL = 600;
+        
+        // Enemy Types with weighted spawning
+        const ENEMY_TYPES = {
+            grunt: { name: 'Grunt', size: 0.5, health: 12, speed: 0.035, damage: 10, color: 0xff4466, xpValue: 1, behavior: 'chase', spawnWeight: 40 },
+            shooter: { name: 'Shooter', size: 0.45, health: 8, speed: 0.025, damage: 8, color: 0x44ff66, xpValue: 2, behavior: 'shooter', shootRange: 15, shootCooldown: 2000, spawnWeight: 25 },
+            shielded: { name: 'Shielded', size: 0.6, health: 30, speed: 0.02, damage: 12, color: 0x6666ff, xpValue: 3, behavior: 'chase', damageReduction: 0.5, spawnWeight: 15 },
+            fastBouncer: { name: 'Fast Bouncer', size: 0.35, health: 6, speed: 0.12, damage: 8, color: 0xffff44, xpValue: 3, behavior: 'bouncer', spawnWeight: 10, minArena: 2 },
+            splitter: { name: 'Splitter', size: 0.7, health: 20, speed: 0.03, damage: 10, color: 0xff44ff, xpValue: 4, behavior: 'chase', onDeath: 'split', splitCount: 3, spawnWeight: 8, minArena: 2 },
+            shieldBreaker: { name: 'Shield Breaker', size: 0.55, health: 15, speed: 0.04, damage: 18, color: 0xff8844, xpValue: 4, behavior: 'shieldBreaker', rushRange: 8, rushSpeed: 0.15, spawnWeight: 8, minArena: 3 },
+            waterBalloon: { name: 'Water Balloon', size: 0.4, health: 25, speed: 0.015, damage: 5, color: 0x44ffff, xpValue: 6, behavior: 'waterBalloon', growRate: 0.002, maxSize: 1.2, explosionRadius: 4, spawnWeight: 4, minArena: 3 },
+            teleporter: { name: 'Teleporter', size: 0.45, health: 12, speed: 0.03, damage: 15, color: 0xaa44ff, xpValue: 5, behavior: 'teleporter', teleportCooldown: 3000, teleportRange: 8, spawnWeight: 4, minArena: 4 }
+        };
+        
+        // Progressive Arena Configuration
         const ARENA_CONFIG = {
-            wavesPerArena: 10,
+            wavesPerArena: WAVES_PER_ARENA,
             arenas: {
-                1: { name: 'The Proving Grounds', type: 'flat', color: 0x2a2a4a },
-                2: { name: 'Pillar Sanctum', type: 'pillars', color: 0x2a3a4a },
-                3: { name: 'Sky Rise', type: 'vertical', color: 0x3a2a4a },
-                4: { name: 'Platform Gardens', type: 'platforms', color: 0x2a4a3a },
-                5: { name: 'The Labyrinth', type: 'tunnels', color: 0x4a2a3a },
-                6: { name: 'Chaos Realm', type: 'hybrid', color: 0x3a3a3a }
+                1: { name: 'The Proving Grounds', features: ['flat'], color: 0x2a2a4a },
+                2: { name: 'Pillar Sanctum', features: ['flat', 'pillars'], color: 0x2a3a4a },
+                3: { name: 'Sky Rise', features: ['flat', 'pillars', 'vertical'], color: 0x3a2a4a },
+                4: { name: 'Platform Gardens', features: ['flat', 'pillars', 'vertical', 'platforms'], color: 0x2a4a3a },
+                5: { name: 'The Labyrinth', features: ['flat', 'pillars', 'vertical', 'platforms', 'tunnels'], color: 0x4a2a3a },
+                6: { name: 'Chaos Realm', features: ['flat', 'pillars', 'vertical', 'platforms', 'tunnels', 'hazards'], color: 0x3a3a3a }
             }
         };
         
+        // Enhanced Boss Configuration
         const BOSS_CONFIG = {
-            1: { name: 'THE GUARDIAN', health: 300, damage: 20, size: 2.5, color: 0xff2222, ai: 'charger' },
-            2: { name: 'PILLAR LORD', health: 450, damage: 25, size: 2.8, color: 0xff8822, ai: 'cover_shooter' },
-            3: { name: 'SKY CRUSHER', health: 600, damage: 30, size: 3.0, color: 0x8822ff, ai: 'vertical' },
-            4: { name: 'PLATFORM HOPPER', health: 750, damage: 30, size: 3.2, color: 0x22ff88, ai: 'hopper' },
-            5: { name: 'TUNNEL WORM', health: 900, damage: 35, size: 3.5, color: 0xff22ff, ai: 'charger' },
-            6: { name: 'CHAOS INCARNATE', health: 1200, damage: 40, size: 4.0, color: 0xffffff, ai: 'chaos' }
+            1: { name: 'THE PILLAR GUARDIAN', health: 400, damage: 20, size: 2.5, color: 0xff2222, ai: 'pillarGuardian' },
+            2: { name: 'THE SLIME QUEEN', health: 550, damage: 22, size: 2.8, color: 0x44ff88, ai: 'slimeQueen' },
+            3: { name: 'THE TELEPORTING TYRANT', health: 700, damage: 28, size: 3.0, color: 0xaa44ff, ai: 'teleportingTyrant' },
+            4: { name: 'THE BALLOON KING', health: 850, damage: 25, size: 3.2, color: 0x44ffff, ai: 'balloonKing' },
+            5: { name: 'THE TUNNEL WYRM', health: 1000, damage: 32, size: 3.5, color: 0xff44ff, ai: 'tunnelWyrm' },
+            6: { name: 'CHAOS INCARNATE', health: 1500, damage: 40, size: 4.0, color: 0xffffff, ai: 'chaosIncarnate' }
         };
         
-        // Wave state machine states
-        const WAVE_STATE = {
-            WAVE_INTRO: 'WAVE_INTRO',
-            WAVE_ACTIVE: 'WAVE_ACTIVE',
-            WAVE_CLEAR: 'WAVE_CLEAR',
-            BOSS_INTRO: 'BOSS_INTRO',
-            BOSS_ACTIVE: 'BOSS_ACTIVE',
-            BOSS_DEFEATED: 'BOSS_DEFEATED',
-            ARENA_TRANSITION: 'ARENA_TRANSITION'
-        };
+        const WAVE_STATE = { WAVE_INTRO: 'WAVE_INTRO', WAVE_ACTIVE: 'WAVE_ACTIVE', WAVE_CLEAR: 'WAVE_CLEAR', BOSS_INTRO: 'BOSS_INTRO', BOSS_ACTIVE: 'BOSS_ACTIVE', BOSS_DEFEATED: 'BOSS_DEFEATED', ARENA_TRANSITION: 'ARENA_TRANSITION' };
         
-        // ===========================================
-        // GAME STATE
-        // ===========================================
         const gameState = {
-            running: false,
-            paused: false,
-            health: 100,
-            maxHealth: 100,
-            xp: 0,
-            xpToLevel: 10,
-            level: 1,
-            kills: 0,
-            score: 0,
-            pendingLevelUps: 0,
-            
-            // Arena progression
-            currentArena: 1,
-            currentWave: 1,
-            waveState: WAVE_STATE.WAVE_INTRO,
-            waveTimer: 0,
-            enemiesToSpawn: 0,
-            waveEnemiesRemaining: 0,
-            lastWaveSpawn: 0,
-            bossActive: false,
-            
-            // Unlocked mechanics (persists within run)
-            unlockedMechanics: {
-                pillars: false,      // Arena 2+
-                ramps: false,        // Arena 3+
-                platforms: false,    // Arena 4+
-                tunnels: false,      // Arena 5+
-                hybridChaos: false   // Arena 6+
-            },
-            
-            // Unlocked enemy behaviors
-            unlockedEnemyBehaviors: {
-                jumping: false,      // Arena 3+ (after beating Arena 2 boss)
-                ambush: false,       // Arena 5+ (after beating Arena 4 boss)
-                multiLevel: false    // Arena 4+ (after beating Arena 3 boss)
-            },
-            
-            // Player stats (upgradeable)
-            stats: {
-                damage: 10,
-                attackSpeed: 1,
-                projectileCount: 1,
-                projectileSpeed: 0.8,
-                moveSpeed: 0.15,
-                maxHealth: 100,
-                pickupRange: 3,
-                xpMultiplier: 1
-            }
+            running: false, paused: false, health: 100, maxHealth: 100, xp: 0, xpToLevel: 10, level: 1, kills: 0, score: 0, pendingLevelUps: 0,
+            currentArena: 1, currentWave: 1, waveState: WAVE_STATE.WAVE_INTRO, waveTimer: 0, enemiesToSpawn: 0, waveEnemiesRemaining: 0, lastWaveSpawn: 0, bossActive: false,
+            unlockedMechanics: { pillars: false, ramps: false, platforms: false, tunnels: false, hybridChaos: false },
+            unlockedEnemyBehaviors: { jumping: false, ambush: false, multiLevel: false },
+            stats: { damage: 10, attackSpeed: 1, projectileCount: 1, projectileSpeed: 0.8, moveSpeed: 0.15, maxHealth: 100, pickupRange: 3, xpMultiplier: 1 }
         };
 
-        // ===========================================
-        // THREE.JS SETUP & ENTITIES
-        // ===========================================
         let scene, camera, renderer, player, ground;
-        let enemies = [];
-        let projectiles = [];
-        let xpGems = [];
-        let hearts = [];
-        let particles = [];
-        let obstacles = [];
-        let currentBoss = null;
-        let arenaWalls = [];
-        
-        // Trail system (ring buffer for performance)
-        const TRAIL_MAX = 40;
-        const TRAIL_LIFETIME = 35;
-        let trailPool = [];
-        let trailIndex = 0;
-        let lastTrailPos = null;
-        
-        // Input state
+        let enemies = [], projectiles = [], enemyProjectiles = [], xpGems = [], hearts = [], particles = [], obstacles = [], hazardZones = [];
+        let currentBoss = null, arenaWalls = [];
+        const tempVec3 = new THREE.Vector3(), tempVec3_2 = new THREE.Vector3(), tempVec3_3 = new THREE.Vector3();
+        let trailPool = [], trailIndex = 0, lastTrailPos = null;
         const keys = {};
-        let cameraAngleX = 0, cameraAngleY = 0.3;
-        let isPointerLocked = false;
+        let cameraAngleX = 0, cameraAngleY = 0.3, isPointerLocked = false;
+        let lastShot = 0, gameStartTime = 0, lastDash = 0, isDashing = false, dashDirection = new THREE.Vector3(), lastDamageTime = 0, lastUIUpdate = 0;
+        const UI_UPDATE_INTERVAL = 100;
         
-        // Timers
-        let lastShot = 0;
-        let gameStartTime = 0;
-        let lastDash = 0;
-        let isDashing = false;
-        let dashDirection = new THREE.Vector3();
-        let lastDamageTime = 0;
-        const DAMAGE_COOLDOWN = 500;
-        
-        // Bounce system
-        const BOUNCE_FACTORS = [0.4, 0.15];
-        
-        // Heart drop settings
-        const HEART_DROP_CHANCE = { normal: 0.03, elite: 0.10, boss: 1.0 };
-        const HEART_HEAL = { normal: 15, elite: 25, boss: 50 };
-        const HEART_TTL = 600;
-        
-        // Upgrades available
         const upgrades = [
             { name: 'Damage Up', icon: '⚔️', desc: '+25% damage', stat: 'damage', mult: 1.25 },
             { name: 'Attack Speed', icon: '⚡', desc: '+20% fire rate', stat: 'attackSpeed', mult: 1.2 },
@@ -689,29 +171,19 @@
             { name: 'Bullet Speed', icon: '💨', desc: '+25% projectile speed', stat: 'projectileSpeed', mult: 1.25 }
         ];
 
-        // ===========================================
-        // INITIALIZATION
-        // ===========================================
         function init() {
-            // Scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x1a1a2e);
             scene.fog = new THREE.Fog(0x1a1a2e, 20, 80);
-
-            // Camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            
-            // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.getElementById('game-container').appendChild(renderer.domElement);
 
-            // Lighting
             const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
             scene.add(ambientLight);
-
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(50, 50, 50);
             directionalLight.castShadow = true;
@@ -724,324 +196,131 @@
             directionalLight.shadow.camera.top = 50;
             directionalLight.shadow.camera.bottom = -50;
             scene.add(directionalLight);
+            scene.add(new THREE.PointLight(0xff6644, 0.5, 30).translateX(-20).translateY(5).translateZ(-20));
+            scene.add(new THREE.PointLight(0x4466ff, 0.5, 30).translateX(20).translateY(5).translateZ(20));
 
-            // Point lights for atmosphere
-            const pointLight1 = new THREE.PointLight(0xff6644, 0.5, 30);
-            pointLight1.position.set(-20, 5, -20);
-            scene.add(pointLight1);
-
-            const pointLight2 = new THREE.PointLight(0x4466ff, 0.5, 30);
-            pointLight2.position.set(20, 5, 20);
-            scene.add(pointLight2);
-
-            // Ground
             createGround();
-            
-            // Player
             createPlayer();
-            
-            // Initialize trail pool
             initTrailPool();
 
-            // Event listeners
             document.addEventListener('keydown', (e) => keys[e.code] = true);
             document.addEventListener('keyup', (e) => keys[e.code] = false);
             document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('click', () => {
-                if (gameState.running && !isPointerLocked) {
-                    renderer.domElement.requestPointerLock();
-                }
-            });
+            document.addEventListener('click', () => { if (gameState.running && !isPointerLocked) renderer.domElement.requestPointerLock(); });
             document.addEventListener('pointerlockchange', () => {
                 isPointerLocked = document.pointerLockElement === renderer.domElement;
-                
                 const pauseIndicator = document.getElementById('pause-indicator');
                 const upgradeMenu = document.getElementById('upgrade-menu');
                 const gameOverScreen = document.getElementById('game-over');
-                
-                if (gameState.running && 
-                    upgradeMenu.style.display !== 'block' && 
-                    gameOverScreen.style.display !== 'block') {
+                if (gameState.running && upgradeMenu.style.display !== 'block' && gameOverScreen.style.display !== 'block') {
                     gameState.paused = !isPointerLocked;
                     pauseIndicator.style.display = isPointerLocked ? 'none' : 'block';
                 }
             });
-            
             window.addEventListener('resize', onWindowResize);
-
-            // UI buttons
             document.getElementById('start-btn').addEventListener('click', startGame);
             document.getElementById('restart-btn').addEventListener('click', restartGame);
-
-            // Initial render
             renderer.render(scene, camera);
         }
 
-        // ===========================================
-        // ARENA GENERATION
-        // ===========================================
+        // Arena Generation (Progressive)
         function generateArena(arenaNumber) {
-            // Clear existing obstacles
             clearArenaGeometry();
-            
-            const arenaType = ARENA_CONFIG.arenas[Math.min(arenaNumber, 6)].type;
-            
-            switch(arenaType) {
-                case 'flat':
-                    generateFlatArena();
-                    break;
-                case 'pillars':
-                    generatePillarArena();
-                    break;
-                case 'vertical':
-                    generateVerticalArena();
-                    break;
-                case 'platforms':
-                    generatePlatformArena();
-                    break;
-                case 'tunnels':
-                    generateTunnelArena();
-                    break;
-                case 'hybrid':
-                    generateHybridArena();
-                    break;
-            }
-            
-            // Update ground color for arena
-            const arenaColor = ARENA_CONFIG.arenas[Math.min(arenaNumber, 6)].color;
-            if (ground && ground.material) {
-                ground.material.color.setHex(arenaColor);
-            }
+            const arenaNum = Math.min(arenaNumber, 6);
+            const arenaData = ARENA_CONFIG.arenas[arenaNum];
+            createBoundaryWalls();
+            if (arenaData.features.includes('pillars')) addPillars(arenaNum);
+            if (arenaData.features.includes('vertical')) addVerticalElements(arenaNum);
+            if (arenaData.features.includes('platforms')) addPlatforms(arenaNum);
+            if (arenaData.features.includes('tunnels')) addTunnelWalls(arenaNum);
+            if (arenaData.features.includes('hazards')) addHazardZones(arenaNum);
+            if (ground && ground.material) ground.material.color.setHex(arenaData.color);
         }
         
         function clearArenaGeometry() {
-            // Remove and dispose obstacles
-            for (const obs of obstacles) {
-                if (obs.geometry) obs.geometry.dispose();
-                if (obs.material) obs.material.dispose();
-                scene.remove(obs);
-            }
+            obstacles.forEach(obs => { if (obs.geometry) obs.geometry.dispose(); if (obs.material) obs.material.dispose(); scene.remove(obs); });
             obstacles = [];
-            
-            // Remove arena walls
-            for (const wall of arenaWalls) {
-                if (wall.geometry) wall.geometry.dispose();
-                if (wall.material) wall.material.dispose();
-                scene.remove(wall);
-            }
+            arenaWalls.forEach(wall => { if (wall.geometry) wall.geometry.dispose(); if (wall.material) wall.material.dispose(); scene.remove(wall); });
             arenaWalls = [];
+            hazardZones.forEach(hz => { if (hz.geometry) hz.geometry.dispose(); if (hz.material) hz.material.dispose(); scene.remove(hz); });
+            hazardZones = [];
         }
         
-        function generateFlatArena() {
-            // Arena 1: Completely flat, no obstacles
-            // Just boundary walls (visual)
-            createBoundaryWalls();
+        function addPillars(arenaNum) {
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x5a5a7a, roughness: 0.6 });
+            const count = 4 + arenaNum * 2, radius = 18;
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 2;
+                createObstacle(Math.cos(angle) * radius, Math.sin(angle) * radius, 2, 3 + arenaNum * 0.5, 2, pillarMat);
+            }
+            const coverMat = new THREE.MeshStandardMaterial({ color: 0x4a4a6a, roughness: 0.7 });
+            [[-10, -10], [10, -10], [-10, 10], [10, 10]].forEach(([x, z]) => createObstacle(x, z, 3, 1.2, 2, coverMat));
         }
         
-        function generatePillarArena() {
-            // Arena 2: Pillars and low cover
-            createBoundaryWalls();
-            
-            const pillarMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x5a5a7a,
-                roughness: 0.6
-            });
-            
-            // Central pillars in grid pattern
-            const pillarPositions = [
-                [-15, -15], [-15, 0], [-15, 15],
-                [0, -15], [0, 15],
-                [15, -15], [15, 0], [15, 15]
-            ];
-            
-            for (const [x, z] of pillarPositions) {
-                createObstacle(x, z, 2, 4, 2, pillarMaterial);
-            }
-            
-            // Waist-high cover blocks
-            const coverMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x4a4a6a,
-                roughness: 0.7
-            });
-            
-            const coverPositions = [
-                [-8, -8], [8, -8], [-8, 8], [8, 8],
-                [-20, 0], [20, 0], [0, -20], [0, 20]
-            ];
-            
-            for (const [x, z] of coverPositions) {
-                createObstacle(x, z, 3, 1, 1.5, coverMaterial);
-            }
+        function addVerticalElements(arenaNum) {
+            const platformMat = new THREE.MeshStandardMaterial({ color: 0x5a4a7a, roughness: 0.5 });
+            createObstacle(0, 0, 8, 2, 8, platformMat);
+            const rampMat = new THREE.MeshStandardMaterial({ color: 0x6a5a8a, roughness: 0.6 });
+            createObstacle(6, 0, 3, 0.7, 3, rampMat);
+            createObstacle(8, 0, 2.5, 1.3, 2.5, rampMat);
+            createObstacle(-6, 0, 3, 0.7, 3, rampMat);
+            createObstacle(-8, 0, 2.5, 1.3, 2.5, rampMat);
+            createObstacle(0, 6, 3, 0.7, 3, rampMat);
+            createObstacle(0, -6, 3, 0.7, 3, rampMat);
         }
         
-        function generateVerticalArena() {
-            // Arena 3: Ramps and ledges
-            createBoundaryWalls();
-            
-            const platformMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x5a4a7a,
-                roughness: 0.5
-            });
-            
-            // Central elevated platform
-            createObstacle(0, 0, 10, 2.5, 10, platformMaterial);
-            
-            // Ramps leading up (as stepped platforms)
-            const rampMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x6a5a8a,
-                roughness: 0.6
-            });
-            
-            // East ramp steps
-            createObstacle(8, 0, 4, 0.8, 4, rampMaterial);
-            createObstacle(10, 0, 3, 1.6, 3, rampMaterial);
-            
-            // West ramp steps
-            createObstacle(-8, 0, 4, 0.8, 4, rampMaterial);
-            createObstacle(-10, 0, 3, 1.6, 3, rampMaterial);
-            
-            // Small ledges around perimeter
-            for (let i = 0; i < 4; i++) {
-                const angle = (i / 4) * Math.PI * 2 + Math.PI/4;
-                const x = Math.cos(angle) * 25;
-                const z = Math.sin(angle) * 25;
-                createObstacle(x, z, 6, 1.5, 6, platformMaterial);
-            }
+        function addPlatforms(arenaNum) {
+            const platformMat = new THREE.MeshStandardMaterial({ color: 0x4a6a5a, roughness: 0.5 });
+            [{x:-22,z:-22,h:2.5},{x:22,z:-22,h:3},{x:-22,z:22,h:3.5},{x:22,z:22,h:4}].forEach(c => createObstacle(c.x, c.z, 7, c.h, 7, platformMat));
+            const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x5a7a6a, roughness: 0.6 });
+            createObstacle(-11, -11, 4, 1.2, 4, bridgeMat);
+            createObstacle(11, 11, 4, 2, 4, bridgeMat);
         }
         
-        function generatePlatformArena() {
-            // Arena 4: Multiple floating platforms
-            createBoundaryWalls();
-            
-            const platformMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x4a6a5a,
-                roughness: 0.5
-            });
-            
-            // Multiple platforms at different heights
-            const platforms = [
-                { x: -18, z: -18, height: 2, size: 8 },
-                { x: 18, z: -18, height: 3, size: 8 },
-                { x: -18, z: 18, height: 3, size: 8 },
-                { x: 18, z: 18, height: 4, size: 8 },
-                { x: 0, z: 0, height: 5, size: 10 }  // Central high platform
-            ];
-            
-            for (const p of platforms) {
-                createObstacle(p.x, p.z, p.size, p.height, p.size, platformMaterial);
-            }
-            
-            // Connecting bridges (lower platforms as bridges)
-            const bridgeMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x5a7a6a,
-                roughness: 0.6
-            });
-            
-            // Bridge from corner to center (stepped)
-            createObstacle(-9, -9, 4, 1, 4, bridgeMaterial);
-            createObstacle(-5, -5, 3, 2, 3, bridgeMaterial);
-            
-            createObstacle(9, 9, 4, 1.5, 4, bridgeMaterial);
-            createObstacle(5, 5, 3, 3, 3, bridgeMaterial);
+        function addTunnelWalls(arenaNum) {
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x6a4a5a, roughness: 0.7 });
+            createObstacle(-28, 0, 12, 3.5, 3, wallMat);
+            createObstacle(28, 0, 12, 3.5, 3, wallMat);
+            createObstacle(0, -28, 3, 3.5, 12, wallMat);
+            createObstacle(0, 28, 3, 3.5, 12, wallMat);
         }
         
-        function generateTunnelArena() {
-            // Arena 5: Open hubs with corridor walls
-            createBoundaryWalls();
-            
-            const wallMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x6a4a5a,
-                roughness: 0.7
-            });
-            
-            // Create corridor walls forming cross shape
-            // North-South corridor walls
-            createObstacle(-12, -25, 3, 3, 20, wallMaterial);
-            createObstacle(12, -25, 3, 3, 20, wallMaterial);
-            createObstacle(-12, 25, 3, 3, 20, wallMaterial);
-            createObstacle(12, 25, 3, 3, 20, wallMaterial);
-            
-            // East-West corridor walls
-            createObstacle(-25, -12, 20, 3, 3, wallMaterial);
-            createObstacle(-25, 12, 20, 3, 3, wallMaterial);
-            createObstacle(25, -12, 20, 3, 3, wallMaterial);
-            createObstacle(25, 12, 20, 3, 3, wallMaterial);
-            
-            // Corner blocks
-            createObstacle(-25, -25, 10, 3, 10, wallMaterial);
-            createObstacle(25, -25, 10, 3, 10, wallMaterial);
-            createObstacle(-25, 25, 10, 3, 10, wallMaterial);
-            createObstacle(25, 25, 10, 3, 10, wallMaterial);
-        }
-        
-        function generateHybridArena() {
-            // Arena 6: Mix of everything
-            createBoundaryWalls();
-            
-            const material1 = new THREE.MeshStandardMaterial({ color: 0x5a5a6a, roughness: 0.6 });
-            const material2 = new THREE.MeshStandardMaterial({ color: 0x6a5a5a, roughness: 0.5 });
-            
-            // Central tower
-            createObstacle(0, 0, 6, 6, 6, material2);
-            
-            // Surrounding platforms at varying heights
-            for (let i = 0; i < 8; i++) {
-                const angle = (i / 8) * Math.PI * 2;
-                const dist = 20;
-                const x = Math.cos(angle) * dist;
-                const z = Math.sin(angle) * dist;
-                const height = 1 + (i % 4) * 1.5;
-                createObstacle(x, z, 5, height, 5, material1);
-            }
-            
-            // Pillars
-            for (let i = 0; i < 4; i++) {
-                const angle = (i / 4) * Math.PI * 2 + Math.PI/8;
-                const x = Math.cos(angle) * 12;
-                const z = Math.sin(angle) * 12;
-                createObstacle(x, z, 2, 4, 2, material2);
-            }
-            
-            // Corridor walls
-            createObstacle(-30, 0, 15, 3, 2, material1);
-            createObstacle(30, 0, 15, 3, 2, material1);
-            createObstacle(0, -30, 2, 3, 15, material1);
-            createObstacle(0, 30, 2, 3, 15, material1);
+        function addHazardZones(arenaNum) {
+            [{x:-30,z:-30},{x:30,z:-30},{x:-30,z:30},{x:30,z:30}].forEach(pos => createHazardZone(pos.x, pos.z, 5, -1));
         }
         
         function createObstacle(x, z, sizeX, height, sizeZ, material) {
             const geometry = new THREE.BoxGeometry(sizeX, height, sizeZ);
             const obstacle = new THREE.Mesh(geometry, material);
-            
             obstacle.position.set(x, height / 2, z);
             obstacle.castShadow = true;
             obstacle.receiveShadow = true;
-            
-            // Store collision data
-            obstacle.collisionData = {
-                minX: x - sizeX / 2,
-                maxX: x + sizeX / 2,
-                minZ: z - sizeZ / 2,
-                maxZ: z + sizeZ / 2,
-                height: height
-            };
-            
+            obstacle.collisionData = { minX: x - sizeX/2, maxX: x + sizeX/2, minZ: z - sizeZ/2, maxZ: z + sizeZ/2, height: height, topY: height };
             scene.add(obstacle);
             obstacles.push(obstacle);
             return obstacle;
         }
         
+        function createHazardZone(x, z, radius, duration) {
+            const geometry = new THREE.CircleGeometry(radius, 24);
+            const material = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+            const hazard = new THREE.Mesh(geometry, material);
+            hazard.rotation.x = -Math.PI / 2;
+            hazard.position.set(x, 0.05, z);
+            hazard.radius = radius;
+            hazard.duration = duration;
+            hazard.damagePerFrame = 0.5;
+            scene.add(hazard);
+            hazardZones.push(hazard);
+            return hazard;
+        }
+        
         function createBoundaryWalls() {
-            const wallMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x3a3a5a, 
-                transparent: true, 
-                opacity: 0.3 
-            });
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x3a3a5a, transparent: true, opacity: 0.3 });
             const wallHeight = 8;
-            
             for (let i = 0; i < 4; i++) {
                 const wallGeom = new THREE.BoxGeometry(i < 2 ? 100 : 2, wallHeight, i < 2 ? 2 : 100);
-                const wall = new THREE.Mesh(wallGeom, wallMaterial);
+                const wall = new THREE.Mesh(wallGeom, wallMat);
                 wall.position.y = wallHeight / 2;
                 if (i === 0) wall.position.z = -50;
                 else if (i === 1) wall.position.z = 50;
@@ -1054,16 +333,11 @@
 
         function createGround() {
             const groundGeometry = new THREE.PlaneGeometry(100, 100, 20, 20);
-            const groundMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x2a2a4a,
-                roughness: 0.8,
-                metalness: 0.2
-            });
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a4a, roughness: 0.8, metalness: 0.2 });
             ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
             scene.add(ground);
-
             const gridHelper = new THREE.GridHelper(100, 50, 0x444466, 0x333355);
             gridHelper.position.y = 0.01;
             scene.add(gridHelper);
@@ -1071,63 +345,36 @@
 
         function createPlayer() {
             player = new THREE.Group();
-            
-            const bodyMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x44aaff,
-                emissive: 0x224488,
-                emissiveIntensity: 0.3
-            });
-            
-            const bodyGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.8, 16);
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x44aaff, emissive: 0x224488, emissiveIntensity: 0.3 });
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.8, 16), bodyMat);
             body.castShadow = true;
             player.add(body);
-            
-            const topGeometry = new THREE.SphereGeometry(0.4, 16, 8);
-            const top = new THREE.Mesh(topGeometry, bodyMaterial);
+            const top = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 8), bodyMat);
             top.position.y = 0.4;
             top.castShadow = true;
             player.add(top);
-            
-            const bottomGeometry = new THREE.SphereGeometry(0.4, 16, 8);
-            const bottom = new THREE.Mesh(bottomGeometry, bodyMaterial);
+            const bottom = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 8), bodyMat);
             bottom.position.y = -0.4;
             bottom.castShadow = true;
             player.add(bottom);
-
-            const glowGeometry = new THREE.SphereGeometry(0.8, 16, 16);
-            const glowMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x44aaff, 
-                transparent: true, 
-                opacity: 0.2 
-            });
-            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            const glow = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), new THREE.MeshBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.2 }));
             player.add(glow);
-            
             player.position.y = 1;
             scene.add(player);
-            
-            player.bodyMaterial = bodyMaterial;
+            player.bodyMaterial = bodyMat;
             player.velocity = new THREE.Vector3();
             player.isGrounded = true;
             player.bounceCount = 0;
             player.wasInAir = false;
+            player.squashTime = 0;
         }
         
-        // ===========================================
-        // TRAIL SYSTEM (Tron-style ground trail)
-        // ===========================================
+        // Enhanced Trail System
         function initTrailPool() {
-            // Use flat boxes for ground trail effect
-            const trailGeometry = new THREE.BoxGeometry(0.4, 0.05, 0.4);
-            const trailMaterial = new THREE.MeshBasicMaterial({
-                color: 0x44ffff,
-                transparent: true,
-                opacity: 0
-            });
-            
+            const trailGeom = new THREE.BoxGeometry(0.5, 0.08, 0.5);
+            const trailMat = new THREE.MeshBasicMaterial({ color: 0x44ffff, transparent: true, opacity: 0 });
             for (let i = 0; i < TRAIL_MAX; i++) {
-                const segment = new THREE.Mesh(trailGeometry.clone(), trailMaterial.clone());
+                const segment = new THREE.Mesh(trailGeom.clone(), trailMat.clone());
                 segment.visible = false;
                 segment.life = 0;
                 scene.add(segment);
@@ -1137,12 +384,11 @@
         
         function spawnTrail(position) {
             const segment = trailPool[trailIndex];
-            segment.position.set(position.x, 0.03, position.z);  // On ground
+            segment.position.set(position.x, 0.05, position.z);
             segment.life = TRAIL_LIFETIME;
             segment.visible = true;
-            segment.material.opacity = 0.8;
+            segment.material.opacity = 0.85;
             segment.scale.set(1, 1, 1);
-            
             trailIndex = (trailIndex + 1) % TRAIL_MAX;
         }
         
@@ -1151,82 +397,50 @@
                 if (segment.life > 0) {
                     segment.life--;
                     const t = segment.life / TRAIL_LIFETIME;
-                    segment.material.opacity = t * 0.8;
-                    // Keep width but shrink height
-                    segment.scale.y = 0.5 + t * 0.5;
-                    
-                    if (segment.life <= 0) {
-                        segment.visible = false;
-                    }
+                    segment.material.opacity = t * 0.85;
+                    segment.material.color.setRGB(0x44/255 * t, 0xff/255 * t, 1);
+                    segment.scale.set(0.6 + t * 0.4, 0.5 + t * 0.5, 0.6 + t * 0.4);
+                    if (segment.life <= 0) segment.visible = false;
                 }
             }
         }
 
-        // ===========================================
-        // WAVE SYSTEM
-        // ===========================================
+        // Wave System
         function updateWaveSystem() {
             switch (gameState.waveState) {
-                case WAVE_STATE.WAVE_INTRO:
-                    handleWaveIntro();
-                    break;
-                case WAVE_STATE.WAVE_ACTIVE:
-                    handleWaveActive();
-                    break;
-                case WAVE_STATE.WAVE_CLEAR:
-                    handleWaveClear();
-                    break;
-                case WAVE_STATE.BOSS_INTRO:
-                    handleBossIntro();
-                    break;
-                case WAVE_STATE.BOSS_ACTIVE:
-                    handleBossActive();
-                    break;
-                case WAVE_STATE.BOSS_DEFEATED:
-                    handleBossDefeated();
-                    break;
-                case WAVE_STATE.ARENA_TRANSITION:
-                    handleArenaTransition();
-                    break;
+                case WAVE_STATE.WAVE_INTRO: handleWaveIntro(); break;
+                case WAVE_STATE.WAVE_ACTIVE: handleWaveActive(); break;
+                case WAVE_STATE.WAVE_CLEAR: handleWaveClear(); break;
+                case WAVE_STATE.BOSS_INTRO: handleBossIntro(); break;
+                case WAVE_STATE.BOSS_ACTIVE: handleBossActive(); break;
+                case WAVE_STATE.BOSS_DEFEATED: handleBossDefeated(); break;
+                case WAVE_STATE.ARENA_TRANSITION: handleArenaTransition(); break;
             }
         }
         
         function handleWaveIntro() {
-            // Show wave announcement
-            if (gameState.waveTimer === 0) {
-                showWaveAnnouncement();
-            }
-            
+            if (gameState.waveTimer === 0) showWaveAnnouncement();
             gameState.waveTimer++;
-            
-            // After 2 seconds, start wave
             if (gameState.waveTimer > 120) {
                 gameState.waveState = WAVE_STATE.WAVE_ACTIVE;
                 gameState.waveTimer = 0;
-                
-                // Calculate enemies for this wave
-                const base = 3 + gameState.currentArena * 2;
-                const scaling = 1 + (gameState.currentWave - 1) * 0.3;
+                const base = 4 + gameState.currentArena * 2;
+                const scaling = 1 + (gameState.currentWave - 1) * 0.25;
                 gameState.enemiesToSpawn = Math.floor(base * scaling);
                 gameState.waveEnemiesRemaining = gameState.enemiesToSpawn;
                 gameState.lastWaveSpawn = 0;
-                
                 hideWaveAnnouncement();
             }
         }
         
         function handleWaveActive() {
-            // Spawn enemies
             const now = Date.now();
-            const spawnInterval = Math.max(400, 1500 - gameState.currentArena * 100 - gameState.currentWave * 50);
-            
+            const spawnInterval = Math.max(350, 1400 - gameState.currentArena * 80 - gameState.currentWave * 40);
             if (gameState.enemiesToSpawn > 0 && now - gameState.lastWaveSpawn > spawnInterval) {
                 spawnWaveEnemy();
                 gameState.enemiesToSpawn--;
                 gameState.lastWaveSpawn = now;
             }
-            
-            // Check wave clear (all enemies spawned and killed)
             if (enemies.length === 0 && gameState.enemiesToSpawn === 0 && !currentBoss) {
                 gameState.waveState = WAVE_STATE.WAVE_CLEAR;
                 gameState.waveTimer = 0;
@@ -1235,30 +449,17 @@
         
         function handleWaveClear() {
             gameState.waveTimer++;
-            
-            // Brief celebration (1.5 seconds)
             if (gameState.waveTimer > 90) {
-                if (gameState.currentWave >= ARENA_CONFIG.wavesPerArena) {
-                    // Boss time!
-                    gameState.waveState = WAVE_STATE.BOSS_INTRO;
-                } else {
-                    // Next wave
-                    gameState.currentWave++;
-                    gameState.waveState = WAVE_STATE.WAVE_INTRO;
-                }
+                if (gameState.currentWave >= WAVES_PER_ARENA) gameState.waveState = WAVE_STATE.BOSS_INTRO;
+                else { gameState.currentWave++; gameState.waveState = WAVE_STATE.WAVE_INTRO; }
                 gameState.waveTimer = 0;
                 updateUI();
             }
         }
         
         function handleBossIntro() {
-            if (gameState.waveTimer === 0) {
-                showBossAnnouncement();
-            }
-            
+            if (gameState.waveTimer === 0) showBossAnnouncement();
             gameState.waveTimer++;
-            
-            // After 3 seconds, spawn boss
             if (gameState.waveTimer > 180) {
                 spawnBoss(gameState.currentArena);
                 gameState.bossActive = true;
@@ -1269,585 +470,443 @@
         }
         
         function handleBossActive() {
-            // Check if boss is dead
-            if (!currentBoss || !gameState.bossActive) {
-                gameState.waveState = WAVE_STATE.BOSS_DEFEATED;
-                gameState.waveTimer = 0;
-            }
+            if (!currentBoss || !gameState.bossActive) { gameState.waveState = WAVE_STATE.BOSS_DEFEATED; gameState.waveTimer = 0; }
         }
         
         function handleBossDefeated() {
-            if (gameState.waveTimer === 0) {
-                // Unlock mechanics for next arena
-                unlockArenaMechanics(gameState.currentArena);
-            }
-            
+            if (gameState.waveTimer === 0) unlockArenaMechanics(gameState.currentArena);
             gameState.waveTimer++;
-            
-            // Victory celebration (3 seconds)
-            if (gameState.waveTimer > 180) {
-                gameState.waveState = WAVE_STATE.ARENA_TRANSITION;
-                gameState.waveTimer = 0;
-            }
+            if (gameState.waveTimer > 180) { gameState.waveState = WAVE_STATE.ARENA_TRANSITION; gameState.waveTimer = 0; }
         }
         
         function handleArenaTransition() {
             gameState.waveTimer++;
-            
-            // Transition to next arena (1 second)
             if (gameState.waveTimer > 60) {
                 gameState.currentArena++;
                 gameState.currentWave = 1;
-                
-                // Generate new arena
                 generateArena(gameState.currentArena);
-                
-                // Reset player position
                 player.position.set(0, 1, 0);
                 player.velocity.set(0, 0, 0);
-                
                 gameState.waveState = WAVE_STATE.WAVE_INTRO;
                 gameState.waveTimer = 0;
                 updateUI();
             }
         }
         
-        function spawnWaveEnemy() {
-            const distance = 25 + Math.random() * 15;
-            const angle = Math.random() * Math.PI * 2;
-            
-            let x = player.position.x + Math.cos(angle) * distance;
-            let z = player.position.z + Math.sin(angle) * distance;
-            
-            // Clamp to arena bounds
-            x = Math.max(-45, Math.min(45, x));
-            z = Math.max(-45, Math.min(45, z));
-            
-            // Enemy type based on wave and arena
-            const isElite = gameState.currentWave >= 6 && Math.random() < 0.2 + gameState.currentArena * 0.05;
-            
-            let size, health, speed, damage, color;
-            
-            if (isElite) {
-                size = 0.8;
-                health = 30 + gameState.level * 5 + gameState.currentArena * 10;
-                speed = 0.055;
-                damage = 15 + gameState.currentArena * 2;
-                color = 0xffaa22;
-            } else {
-                size = 0.5;
-                health = 10 + gameState.level * 2 + gameState.currentArena * 5;
-                speed = 0.04 + Math.random() * 0.02;
-                damage = 10 + gameState.currentArena;
-                color = 0xff4466;
+        // Weighted Enemy Spawning
+        function getWeightedEnemyType() {
+            const availableTypes = [];
+            let totalWeight = 0;
+            for (const [typeName, typeData] of Object.entries(ENEMY_TYPES)) {
+                if (typeData.minArena && gameState.currentArena < typeData.minArena) continue;
+                availableTypes.push({ name: typeName, data: typeData });
+                totalWeight += typeData.spawnWeight;
             }
+            const waveBonus = gameState.currentWave * 0.05;
+            let random = Math.random() * totalWeight;
+            for (const type of availableTypes) {
+                let weight = type.data.spawnWeight;
+                if (type.data.spawnWeight < 10) weight += waveBonus * 10;
+                random -= weight;
+                if (random <= 0) return type;
+            }
+            return availableTypes[0];
+        }
+        
+        function spawnWaveEnemy() {
+            const distance = 28 + Math.random() * 12;
+            const angle = Math.random() * Math.PI * 2;
+            let x = Math.max(-42, Math.min(42, player.position.x + Math.cos(angle) * distance));
+            let z = Math.max(-42, Math.min(42, player.position.z + Math.sin(angle) * distance));
             
-            const geometry = new THREE.SphereGeometry(size, 12, 12);
-            const material = new THREE.MeshStandardMaterial({ 
-                color: color,
-                emissive: color,
-                emissiveIntensity: 0.3
-            });
+            const enemyType = getWeightedEnemyType();
+            const typeData = enemyType.data;
+            const arenaScale = 1 + (gameState.currentArena - 1) * 0.15;
+            const waveScale = 1 + (gameState.currentWave - 1) * 0.05;
+            
+            const geometry = new THREE.SphereGeometry(typeData.size, 12, 12);
+            const material = new THREE.MeshStandardMaterial({ color: typeData.color, emissive: typeData.color, emissiveIntensity: 0.3 });
             const enemy = new THREE.Mesh(geometry, material);
             
-            enemy.position.set(x, size, z);
+            enemy.position.set(x, typeData.size, z);
             enemy.castShadow = true;
-            enemy.health = health;
-            enemy.maxHealth = health;
-            enemy.speed = speed;
-            enemy.damage = damage;
-            enemy.size = size;
-            enemy.baseSize = size;
+            enemy.health = Math.floor(typeData.health * arenaScale * waveScale);
+            enemy.maxHealth = enemy.health;
+            enemy.speed = typeData.speed * (1 + gameState.currentArena * 0.02);
+            enemy.damage = Math.floor(typeData.damage * arenaScale);
+            enemy.size = typeData.size;
+            enemy.baseSize = typeData.size;
             enemy.isBoss = false;
-            enemy.isElite = isElite;
-            enemy.xpValue = isElite ? 5 : 1;
-            enemy.baseColor = color;
+            enemy.isElite = typeData.spawnWeight < 10;
+            enemy.xpValue = typeData.xpValue;
+            enemy.baseColor = typeData.color;
             enemy.velocityY = 0;
+            enemy.velocity = new THREE.Vector3();
+            enemy.enemyType = enemyType.name;
+            enemy.behavior = typeData.behavior;
+            enemy.damageReduction = typeData.damageReduction || 0;
+            enemy.onDeath = typeData.onDeath || null;
+            enemy.splitCount = typeData.splitCount || 0;
+            
+            if (typeData.behavior === 'shooter') { enemy.shootRange = typeData.shootRange; enemy.shootCooldown = typeData.shootCooldown; enemy.lastShot = 0; }
+            if (typeData.behavior === 'bouncer') enemy.velocity.set((Math.random()-0.5)*enemy.speed*2, 0, (Math.random()-0.5)*enemy.speed*2);
+            if (typeData.behavior === 'shieldBreaker') { enemy.rushRange = typeData.rushRange; enemy.rushSpeed = typeData.rushSpeed; enemy.isRushing = false; }
+            if (typeData.behavior === 'waterBalloon') { enemy.growRate = typeData.growRate; enemy.maxSize = typeData.maxSize; enemy.explosionRadius = typeData.explosionRadius; }
+            if (typeData.behavior === 'teleporter') { enemy.teleportCooldown = typeData.teleportCooldown; enemy.teleportRange = typeData.teleportRange; enemy.lastTeleport = 0; }
             
             scene.add(enemy);
             enemies.push(enemy);
         }
         
-        // ===========================================
-        // BOSS SYSTEM
-        // ===========================================
+        function spawnSplitEnemy(position, parentSize) {
+            const size = parentSize * 0.4;
+            const enemy = new THREE.Mesh(new THREE.SphereGeometry(size, 8, 8), new THREE.MeshStandardMaterial({ color: 0xff66ff, emissive: 0xff44ff, emissiveIntensity: 0.3 }));
+            const offset = new THREE.Vector3((Math.random()-0.5)*2, 0, (Math.random()-0.5)*2);
+            enemy.position.copy(position).add(offset);
+            enemy.position.y = size;
+            enemy.castShadow = true;
+            enemy.health = 5; enemy.maxHealth = 5; enemy.speed = 0.05; enemy.damage = 5;
+            enemy.size = size; enemy.baseSize = size; enemy.isBoss = false; enemy.isElite = false;
+            enemy.xpValue = 1; enemy.baseColor = 0xff66ff; enemy.velocityY = 0;
+            enemy.velocity = new THREE.Vector3(); enemy.enemyType = 'splitling'; enemy.behavior = 'chase'; enemy.damageReduction = 0;
+            scene.add(enemy);
+            enemies.push(enemy);
+        }
+
+        // Boss System
         function spawnBoss(arenaNumber) {
             const config = BOSS_CONFIG[Math.min(arenaNumber, 6)];
-            
             const boss = new THREE.Group();
-            
-            // Boss body
-            const bodyGeometry = new THREE.SphereGeometry(config.size, 16, 16);
-            const bodyMaterial = new THREE.MeshStandardMaterial({
-                color: config.color,
-                emissive: config.color,
-                emissiveIntensity: 0.5
-            });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: config.color, emissive: config.color, emissiveIntensity: 0.5 });
+            const body = new THREE.Mesh(new THREE.SphereGeometry(config.size, 16, 16), bodyMat);
             body.castShadow = true;
             boss.add(body);
-            
-            // Boss glow
-            const glowGeometry = new THREE.SphereGeometry(config.size * 1.2, 16, 16);
-            const glowMaterial = new THREE.MeshBasicMaterial({
-                color: config.color,
-                transparent: true,
-                opacity: 0.3
-            });
-            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-            boss.add(glow);
-            
-            // Boss crown/horns (visual flair)
-            const hornGeometry = new THREE.ConeGeometry(0.3, 1, 8);
-            const hornMaterial = new THREE.MeshStandardMaterial({ color: 0xffdd44 });
-            for (let i = 0; i < 3; i++) {
-                const horn = new THREE.Mesh(hornGeometry, hornMaterial);
-                horn.position.y = config.size + 0.3;
-                horn.position.x = (i - 1) * 0.8;
-                horn.rotation.z = (i - 1) * 0.2;
+            boss.add(new THREE.Mesh(new THREE.SphereGeometry(config.size * 1.2, 16, 16), new THREE.MeshBasicMaterial({ color: config.color, transparent: true, opacity: 0.3 })));
+            const hornMat = new THREE.MeshStandardMaterial({ color: 0xffdd44 });
+            for (let i = 0; i < 5; i++) {
+                const horn = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.2, 8), hornMat);
+                horn.position.set((i-2)*0.6, config.size+0.4, 0);
+                horn.rotation.z = (i-2)*0.15;
                 boss.add(horn);
             }
-            
-            // Boss properties
-            boss.health = config.health + gameState.level * 20;
+            boss.health = config.health + gameState.level * 25;
             boss.maxHealth = boss.health;
             boss.damage = config.damage;
             boss.size = config.size;
             boss.baseSize = config.size;
-            boss.speed = 0.03;
+            boss.speed = 0.025;
             boss.isBoss = true;
             boss.isElite = false;
-            boss.xpValue = 50 + arenaNumber * 10;
+            boss.xpValue = 60 + arenaNumber * 15;
             boss.baseColor = config.color;
             boss.ai = config.ai;
-            boss.bodyMaterial = bodyMaterial;
+            boss.bodyMaterial = bodyMat;
             boss.velocityY = 0;
-            
-            // AI state
             boss.aiState = 'idle';
             boss.aiTimer = 0;
-            boss.chargeTarget = null;
-            boss.chargeSpeed = 0.3;
-            
-            // Position boss at edge of arena
-            boss.position.set(0, config.size, -30);
-            
+            boss.phase = 1;
+            boss.chargeSpeed = 0.25;
+            boss.position.set(0, config.size, -35);
             scene.add(boss);
             currentBoss = boss;
-            
-            // Show boss health bar
             showBossHealthBar(config.name);
         }
         
         function updateBoss() {
             if (!currentBoss) return;
-            
             const boss = currentBoss;
+            boss.aiTimer++;
+            const healthPercent = boss.health / boss.maxHealth;
+            if (healthPercent < 0.33 && boss.phase < 3) { boss.phase = 3; boss.speed *= 1.3; }
+            else if (healthPercent < 0.66 && boss.phase < 2) { boss.phase = 2; boss.speed *= 1.15; }
             
-            // Boss AI based on type
             switch (boss.ai) {
-                case 'charger':
-                    updateChargerBossAI(boss);
-                    break;
-                case 'cover_shooter':
-                    updateCoverBossAI(boss);
-                    break;
-                case 'vertical':
-                    updateVerticalBossAI(boss);
-                    break;
-                case 'hopper':
-                    updateHopperBossAI(boss);
-                    break;
-                case 'chaos':
-                    updateChaosBossAI(boss);
-                    break;
-                default:
-                    updateChargerBossAI(boss);
+                case 'pillarGuardian': updatePillarGuardianAI(boss); break;
+                case 'slimeQueen': updateSlimeQueenAI(boss); break;
+                case 'teleportingTyrant': updateTeleportingTyrantAI(boss); break;
+                case 'balloonKing': updateBalloonKingAI(boss); break;
+                case 'tunnelWyrm': updateTunnelWyrmAI(boss); break;
+                case 'chaosIncarnate': updateChaosIncarnateAI(boss); break;
+                default: updateDefaultBossAI(boss);
             }
             
-            // Gravity and ground collision
             boss.velocityY = (boss.velocityY || 0) - 0.015;
             boss.position.y += boss.velocityY;
+            if (boss.position.y < boss.size) { boss.position.y = boss.size; boss.velocityY = 0; }
             
-            if (boss.position.y < boss.size) {
-                boss.position.y = boss.size;
-                boss.velocityY = 0;
-            }
-            
-            // Collision with player
             const distToPlayer = boss.position.distanceTo(player.position);
-            if (distToPlayer < boss.size + 0.5) {
+            if (distToPlayer < boss.size * boss.scale.x + 0.5) {
                 const now = Date.now();
-                if (now - lastDamageTime > DAMAGE_COOLDOWN) {
-                    takeDamage(boss.damage);
-                    lastDamageTime = now;
-                }
+                if (now - lastDamageTime > DAMAGE_COOLDOWN) { takeDamage(boss.damage); lastDamageTime = now; }
             }
-            
-            // Update boss health bar
             updateBossHealthBar();
         }
         
-        function updateChargerBossAI(boss) {
-            boss.aiTimer++;
-            
+        function updateDefaultBossAI(boss) {
+            tempVec3.subVectors(player.position, boss.position);
+            tempVec3.y = 0;
+            tempVec3.normalize();
+            boss.position.add(tempVec3.multiplyScalar(boss.speed));
+            boss.position.x = Math.max(-42, Math.min(42, boss.position.x));
+            boss.position.z = Math.max(-42, Math.min(42, boss.position.z));
+        }
+        
+        function updatePillarGuardianAI(boss) {
             if (boss.aiState === 'idle') {
-                // Move slowly toward player
-                const dir = new THREE.Vector3()
-                    .subVectors(player.position, boss.position);
-                dir.y = 0;
-                dir.normalize();
-                boss.position.add(dir.multiplyScalar(boss.speed));
-                
-                // Start charge after 120 frames
-                if (boss.aiTimer > 120) {
-                    boss.aiState = 'wind_up';
-                    boss.aiTimer = 0;
-                    boss.chargeTarget = player.position.clone();
-                    
-                    // Flash to indicate wind-up
-                    boss.bodyMaterial.emissiveIntensity = 1;
-                }
+                updateDefaultBossAI(boss);
+                if (boss.aiTimer > 200 && Math.random() < 0.02 * boss.phase) { boss.aiState = 'summon'; boss.aiTimer = 0; }
+                if (boss.aiTimer > 150) { boss.aiState = 'wind_up'; boss.aiTimer = 0; boss.bodyMaterial.emissiveIntensity = 1; }
             } else if (boss.aiState === 'wind_up') {
-                // Wind-up animation (60 frames)
                 if (boss.aiTimer > 60) {
                     boss.aiState = 'charging';
-                    boss.aiTimer = 0;
-                    boss.chargeDirection = new THREE.Vector3()
-                        .subVectors(player.position, boss.position);
+                    boss.chargeDirection = tempVec3.subVectors(player.position, boss.position).normalize();
                     boss.chargeDirection.y = 0;
-                    boss.chargeDirection.normalize();
+                    boss.aiTimer = 0;
                 }
             } else if (boss.aiState === 'charging') {
-                // Charge toward target
                 boss.position.add(boss.chargeDirection.clone().multiplyScalar(boss.chargeSpeed));
-                
-                // Stop charging after 40 frames or hitting boundary
-                if (boss.aiTimer > 40 || 
-                    Math.abs(boss.position.x) > 45 || 
-                    Math.abs(boss.position.z) > 45) {
+                if (boss.aiTimer > 35 || Math.abs(boss.position.x) > 42 || Math.abs(boss.position.z) > 42) {
                     boss.aiState = 'cooldown';
                     boss.aiTimer = 0;
                     boss.bodyMaterial.emissiveIntensity = 0.5;
-                    
-                    // Clamp position
-                    boss.position.x = Math.max(-45, Math.min(45, boss.position.x));
-                    boss.position.z = Math.max(-45, Math.min(45, boss.position.z));
+                    boss.position.x = Math.max(-42, Math.min(42, boss.position.x));
+                    boss.position.z = Math.max(-42, Math.min(42, boss.position.z));
                 }
+            } else if (boss.aiState === 'summon') {
+                if (boss.aiTimer === 30) for (let i = 0; i < boss.phase; i++) spawnSpecificEnemy('fastBouncer', boss.position);
+                if (boss.aiTimer > 60) { boss.aiState = 'idle'; boss.aiTimer = 0; }
             } else if (boss.aiState === 'cooldown') {
-                // Rest for 90 frames
-                if (boss.aiTimer > 90) {
-                    boss.aiState = 'idle';
-                    boss.aiTimer = 0;
-                }
+                if (boss.aiTimer > 80) { boss.aiState = 'idle'; boss.aiTimer = 0; }
             }
-            
-            boss.aiTimer++;
         }
         
-        function updateCoverBossAI(boss) {
-            // Similar to charger but tries to stay near pillars
-            updateChargerBossAI(boss);
-        }
-        
-        function updateVerticalBossAI(boss) {
-            boss.aiTimer++;
-            
+        function updateSlimeQueenAI(boss) {
             if (boss.aiState === 'idle') {
-                // Move toward player
-                const dir = new THREE.Vector3()
-                    .subVectors(player.position, boss.position);
-                dir.y = 0;
-                dir.normalize();
-                boss.position.add(dir.multiplyScalar(boss.speed));
-                
-                // Jump attack every 180 frames
-                if (boss.aiTimer > 180) {
-                    boss.aiState = 'jump_up';
-                    boss.aiTimer = 0;
-                    boss.velocityY = 0.4;  // Big jump
+                updateDefaultBossAI(boss);
+                if (boss.aiTimer % 60 === 0) createHazardZone(boss.position.x, boss.position.z, 2 + boss.phase * 0.5, 300);
+                if (boss.aiTimer > 180) { boss.aiState = 'jump_prep'; boss.aiTimer = 0; }
+            } else if (boss.aiState === 'jump_prep') {
+                boss.bodyMaterial.emissiveIntensity = 1;
+                if (boss.aiTimer > 40) { boss.aiState = 'jumping'; boss.velocityY = 0.45; boss.jumpTarget = player.position.clone(); boss.aiTimer = 0; }
+            } else if (boss.aiState === 'jumping') {
+                tempVec3.subVectors(boss.jumpTarget, boss.position); tempVec3.y = 0; tempVec3.normalize();
+                boss.position.add(tempVec3.multiplyScalar(0.15));
+                if (boss.position.y <= boss.size + 0.1 && boss.velocityY < 0) {
+                    boss.aiState = 'landed'; boss.aiTimer = 0; boss.bodyMaterial.emissiveIntensity = 0.5;
+                    if (player.position.distanceTo(boss.position) < 6) takeDamage(boss.damage * 0.6);
+                    createHazardZone(boss.position.x, boss.position.z, 4, 400);
+                    spawnParticle(boss.position, 0x44ff88, 25);
                 }
-            } else if (boss.aiState === 'jump_up') {
-                // Wait until descending
-                if (boss.velocityY < 0) {
-                    boss.aiState = 'slam_down';
-                    boss.aiTimer = 0;
-                    
-                    // Target player position
-                    boss.slamTarget = player.position.clone();
-                    boss.slamTarget.y = boss.size;
-                }
-            } else if (boss.aiState === 'slam_down') {
-                // Move toward slam target while falling
-                const dir = new THREE.Vector3()
-                    .subVectors(boss.slamTarget, boss.position);
-                dir.y = 0;
-                dir.normalize();
-                boss.position.add(dir.multiplyScalar(0.2));
-                
-                // Check if landed
-                if (boss.position.y <= boss.size + 0.1) {
-                    boss.aiState = 'cooldown';
-                    boss.aiTimer = 0;
-                    
-                    // Slam shockwave damage
-                    const dist = player.position.distanceTo(boss.position);
-                    if (dist < 8) {
-                        takeDamage(boss.damage * 0.5);
-                    }
-                    
-                    // Visual effect
-                    spawnParticle(boss.position, 0xff4444, 20);
-                }
-            } else if (boss.aiState === 'cooldown') {
-                if (boss.aiTimer > 120) {
-                    boss.aiState = 'idle';
-                    boss.aiTimer = 0;
+            } else if (boss.aiState === 'landed') {
+                if (boss.aiTimer > 60) {
+                    if (boss.phase >= 2 && Math.random() < 0.5) for (let i = 0; i < boss.phase; i++) spawnSpecificEnemy('grunt', boss.position);
+                    boss.aiState = 'idle'; boss.aiTimer = 0;
                 }
             }
         }
         
-        function updateHopperBossAI(boss) {
-            // Jump between platforms
-            boss.aiTimer++;
-            
+        function updateTeleportingTyrantAI(boss) {
             if (boss.aiState === 'idle') {
-                const dir = new THREE.Vector3()
-                    .subVectors(player.position, boss.position);
-                dir.y = 0;
-                dir.normalize();
-                boss.position.add(dir.multiplyScalar(boss.speed));
-                
-                if (boss.aiTimer > 150) {
-                    boss.aiState = 'hop';
-                    boss.aiTimer = 0;
-                    boss.velocityY = 0.25;
+                updateDefaultBossAI(boss);
+                if (boss.aiTimer > 120 + Math.random() * 60) { boss.aiState = 'teleport_out'; boss.aiTimer = 0; }
+            } else if (boss.aiState === 'teleport_out') {
+                boss.scale.setScalar(Math.max(0, 1 - boss.aiTimer / 30));
+                if (boss.aiTimer > 30) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 15 + Math.random() * 15;
+                    boss.position.x = Math.max(-40, Math.min(40, player.position.x + Math.cos(angle) * dist));
+                    boss.position.z = Math.max(-40, Math.min(40, player.position.z + Math.sin(angle) * dist));
+                    boss.aiState = 'teleport_in'; boss.aiTimer = 0;
+                    spawnParticle(boss.position, 0xaa44ff, 15);
                 }
-            } else if (boss.aiState === 'hop') {
-                const dir = new THREE.Vector3()
-                    .subVectors(player.position, boss.position);
-                dir.y = 0;
-                dir.normalize();
-                boss.position.add(dir.multiplyScalar(0.15));
-                
-                if (boss.position.y <= boss.size && boss.velocityY < 0) {
-                    boss.aiState = 'idle';
-                    boss.aiTimer = 0;
+            } else if (boss.aiState === 'teleport_in') {
+                boss.scale.setScalar(Math.min(1, boss.aiTimer / 30));
+                if (boss.aiTimer > 30) {
+                    boss.scale.setScalar(1);
+                    if (boss.phase >= 2 && Math.random() < 0.4) spawnSpecificEnemy('teleporter', boss.position);
+                    boss.aiState = 'idle'; boss.aiTimer = 0;
                 }
             }
         }
         
-        function updateChaosBossAI(boss) {
-            // Combine all AI patterns based on health phases
-            const healthPercent = boss.health / boss.maxHealth;
-            
-            if (healthPercent > 0.66) {
-                updateChargerBossAI(boss);
-            } else if (healthPercent > 0.33) {
-                updateVerticalBossAI(boss);
-            } else {
-                updateHopperBossAI(boss);
+        function updateBalloonKingAI(boss) {
+            updateDefaultBossAI(boss);
+            if (boss.scale.x < 1.3) boss.scale.multiplyScalar(1.0005);
+            if (boss.aiTimer > 200 && Math.random() < 0.02 * boss.phase) spawnSpecificEnemy('waterBalloon', boss.position);
+            if (boss.aiTimer > 150 && boss.aiTimer % 100 === 0) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 8 + Math.random() * 10;
+                createHazardZone(boss.position.x + Math.cos(angle)*dist, boss.position.z + Math.sin(angle)*dist, 3 + boss.phase, 300);
             }
+            if (boss.phase === 3 && !boss.hasSplit && boss.health < boss.maxHealth * 0.25) {
+                boss.hasSplit = true;
+                for (let i = 0; i < 3; i++) spawnMiniBoss(boss.position, i);
+            }
+        }
+        
+        function updateTunnelWyrmAI(boss) {
+            if (boss.aiState === 'idle') {
+                updateDefaultBossAI(boss);
+                if (boss.aiTimer > 180) { boss.aiState = 'burrowing'; boss.aiTimer = 0; }
+            } else if (boss.aiState === 'burrowing') {
+                boss.position.y -= 0.1;
+                if (boss.position.y < -2) {
+                    boss.position.x = player.position.x + (Math.random() - 0.5) * 10;
+                    boss.position.z = player.position.z + (Math.random() - 0.5) * 10;
+                    boss.aiState = 'emerging'; boss.aiTimer = 0;
+                }
+            } else if (boss.aiState === 'emerging') {
+                boss.position.y += 0.15;
+                if (boss.position.y >= boss.size) {
+                    boss.position.y = boss.size; boss.aiState = 'idle'; boss.aiTimer = 0;
+                    if (player.position.distanceTo(boss.position) < 5) takeDamage(boss.damage * 0.8);
+                    spawnParticle(boss.position, 0xff44ff, 20);
+                }
+            }
+        }
+        
+        function updateChaosIncarnateAI(boss) {
+            const pattern = Math.floor(boss.aiTimer / 300) % 5;
+            switch (pattern) {
+                case 0: updatePillarGuardianAI(boss); break;
+                case 1: updateSlimeQueenAI(boss); break;
+                case 2: updateTeleportingTyrantAI(boss); break;
+                case 3: updateBalloonKingAI(boss); break;
+                case 4: updateTunnelWyrmAI(boss); break;
+            }
+        }
+        
+        function spawnSpecificEnemy(typeName, nearPosition) {
+            const typeData = ENEMY_TYPES[typeName];
+            if (!typeData) return;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 3 + Math.random() * 5;
+            const x = Math.max(-42, Math.min(42, nearPosition.x + Math.cos(angle) * dist));
+            const z = Math.max(-42, Math.min(42, nearPosition.z + Math.sin(angle) * dist));
+            
+            const enemy = new THREE.Mesh(new THREE.SphereGeometry(typeData.size, 10, 10), new THREE.MeshStandardMaterial({ color: typeData.color, emissive: typeData.color, emissiveIntensity: 0.3 }));
+            enemy.position.set(x, typeData.size, z);
+            enemy.castShadow = true;
+            enemy.health = typeData.health; enemy.maxHealth = typeData.health;
+            enemy.speed = typeData.speed; enemy.damage = typeData.damage;
+            enemy.size = typeData.size; enemy.baseSize = typeData.size;
+            enemy.isBoss = false; enemy.isElite = false;
+            enemy.xpValue = typeData.xpValue; enemy.baseColor = typeData.color;
+            enemy.velocityY = 0; enemy.velocity = new THREE.Vector3();
+            enemy.enemyType = typeName; enemy.behavior = typeData.behavior;
+            enemy.damageReduction = typeData.damageReduction || 0;
+            
+            if (typeData.behavior === 'bouncer') enemy.velocity.set((Math.random()-0.5)*enemy.speed*2, 0, (Math.random()-0.5)*enemy.speed*2);
+            if (typeData.behavior === 'teleporter') { enemy.teleportCooldown = typeData.teleportCooldown; enemy.teleportRange = typeData.teleportRange; enemy.lastTeleport = Date.now(); }
+            if (typeData.behavior === 'waterBalloon') { enemy.growRate = typeData.growRate; enemy.maxSize = typeData.maxSize; enemy.explosionRadius = typeData.explosionRadius; }
+            
+            scene.add(enemy);
+            enemies.push(enemy);
+        }
+        
+        function spawnMiniBoss(position, index) {
+            const angle = (index / 3) * Math.PI * 2;
+            const miniBoss = new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 12), new THREE.MeshStandardMaterial({ color: 0x66ffff, emissive: 0x44ffff, emissiveIntensity: 0.4 }));
+            miniBoss.position.set(position.x + Math.cos(angle)*5, 1.5, position.z + Math.sin(angle)*5);
+            miniBoss.castShadow = true;
+            miniBoss.health = 150; miniBoss.maxHealth = 150; miniBoss.speed = 0.04; miniBoss.damage = 15;
+            miniBoss.size = 1.5; miniBoss.baseSize = 1.5; miniBoss.isBoss = false; miniBoss.isElite = true;
+            miniBoss.xpValue = 20; miniBoss.baseColor = 0x66ffff; miniBoss.velocityY = 0;
+            miniBoss.velocity = new THREE.Vector3(); miniBoss.enemyType = 'miniBoss'; miniBoss.behavior = 'chase'; miniBoss.damageReduction = 0.3;
+            scene.add(miniBoss);
+            enemies.push(miniBoss);
         }
         
         function killBoss() {
             if (!currentBoss) return;
-            
-            // Spawn lots of XP
-            for (let i = 0; i < 10; i++) {
-                const offset = new THREE.Vector3(
-                    (Math.random() - 0.5) * 4,
-                    0,
-                    (Math.random() - 0.5) * 4
-                );
-                spawnXpGem(currentBoss.position.clone().add(offset), currentBoss.xpValue / 10);
+            for (let i = 0; i < 12; i++) {
+                const offset = new THREE.Vector3((Math.random()-0.5)*6, 0, (Math.random()-0.5)*6);
+                spawnXpGem(currentBoss.position.clone().add(offset), currentBoss.xpValue / 12);
             }
-            
-            // Guaranteed heart drop
             spawnHeart(currentBoss.position.clone(), HEART_HEAL.boss);
-            
-            // Death particles
-            spawnParticle(currentBoss.position, currentBoss.baseColor, 30);
-            
-            // Remove boss
-            currentBoss.traverse(child => {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) child.material.dispose();
-            });
+            spawnParticle(currentBoss.position, currentBoss.baseColor, 40);
+            currentBoss.traverse(child => { if (child.geometry) child.geometry.dispose(); if (child.material) child.material.dispose(); });
             scene.remove(currentBoss);
             currentBoss = null;
             gameState.bossActive = false;
-            
-            // Hide health bar
             hideBossHealthBar();
-            
-            // Add score
-            gameState.kills++;
-            gameState.score += 500;
+            gameState.kills++; gameState.score += 750;
             updateUI();
         }
-        
-        // ===========================================
-        // MECHANIC UNLOCKS
-        // ===========================================
+
+        // Mechanic Unlocks
         function unlockArenaMechanics(defeatedArena) {
             let unlockMessage = '';
-            
             switch (defeatedArena) {
-                case 1:
-                    gameState.unlockedMechanics.pillars = true;
-                    unlockMessage = 'PILLARS & COVER';
-                    break;
-                case 2:
-                    gameState.unlockedMechanics.ramps = true;
-                    gameState.unlockedEnemyBehaviors.jumping = true;
-                    unlockMessage = 'VERTICALITY - Enemies can jump!';
-                    break;
-                case 3:
-                    gameState.unlockedMechanics.platforms = true;
-                    gameState.unlockedEnemyBehaviors.multiLevel = true;
-                    unlockMessage = 'MULTI-PLATFORM COMBAT';
-                    break;
-                case 4:
-                    gameState.unlockedMechanics.tunnels = true;
-                    gameState.unlockedEnemyBehaviors.ambush = true;
-                    unlockMessage = 'TUNNELS & AMBUSHES';
-                    break;
-                case 5:
-                    gameState.unlockedMechanics.hybridChaos = true;
-                    unlockMessage = 'CHAOS MODE UNLOCKED';
-                    break;
+                case 1: gameState.unlockedMechanics.pillars = true; unlockMessage = 'PILLARS & COVER'; break;
+                case 2: gameState.unlockedMechanics.ramps = true; gameState.unlockedEnemyBehaviors.jumping = true; unlockMessage = 'VERTICALITY - Enemies can jump!'; break;
+                case 3: gameState.unlockedMechanics.platforms = true; gameState.unlockedEnemyBehaviors.multiLevel = true; unlockMessage = 'MULTI-PLATFORM COMBAT'; break;
+                case 4: gameState.unlockedMechanics.tunnels = true; gameState.unlockedEnemyBehaviors.ambush = true; unlockMessage = 'TUNNELS & AMBUSHES'; break;
+                case 5: gameState.unlockedMechanics.hybridChaos = true; unlockMessage = 'CHAOS MODE UNLOCKED'; break;
             }
-            
-            if (unlockMessage) {
-                showUnlockNotification(unlockMessage);
-            }
+            if (unlockMessage) showUnlockNotification(unlockMessage);
         }
 
-        // ===========================================
-        // UI FUNCTIONS
-        // ===========================================
+        // UI Functions
         function showWaveAnnouncement() {
             const el = document.getElementById('wave-announcement');
             const arenaConfig = ARENA_CONFIG.arenas[Math.min(gameState.currentArena, 6)];
-            
-            el.querySelector('.wave-text').textContent = `WAVE ${gameState.currentWave}`;
-            el.querySelector('.arena-text').textContent = `Arena ${gameState.currentArena} - ${arenaConfig.name}`;
+            el.querySelector('.wave-text').textContent = 'WAVE ' + gameState.currentWave;
+            el.querySelector('.arena-text').textContent = 'Arena ' + gameState.currentArena + ' - ' + arenaConfig.name;
             el.classList.add('visible');
         }
-        
-        function hideWaveAnnouncement() {
-            document.getElementById('wave-announcement').classList.remove('visible');
-        }
-        
+        function hideWaveAnnouncement() { document.getElementById('wave-announcement').classList.remove('visible'); }
         function showBossAnnouncement() {
             const el = document.getElementById('wave-announcement');
-            const bossConfig = BOSS_CONFIG[Math.min(gameState.currentArena, 6)];
-            
             el.querySelector('.wave-text').textContent = 'BOSS INCOMING';
-            el.querySelector('.arena-text').textContent = bossConfig.name;
+            el.querySelector('.arena-text').textContent = BOSS_CONFIG[Math.min(gameState.currentArena, 6)].name;
             el.classList.add('visible');
         }
-        
-        function hideBossAnnouncement() {
-            document.getElementById('wave-announcement').classList.remove('visible');
-        }
-        
-        function showBossHealthBar(name) {
-            document.getElementById('boss-name').textContent = name;
-            document.getElementById('boss-health-container').style.display = 'block';
-        }
-        
-        function updateBossHealthBar() {
-            if (currentBoss) {
-                const percent = (currentBoss.health / currentBoss.maxHealth) * 100;
-                document.getElementById('boss-health-bar').style.width = percent + '%';
-            }
-        }
-        
-        function hideBossHealthBar() {
-            document.getElementById('boss-health-container').style.display = 'none';
-        }
-        
+        function hideBossAnnouncement() { document.getElementById('wave-announcement').classList.remove('visible'); }
+        function showBossHealthBar(name) { document.getElementById('boss-name').textContent = name; document.getElementById('boss-health-container').style.display = 'block'; }
+        function updateBossHealthBar() { if (currentBoss) document.getElementById('boss-health-bar').style.width = (currentBoss.health / currentBoss.maxHealth * 100) + '%'; }
+        function hideBossHealthBar() { document.getElementById('boss-health-container').style.display = 'none'; }
         function showUnlockNotification(text) {
             const el = document.getElementById('unlock-notification');
             document.getElementById('unlock-text').textContent = text;
             el.classList.add('visible');
-            
-            setTimeout(() => {
-                el.classList.remove('visible');
-            }, 3000);
+            setTimeout(() => el.classList.remove('visible'), 3000);
         }
-        
         function updateUI() {
-            const healthPercent = Math.min(100, (gameState.health / gameState.maxHealth) * 100);
-            document.getElementById('health-bar').style.width = healthPercent + '%';
-            
-            const xpPercent = Math.min(100, (gameState.xp / gameState.xpToLevel) * 100);
-            document.getElementById('xp-bar').style.width = xpPercent + '%';
-            
+            document.getElementById('health-bar').style.width = Math.min(100, gameState.health / gameState.maxHealth * 100) + '%';
+            document.getElementById('xp-bar').style.width = Math.min(100, gameState.xp / gameState.xpToLevel * 100) + '%';
             document.getElementById('level').textContent = gameState.level;
             document.getElementById('kills').textContent = gameState.kills;
             document.getElementById('score').textContent = gameState.score;
-            
-            // Arena/wave info
             const arenaConfig = ARENA_CONFIG.arenas[Math.min(gameState.currentArena, 6)];
             document.getElementById('arena-num').textContent = gameState.currentArena;
             document.getElementById('arena-name').textContent = arenaConfig.name;
             document.getElementById('wave-num').textContent = gameState.currentWave;
-            document.getElementById('waves-total').textContent = ARENA_CONFIG.wavesPerArena;
-            
-            // Timer
+            document.getElementById('waves-total').textContent = WAVES_PER_ARENA;
             const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            document.getElementById('timer').textContent = 
-                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('timer').textContent = Math.floor(elapsed/60) + ':' + (elapsed%60).toString().padStart(2, '0');
         }
 
-        // ===========================================
-        // ENEMY SPAWNING & BEHAVIOR
-        // ===========================================
+        // Pickups
         function spawnHeart(position, healAmount) {
             const heartGroup = new THREE.Group();
-            
-            const heartMaterial = new THREE.MeshBasicMaterial({
-                color: 0xff4488,
-                transparent: true,
-                opacity: 0.9
-            });
-            
+            const heartMat = new THREE.MeshBasicMaterial({ color: 0xff4488, transparent: true, opacity: 0.9 });
             const sphereGeo = new THREE.SphereGeometry(0.15, 8, 8);
-            const left = new THREE.Mesh(sphereGeo, heartMaterial);
-            left.position.set(-0.1, 0.1, 0);
-            heartGroup.add(left);
-            
-            const right = new THREE.Mesh(sphereGeo, heartMaterial.clone());
-            right.position.set(0.1, 0.1, 0);
-            heartGroup.add(right);
-            
-            const coneGeo = new THREE.ConeGeometry(0.2, 0.3, 8);
-            const cone = new THREE.Mesh(coneGeo, heartMaterial.clone());
-            cone.position.y = -0.1;
-            cone.rotation.x = Math.PI;
-            heartGroup.add(cone);
-            
-            heartGroup.position.copy(position);
-            heartGroup.position.y = 0.5;
-            heartGroup.healAmount = healAmount;
-            heartGroup.bobOffset = Math.random() * Math.PI * 2;
-            heartGroup.ttl = HEART_TTL;
-            
-            scene.add(heartGroup);
-            hearts.push(heartGroup);
+            const left = new THREE.Mesh(sphereGeo, heartMat); left.position.set(-0.1, 0.1, 0); heartGroup.add(left);
+            const right = new THREE.Mesh(sphereGeo, heartMat.clone()); right.position.set(0.1, 0.1, 0); heartGroup.add(right);
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.3, 8), heartMat.clone()); cone.position.y = -0.1; cone.rotation.x = Math.PI; heartGroup.add(cone);
+            heartGroup.position.copy(position); heartGroup.position.y = 0.5;
+            heartGroup.healAmount = healAmount; heartGroup.bobOffset = Math.random() * Math.PI * 2; heartGroup.ttl = HEART_TTL;
+            scene.add(heartGroup); hearts.push(heartGroup);
         }
         
-        function getNearestEnemies(count, maxRange = 30) {
+        // Vertical Aim Lock-on (Feature 2)
+        function getNearestEnemies(count, maxRange) {
+            maxRange = maxRange || 35;
             const allTargets = [...enemies];
             if (currentBoss) allTargets.push(currentBoss);
-            
             return allTargets
-                .map(e => ({ enemy: e, dist: player.position.distanceTo(e.position) }))
+                .map(e => { const dx = e.position.x - player.position.x, dz = e.position.z - player.position.z; return { enemy: e, dist: Math.sqrt(dx*dx + dz*dz) }; })
                 .filter(e => e.dist < maxRange)
                 .sort((a, b) => a.dist - b.dist)
                 .slice(0, count)
@@ -1857,736 +916,514 @@
         function shootProjectile() {
             const now = Date.now();
             const fireRate = 500 / gameState.stats.attackSpeed;
-            
             if (now - lastShot < fireRate) return;
             lastShot = now;
-            
             const projectileCount = Math.floor(gameState.stats.projectileCount);
             const targets = getNearestEnemies(projectileCount);
-            
             if (targets.length === 0) return;
-            
             for (let i = 0; i < projectileCount; i++) {
                 const target = targets[i % targets.length];
-                
-                const geometry = new THREE.SphereGeometry(0.15, 8, 8);
-                const material = new THREE.MeshBasicMaterial({ 
-                    color: 0x44ffff,
-                    transparent: true,
-                    opacity: 0.9
-                });
-                const projectile = new THREE.Mesh(geometry, material);
-                
-                projectile.position.copy(player.position);
-                projectile.position.y += 0.5;
-                
-                const direction = new THREE.Vector3()
-                    .subVectors(target.position, player.position)
-                    .normalize();
-                
-                projectile.velocity = direction.multiplyScalar(gameState.stats.projectileSpeed);
+                const projectile = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshBasicMaterial({ color: 0x44ffff, transparent: true, opacity: 0.9 }));
+                projectile.position.copy(player.position); projectile.position.y += 0.5;
+                // Vertical aim lock-on: target enemy center
+                tempVec3.copy(target.position);
+                const direction = tempVec3_2.subVectors(tempVec3, projectile.position).normalize();
+                projectile.velocity = direction.clone().multiplyScalar(gameState.stats.projectileSpeed);
                 projectile.damage = gameState.stats.damage;
-                projectile.life = 100;
-                
-                scene.add(projectile);
-                projectiles.push(projectile);
+                projectile.life = 120;
+                scene.add(projectile); projectiles.push(projectile);
             }
+        }
+        
+        function spawnEnemyProjectile(enemy, targetPos) {
+            const projectile = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), new THREE.MeshBasicMaterial({ color: 0xff6644, transparent: true, opacity: 0.9 }));
+            projectile.position.copy(enemy.position);
+            projectile.velocity = tempVec3.subVectors(targetPos, enemy.position).normalize().clone().multiplyScalar(0.3);
+            projectile.damage = enemy.damage * 0.5;
+            projectile.life = 150;
+            scene.add(projectile); enemyProjectiles.push(projectile);
         }
 
         function spawnXpGem(position, value) {
-            const geometry = new THREE.OctahedronGeometry(0.2, 0);
-            const material = new THREE.MeshBasicMaterial({ 
-                color: 0x44ff44,
-                transparent: true,
-                opacity: 0.9
-            });
-            const gem = new THREE.Mesh(geometry, material);
-            
-            gem.position.copy(position);
-            gem.position.y = 0.5;
+            const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.9 }));
+            gem.position.copy(position); gem.position.y = 0.5;
             gem.value = value * gameState.stats.xpMultiplier;
             gem.bobOffset = Math.random() * Math.PI * 2;
-            
-            scene.add(gem);
-            xpGems.push(gem);
+            scene.add(gem); xpGems.push(gem);
         }
 
-        function spawnParticle(position, color, count = 5) {
+        function spawnParticle(position, color, count) {
+            count = count || 5;
             for (let i = 0; i < count; i++) {
-                const geometry = new THREE.SphereGeometry(0.1, 4, 4);
-                const material = new THREE.MeshBasicMaterial({ 
-                    color: color,
-                    transparent: true,
-                    opacity: 1
-                });
-                const particle = new THREE.Mesh(geometry, material);
-                
+                const particle = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1 }));
                 particle.position.copy(position);
-                particle.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.3,
-                    Math.random() * 0.3,
-                    (Math.random() - 0.5) * 0.3
-                );
+                particle.velocity = new THREE.Vector3((Math.random()-0.5)*0.3, Math.random()*0.3, (Math.random()-0.5)*0.3);
                 particle.life = 30;
-                
-                scene.add(particle);
-                particles.push(particle);
+                scene.add(particle); particles.push(particle);
             }
         }
 
-        // ===========================================
-        // UPDATE FUNCTIONS
-        // ===========================================
+        // Update Functions
         function updatePlayer(delta) {
             const moveDir = new THREE.Vector3();
-            
-            const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngleX);
-            const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngleX);
-            
-            if (keys['KeyW']) moveDir.add(forward);
-            if (keys['KeyS']) moveDir.sub(forward);
-            if (keys['KeyA']) moveDir.sub(right);
-            if (keys['KeyD']) moveDir.add(right);
-            
+            const forward = tempVec3.set(0, 0, -1).applyAxisAngle(tempVec3_2.set(0, 1, 0), cameraAngleX);
+            const right = tempVec3_3.set(1, 0, 0).applyAxisAngle(tempVec3_2.set(0, 1, 0), cameraAngleX);
+            if (keys['KeyW']) moveDir.add(forward.clone());
+            if (keys['KeyS']) moveDir.sub(forward.clone());
+            if (keys['KeyA']) moveDir.sub(right.clone());
+            if (keys['KeyD']) moveDir.add(right.clone());
             moveDir.normalize();
             
             const now = Date.now();
             if ((keys['ShiftLeft'] || keys['ShiftRight']) && now - lastDash > 1000 && moveDir.length() > 0) {
-                isDashing = true;
-                lastDash = now;
-                dashDirection.copy(moveDir);
+                isDashing = true; lastDash = now; dashDirection.copy(moveDir);
             }
             
-            const oldX = player.position.x;
-            const oldZ = player.position.z;
+            const oldX = player.position.x, oldZ = player.position.z, oldY = player.position.y;
+            if (isDashing) { if (now - lastDash < 200) player.position.add(dashDirection.clone().multiplyScalar(0.5)); else isDashing = false; }
+            else if (moveDir.length() > 0) player.position.add(moveDir.multiplyScalar(gameState.stats.moveSpeed));
             
-            if (isDashing) {
-                if (now - lastDash < 200) {
-                    player.position.add(dashDirection.clone().multiplyScalar(0.5));
-                } else {
-                    isDashing = false;
-                }
-            } else if (moveDir.length() > 0) {
-                player.position.add(moveDir.multiplyScalar(gameState.stats.moveSpeed));
-            }
-            
-            // 2D XZ Collision with obstacles
+            // Platform collision (Feature 1)
             const playerRadius = 0.5;
             for (const obs of obstacles) {
                 const c = obs.collisionData;
-                
-                if (player.position.x + playerRadius > c.minX && 
-                    player.position.x - playerRadius < c.maxX &&
-                    oldZ + playerRadius > c.minZ && 
-                    oldZ - playerRadius < c.maxZ) {
-                    if (oldX <= c.minX) {
-                        player.position.x = c.minX - playerRadius;
-                    } else if (oldX >= c.maxX) {
-                        player.position.x = c.maxX + playerRadius;
+                if (player.position.y < c.topY + 0.1) {
+                    if (player.position.x + playerRadius > c.minX && player.position.x - playerRadius < c.maxX && oldZ + playerRadius > c.minZ && oldZ - playerRadius < c.maxZ && player.position.y < c.topY) {
+                        if (oldX <= c.minX) player.position.x = c.minX - playerRadius;
+                        else if (oldX >= c.maxX) player.position.x = c.maxX + playerRadius;
                     }
-                }
-                
-                if (player.position.x + playerRadius > c.minX && 
-                    player.position.x - playerRadius < c.maxX &&
-                    player.position.z + playerRadius > c.minZ && 
-                    player.position.z - playerRadius < c.maxZ) {
-                    if (oldZ <= c.minZ) {
-                        player.position.z = c.minZ - playerRadius;
-                    } else if (oldZ >= c.maxZ) {
-                        player.position.z = c.maxZ + playerRadius;
+                    if (player.position.x + playerRadius > c.minX && player.position.x - playerRadius < c.maxX && player.position.z + playerRadius > c.minZ && player.position.z - playerRadius < c.maxZ && player.position.y < c.topY) {
+                        if (oldZ <= c.minZ) player.position.z = c.minZ - playerRadius;
+                        else if (oldZ >= c.maxZ) player.position.z = c.maxZ + playerRadius;
                     }
                 }
             }
             
-            // FIXED: Higher jump (was 0.25, now 0.38)
+            // Jumping with bounce feedback (Feature 6)
             if (keys['Space'] && player.isGrounded) {
-                player.velocity.y = 0.38;
+                player.velocity.y = PLAYER_JUMP_VELOCITY;
                 player.isGrounded = false;
                 player.wasInAir = true;
                 player.bounceCount = 0;
+                player.squashTime = 8;
             }
             
-            // Gravity
-            player.velocity.y -= 0.015;
+            player.velocity.y -= PLAYER_GRAVITY;
             player.position.y += player.velocity.y;
             
-            // Ground collision - check obstacles for standing on top
-            let groundY = 1;  // Default ground level
+            // Ground/Platform landing (Feature 1)
+            let groundY = 1;
             for (const obs of obstacles) {
                 const c = obs.collisionData;
-                if (player.position.x + playerRadius > c.minX && 
-                    player.position.x - playerRadius < c.maxX &&
-                    player.position.z + playerRadius > c.minZ && 
-                    player.position.z - playerRadius < c.maxZ) {
-                    // Player is above this obstacle horizontally
-                    if (player.position.y > c.height && player.position.y < c.height + 2) {
-                        groundY = Math.max(groundY, c.height + 1);
-                    }
+                if (player.position.x + playerRadius > c.minX && player.position.x - playerRadius < c.maxX && player.position.z + playerRadius > c.minZ && player.position.z - playerRadius < c.maxZ) {
+                    if (oldY >= c.topY + 0.9 && player.position.y < c.topY + 1.1) groundY = Math.max(groundY, c.topY + 1);
+                    else if (player.position.y >= c.topY + 0.8 && player.position.y < c.topY + 1.3 && player.velocity.y <= 0) groundY = Math.max(groundY, c.topY + 1);
                 }
             }
             
             if (player.position.y < groundY) {
                 player.position.y = groundY;
-                
-                if (player.wasInAir && player.bounceCount < BOUNCE_FACTORS.length) {
-                    const bounceFactor = BOUNCE_FACTORS[player.bounceCount];
-                    player.velocity.y = 0.38 * bounceFactor;
-                    player.bounceCount++;
-                } else {
-                    player.velocity.y = 0;
-                    player.isGrounded = true;
-                    player.wasInAir = false;
-                    player.bounceCount = 0;
-                }
-            }
+                if (player.wasInAir) {
+                    if (player.bounceCount < BOUNCE_FACTORS.length) {
+                        player.velocity.y = PLAYER_JUMP_VELOCITY * BOUNCE_FACTORS[player.bounceCount];
+                        player.bounceCount++;
+                        player.squashTime = 6 - player.bounceCount * 2;
+                        if (player.bounceCount === 1) spawnParticle(player.position, 0x44aaff, 5);
+                    } else { player.velocity.y = 0; player.isGrounded = true; player.wasInAir = false; player.bounceCount = 0; }
+                } else { player.velocity.y = 0; player.isGrounded = true; }
+            } else player.isGrounded = false;
             
-            // Arena bounds
+            // Squash/stretch animation (Feature 6)
+            if (player.squashTime > 0) {
+                player.squashTime--;
+                player.scale.set(1 + player.squashTime * 0.02, 1 - player.squashTime * 0.03, 1 + player.squashTime * 0.02);
+            } else player.scale.set(1, 1, 1);
+            
             player.position.x = Math.max(-45, Math.min(45, player.position.x));
             player.position.z = Math.max(-45, Math.min(45, player.position.z));
             
-            // Ground trail only when grounded and moving
+            // Enhanced trail (Feature 5)
             const isMoving = moveDir.length() > 0 || isDashing;
-            if (isMoving && player.isGrounded && 
-                (!lastTrailPos || player.position.distanceTo(lastTrailPos) > 0.5)) {
+            if (isMoving && player.isGrounded && (!lastTrailPos || player.position.distanceTo(lastTrailPos) > TRAIL_SPAWN_DISTANCE)) {
                 spawnTrail(player.position.clone());
                 lastTrailPos = player.position.clone();
             }
             
-            // Update camera
-            const cameraDistance = 8;
-            const cameraHeight = 4;
+            // Hazard damage
+            for (const hz of hazardZones) {
+                const dx = player.position.x - hz.position.x, dz = player.position.z - hz.position.z;
+                if (Math.sqrt(dx*dx + dz*dz) < hz.radius && player.position.y < 1.5) {
+                    gameState.health -= hz.damagePerFrame;
+                    if (gameState.health <= 0) { gameState.health = 0; gameOver(); }
+                }
+            }
             
-            camera.position.x = player.position.x + Math.sin(cameraAngleX) * cameraDistance;
-            camera.position.z = player.position.z + Math.cos(cameraAngleX) * cameraDistance;
-            camera.position.y = player.position.y + cameraHeight + Math.sin(cameraAngleY) * 3;
-            
+            // Camera
+            camera.position.x = player.position.x + Math.sin(cameraAngleX) * 8;
+            camera.position.z = player.position.z + Math.cos(cameraAngleX) * 8;
+            camera.position.y = player.position.y + 4 + Math.sin(cameraAngleY) * 3;
             camera.lookAt(player.position.x, player.position.y + 1, player.position.z);
         }
 
         function updateEnemies(delta) {
+            const now = Date.now();
             for (let i = enemies.length - 1; i >= 0; i--) {
                 const enemy = enemies[i];
-                
                 if (!enemy.velocityY) enemy.velocityY = 0;
                 
-                // Move towards player in XZ plane
-                const direction = new THREE.Vector3()
-                    .subVectors(player.position, enemy.position);
-                direction.y = 0;
-                direction.normalize();
-                
-                enemy.position.x += direction.x * enemy.speed;
-                enemy.position.z += direction.z * enemy.speed;
-                
-                // FIXED: Only allow enemy jumping if unlocked (Arena 3+)
-                if (gameState.unlockedEnemyBehaviors.jumping) {
-                    for (const obs of obstacles) {
-                        const c = obs.collisionData;
-                        const scaledSize = enemy.baseSize * enemy.scale.x;
-                        
-                        if (enemy.position.x + scaledSize > c.minX && 
-                            enemy.position.x - scaledSize < c.maxX &&
-                            enemy.position.z + scaledSize > c.minZ && 
-                            enemy.position.z - scaledSize < c.maxZ) {
-                            // FIXED: Lower jump impulse (was 0.15, now 0.08)
-                            if (enemy.velocityY <= 0 && enemy.position.y < c.height + enemy.baseSize + 0.5) {
-                                enemy.velocityY = 0.08;
-                            }
-                        }
-                    }
+                switch (enemy.behavior) {
+                    case 'chase': updateChaseEnemy(enemy); break;
+                    case 'shooter': updateShooterEnemy(enemy, now); break;
+                    case 'bouncer': updateBouncerEnemy(enemy); break;
+                    case 'shieldBreaker': updateShieldBreakerEnemy(enemy); break;
+                    case 'waterBalloon': updateWaterBalloonEnemy(enemy); break;
+                    case 'teleporter': updateTeleporterEnemy(enemy, now); break;
+                    default: updateChaseEnemy(enemy);
                 }
                 
-                // Gravity
-                enemy.velocityY -= 0.01;
+                enemy.velocityY -= 0.012;
                 enemy.position.y += enemy.velocityY;
                 
-                // Ground/obstacle collision
-                let groundY = enemy.baseSize;
+                let groundY = enemy.baseSize * enemy.scale.x;
                 if (gameState.unlockedEnemyBehaviors.jumping) {
                     for (const obs of obstacles) {
                         const c = obs.collisionData;
-                        const scaledSize = enemy.baseSize * enemy.scale.x;
-                        if (enemy.position.x + scaledSize > c.minX && 
-                            enemy.position.x - scaledSize < c.maxX &&
-                            enemy.position.z + scaledSize > c.minZ && 
-                            enemy.position.z - scaledSize < c.maxZ) {
-                            groundY = Math.max(groundY, c.height + enemy.baseSize);
-                        }
+                        const s = enemy.baseSize * enemy.scale.x;
+                        if (enemy.position.x + s > c.minX && enemy.position.x - s < c.maxX && enemy.position.z + s > c.minZ && enemy.position.z - s < c.maxZ && enemy.position.y >= c.topY)
+                            groundY = Math.max(groundY, c.topY + s);
                     }
                 }
+                if (enemy.position.y < groundY) { enemy.position.y = groundY; enemy.velocityY = 0; }
                 
-                if (enemy.position.y < groundY) {
-                    enemy.position.y = groundY;
-                    enemy.velocityY = 0;
-                }
+                enemy.rotation.y += 0.04;
                 
-                enemy.rotation.y += 0.05;
-                
-                // Collision with player
                 const scaledSize = enemy.baseSize * enemy.scale.x;
-                const distToPlayer = enemy.position.distanceTo(player.position);
-                if (distToPlayer < scaledSize + 0.5) {
-                    const now = Date.now();
-                    if (now - lastDamageTime > DAMAGE_COOLDOWN) {
-                        takeDamage(enemy.damage);
-                        lastDamageTime = now;
-                    }
-                    
-                    const knockbackDir = new THREE.Vector3()
-                        .subVectors(enemy.position, player.position)
-                        .normalize();
-                    enemy.position.add(knockbackDir.multiplyScalar(0.5));
+                if (enemy.position.distanceTo(player.position) < scaledSize + 0.5) {
+                    if (now - lastDamageTime > DAMAGE_COOLDOWN) { takeDamage(enemy.damage); lastDamageTime = now; }
+                    tempVec3.subVectors(enemy.position, player.position).normalize();
+                    enemy.position.add(tempVec3.multiplyScalar(0.5));
                 }
+            }
+        }
+        
+        function updateChaseEnemy(enemy) {
+            tempVec3.subVectors(player.position, enemy.position); tempVec3.y = 0; tempVec3.normalize();
+            enemy.position.x += tempVec3.x * enemy.speed;
+            enemy.position.z += tempVec3.z * enemy.speed;
+            if (gameState.unlockedEnemyBehaviors.jumping) {
+                for (const obs of obstacles) {
+                    const c = obs.collisionData;
+                    const s = enemy.baseSize * enemy.scale.x;
+                    if (enemy.position.x + s > c.minX && enemy.position.x - s < c.maxX && enemy.position.z + s > c.minZ && enemy.position.z - s < c.maxZ)
+                        if (enemy.velocityY <= 0 && enemy.position.y < c.topY + s + 0.5) enemy.velocityY = 0.1;
+                }
+            }
+        }
+        
+        function updateShooterEnemy(enemy, now) {
+            const dist = enemy.position.distanceTo(player.position);
+            if (dist > enemy.shootRange) {
+                tempVec3.subVectors(player.position, enemy.position); tempVec3.y = 0; tempVec3.normalize();
+                enemy.position.x += tempVec3.x * enemy.speed;
+                enemy.position.z += tempVec3.z * enemy.speed;
+            } else if (dist < enemy.shootRange * 0.5) {
+                tempVec3.subVectors(enemy.position, player.position); tempVec3.y = 0; tempVec3.normalize();
+                enemy.position.x += tempVec3.x * enemy.speed * 0.5;
+                enemy.position.z += tempVec3.z * enemy.speed * 0.5;
+            }
+            if (dist < enemy.shootRange && now - (enemy.lastShot || 0) > enemy.shootCooldown) {
+                spawnEnemyProjectile(enemy, player.position.clone());
+                enemy.lastShot = now;
+            }
+        }
+        
+        function updateBouncerEnemy(enemy) {
+            enemy.position.x += enemy.velocity.x;
+            enemy.position.z += enemy.velocity.z;
+            if (enemy.position.x < -42 || enemy.position.x > 42) { enemy.velocity.x *= -1; enemy.position.x = Math.max(-42, Math.min(42, enemy.position.x)); }
+            if (enemy.position.z < -42 || enemy.position.z > 42) { enemy.velocity.z *= -1; enemy.position.z = Math.max(-42, Math.min(42, enemy.position.z)); }
+            for (const obs of obstacles) {
+                const c = obs.collisionData;
+                if (enemy.position.x + enemy.size > c.minX && enemy.position.x - enemy.size < c.maxX && enemy.position.z + enemy.size > c.minZ && enemy.position.z - enemy.size < c.maxZ) {
+                    enemy.velocity.x *= -1; enemy.velocity.z *= -1;
+                    enemy.position.x += enemy.velocity.x * 2; enemy.position.z += enemy.velocity.z * 2;
+                }
+            }
+            tempVec3.subVectors(player.position, enemy.position).normalize();
+            enemy.velocity.x += tempVec3.x * 0.001;
+            enemy.velocity.z += tempVec3.z * 0.001;
+            const speed = Math.sqrt(enemy.velocity.x*enemy.velocity.x + enemy.velocity.z*enemy.velocity.z);
+            if (speed > enemy.speed) { enemy.velocity.x = enemy.velocity.x/speed*enemy.speed; enemy.velocity.z = enemy.velocity.z/speed*enemy.speed; }
+        }
+        
+        function updateShieldBreakerEnemy(enemy) {
+            const dist = enemy.position.distanceTo(player.position);
+            if (dist < enemy.rushRange && !enemy.isRushing) {
+                enemy.isRushing = true;
+                enemy.rushDirection = tempVec3.subVectors(player.position, enemy.position).normalize().clone();
+                enemy.rushDirection.y = 0;
+            }
+            if (enemy.isRushing) {
+                enemy.position.add(enemy.rushDirection.clone().multiplyScalar(enemy.rushSpeed));
+                if (Math.abs(enemy.position.x) > 42 || Math.abs(enemy.position.z) > 42) {
+                    enemy.isRushing = false;
+                    enemy.position.x = Math.max(-42, Math.min(42, enemy.position.x));
+                    enemy.position.z = Math.max(-42, Math.min(42, enemy.position.z));
+                }
+            } else updateChaseEnemy(enemy);
+        }
+        
+        function updateWaterBalloonEnemy(enemy) {
+            tempVec3.subVectors(player.position, enemy.position); tempVec3.y = 0; tempVec3.normalize();
+            enemy.position.x += tempVec3.x * enemy.speed;
+            enemy.position.z += tempVec3.z * enemy.speed;
+            if (enemy.size < enemy.maxSize) { enemy.size += enemy.growRate; enemy.scale.setScalar(enemy.size / enemy.baseSize); }
+            else explodeWaterBalloon(enemy);
+        }
+        
+        function explodeWaterBalloon(enemy) {
+            createHazardZone(enemy.position.x, enemy.position.z, enemy.explosionRadius, 400);
+            if (player.position.distanceTo(enemy.position) < enemy.explosionRadius) takeDamage(enemy.damage * 2);
+            spawnParticle(enemy.position, 0x44ffff, 20);
+            enemy.health = 0;
+        }
+        
+        function updateTeleporterEnemy(enemy, now) {
+            const dist = enemy.position.distanceTo(player.position);
+            if (now - (enemy.lastTeleport || 0) > enemy.teleportCooldown && dist < 20) {
+                const angle = Math.random() * Math.PI * 2;
+                const d = 3 + Math.random() * 3;
+                spawnParticle(enemy.position, 0xaa44ff, 8);
+                enemy.position.x = Math.max(-42, Math.min(42, player.position.x + Math.cos(angle) * d));
+                enemy.position.z = Math.max(-42, Math.min(42, player.position.z + Math.sin(angle) * d));
+                spawnParticle(enemy.position, 0xaa44ff, 8);
+                enemy.lastTeleport = now;
+            } else {
+                tempVec3.subVectors(player.position, enemy.position); tempVec3.y = 0; tempVec3.normalize();
+                enemy.position.x += tempVec3.x * enemy.speed * 0.5;
+                enemy.position.z += tempVec3.z * enemy.speed * 0.5;
             }
         }
 
         function updateProjectiles(delta) {
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 const proj = projectiles[i];
-                
                 proj.position.add(proj.velocity);
                 proj.life--;
-                
                 let hit = false;
                 
-                // Check collision with regular enemies
                 for (let j = enemies.length - 1; j >= 0; j--) {
                     const enemy = enemies[j];
-                    // FIXED: Larger hitbox (0.8 of base, was 1.0 of scaled)
-                    const hitboxSize = enemy.baseSize * 0.8;
-                    const dist = proj.position.distanceTo(enemy.position);
-                    
-                    if (dist < hitboxSize + 0.2) {
-                        enemy.health -= proj.damage;
+                    const hitboxSize = enemy.baseSize * enemy.scale.x * 0.85;
+                    if (proj.position.distanceTo(enemy.position) < hitboxSize + 0.2) {
+                        enemy.health -= proj.damage * (1 - (enemy.damageReduction || 0));
                         spawnParticle(proj.position, 0xff4444, 3);
-                        
-                        // FIXED: Higher min scale (was 0.5, now 0.7)
                         const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
-                        const minScale = 0.7;
-                        const newScale = minScale + (1 - minScale) * healthPercent;
-                        enemy.scale.setScalar(newScale);
-                        
-                        // Hit flash
+                        enemy.scale.setScalar(0.65 + 0.35 * healthPercent);
                         enemy.material.emissive.setHex(0xffffff);
                         enemy.material.emissiveIntensity = 1;
-                        setTimeout(() => {
-                            if (enemy.material) {
-                                enemy.material.emissive.setHex(enemy.baseColor);
-                                enemy.material.emissiveIntensity = 0.3;
-                            }
-                        }, 50);
-                        
+                        setTimeout(() => { if (enemy.material) { enemy.material.emissive.setHex(enemy.baseColor); enemy.material.emissiveIntensity = 0.3; } }, 50);
                         if (enemy.health <= 0) {
+                            if (enemy.onDeath === 'split') for (let s = 0; s < enemy.splitCount; s++) spawnSplitEnemy(enemy.position, enemy.baseSize);
+                            if (enemy.behavior === 'waterBalloon') explodeWaterBalloon(enemy);
                             spawnXpGem(enemy.position, enemy.xpValue);
-                            spawnParticle(enemy.position, 0xff6644, 10);
-                            
-                            // Heart drop
-                            let dropChance = enemy.isElite ? HEART_DROP_CHANCE.elite : HEART_DROP_CHANCE.normal;
-                            let healAmount = enemy.isElite ? HEART_HEAL.elite : HEART_HEAL.normal;
-                            
-                            if (Math.random() < dropChance) {
-                                spawnHeart(enemy.position.clone(), healAmount);
-                            }
-                            
-                            enemy.geometry.dispose();
-                            enemy.material.dispose();
-                            scene.remove(enemy);
+                            spawnParticle(enemy.position, enemy.baseColor, 10);
+                            if (Math.random() < (enemy.isElite ? HEART_DROP_CHANCE.elite : HEART_DROP_CHANCE.normal))
+                                spawnHeart(enemy.position.clone(), enemy.isElite ? HEART_HEAL.elite : HEART_HEAL.normal);
+                            enemy.geometry.dispose(); enemy.material.dispose(); scene.remove(enemy);
                             enemies.splice(j, 1);
-                            gameState.kills++;
-                            gameState.score += enemy.isElite ? 25 : 10;
-                            updateUI();
+                            gameState.kills++; gameState.score += enemy.isElite ? 30 : 10;
                         }
-                        
-                        hit = true;
-                        break;
+                        hit = true; break;
                     }
                 }
                 
-                // Check collision with boss
-                if (!hit && currentBoss) {
-                    const dist = proj.position.distanceTo(currentBoss.position);
-                    if (dist < currentBoss.size + 0.2) {
-                        currentBoss.health -= proj.damage;
-                        spawnParticle(proj.position, 0xff4444, 3);
-                        
-                        // Boss shrink (less dramatic)
-                        const healthPercent = Math.max(0, currentBoss.health / currentBoss.maxHealth);
-                        const minScale = 0.8;
-                        const newScale = minScale + (1 - minScale) * healthPercent;
-                        currentBoss.scale.setScalar(newScale);
-                        
-                        // Boss hit flash
-                        if (currentBoss.bodyMaterial) {
-                            currentBoss.bodyMaterial.emissive.setHex(0xffffff);
-                            setTimeout(() => {
-                                if (currentBoss && currentBoss.bodyMaterial) {
-                                    currentBoss.bodyMaterial.emissive.setHex(currentBoss.baseColor);
-                                }
-                            }, 50);
-                        }
-                        
-                        updateBossHealthBar();
-                        
-                        if (currentBoss.health <= 0) {
-                            killBoss();
-                        }
-                        
-                        hit = true;
+                if (!hit && currentBoss && proj.position.distanceTo(currentBoss.position) < currentBoss.size * currentBoss.scale.x + 0.2) {
+                    currentBoss.health -= proj.damage;
+                    spawnParticle(proj.position, 0xff4444, 3);
+                    currentBoss.scale.setScalar(0.75 + 0.25 * Math.max(0, currentBoss.health / currentBoss.maxHealth));
+                    if (currentBoss.bodyMaterial) {
+                        currentBoss.bodyMaterial.emissive.setHex(0xffffff);
+                        setTimeout(() => { if (currentBoss && currentBoss.bodyMaterial) currentBoss.bodyMaterial.emissive.setHex(currentBoss.baseColor); }, 50);
                     }
+                    if (currentBoss.health <= 0) killBoss();
+                    hit = true;
                 }
                 
-                if (hit || proj.life <= 0) {
-                    proj.geometry.dispose();
-                    proj.material.dispose();
-                    scene.remove(proj);
-                    projectiles.splice(i, 1);
+                if (hit || proj.life <= 0) { proj.geometry.dispose(); proj.material.dispose(); scene.remove(proj); projectiles.splice(i, 1); }
+            }
+            
+            for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+                const proj = enemyProjectiles[i];
+                proj.position.add(proj.velocity);
+                proj.life--;
+                if (proj.position.distanceTo(player.position) < 1) {
+                    const now = Date.now();
+                    if (now - lastDamageTime > DAMAGE_COOLDOWN * 0.5) { takeDamage(proj.damage); lastDamageTime = now; }
+                    proj.geometry.dispose(); proj.material.dispose(); scene.remove(proj); enemyProjectiles.splice(i, 1); continue;
+                }
+                if (proj.life <= 0) { proj.geometry.dispose(); proj.material.dispose(); scene.remove(proj); enemyProjectiles.splice(i, 1); }
+            }
+        }
+        
+        function updateHazardZones() {
+            for (let i = hazardZones.length - 1; i >= 0; i--) {
+                const hz = hazardZones[i];
+                if (hz.duration > 0) {
+                    hz.duration--;
+                    if (hz.duration < 60) hz.material.opacity = (hz.duration / 60) * 0.4;
+                    if (hz.duration <= 0) { hz.geometry.dispose(); hz.material.dispose(); scene.remove(hz); hazardZones.splice(i, 1); }
                 }
             }
         }
         
         function updateHearts(delta) {
             const time = Date.now() * 0.004;
-            
             for (let i = hearts.length - 1; i >= 0; i--) {
                 const heart = hearts[i];
-                
                 heart.position.y = 0.5 + Math.sin(time + heart.bobOffset) * 0.2;
                 heart.rotation.y += 0.03;
-                
                 heart.ttl--;
-                
-                if (heart.ttl < 60) {
-                    const opacity = heart.ttl / 60;
-                    heart.children.forEach(child => {
-                        if (child.material) child.material.opacity = opacity * 0.9;
-                    });
-                }
-                
-                if (heart.ttl <= 0) {
-                    heart.children.forEach(child => {
-                        if (child.geometry) child.geometry.dispose();
-                        if (child.material) child.material.dispose();
-                    });
-                    scene.remove(heart);
-                    hearts.splice(i, 1);
-                    continue;
-                }
-                
+                if (heart.ttl < 60) heart.children.forEach(c => { if (c.material) c.material.opacity = (heart.ttl / 60) * 0.9; });
+                if (heart.ttl <= 0) { heart.children.forEach(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); scene.remove(heart); hearts.splice(i, 1); continue; }
                 const dist = heart.position.distanceTo(player.position);
-                
-                if (dist < gameState.stats.pickupRange) {
-                    const direction = new THREE.Vector3()
-                        .subVectors(player.position, heart.position)
-                        .normalize();
-                    heart.position.add(direction.multiplyScalar(0.25));
-                }
-                
+                if (dist < gameState.stats.pickupRange) { tempVec3.subVectors(player.position, heart.position).normalize(); heart.position.add(tempVec3.multiplyScalar(0.25)); }
                 if (dist < 1) {
                     gameState.health = Math.min(gameState.health + heart.healAmount, gameState.maxHealth);
                     spawnParticle(heart.position, 0xff4488, 8);
-                    
-                    heart.children.forEach(child => {
-                        if (child.geometry) child.geometry.dispose();
-                        if (child.material) child.material.dispose();
-                    });
-                    scene.remove(heart);
-                    hearts.splice(i, 1);
-                    updateUI();
+                    heart.children.forEach(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+                    scene.remove(heart); hearts.splice(i, 1);
                 }
             }
         }
 
         function updateXpGems(delta) {
             const time = Date.now() * 0.003;
-            
             for (let i = xpGems.length - 1; i >= 0; i--) {
                 const gem = xpGems[i];
-                
                 gem.position.y = 0.5 + Math.sin(time + gem.bobOffset) * 0.2;
                 gem.rotation.y += 0.05;
-                
                 const dist = gem.position.distanceTo(player.position);
-                
-                if (dist < gameState.stats.pickupRange) {
-                    const direction = new THREE.Vector3()
-                        .subVectors(player.position, gem.position)
-                        .normalize();
-                    gem.position.add(direction.multiplyScalar(0.3));
-                }
-                
+                if (dist < gameState.stats.pickupRange) { tempVec3.subVectors(player.position, gem.position).normalize(); gem.position.add(tempVec3.multiplyScalar(0.3)); }
                 if (dist < 1) {
                     gameState.xp += gem.value;
                     spawnParticle(gem.position, 0x44ff44, 5);
-                    gem.geometry.dispose();
-                    gem.material.dispose();
-                    scene.remove(gem);
-                    xpGems.splice(i, 1);
-                    
-                    while (gameState.xp >= gameState.xpToLevel) {
-                        gameState.xp -= gameState.xpToLevel;
-                        gameState.pendingLevelUps = (gameState.pendingLevelUps || 0) + 1;
-                        gameState.xpToLevel = Math.floor(gameState.xpToLevel * 1.5);
-                    }
-                    
-                    if (gameState.pendingLevelUps > 0 && !gameState.paused) {
-                        levelUp();
-                    }
-                    
-                    updateUI();
+                    gem.geometry.dispose(); gem.material.dispose(); scene.remove(gem); xpGems.splice(i, 1);
+                    while (gameState.xp >= gameState.xpToLevel) { gameState.xp -= gameState.xpToLevel; gameState.pendingLevelUps++; gameState.xpToLevel = Math.floor(gameState.xpToLevel * 1.5); }
+                    if (gameState.pendingLevelUps > 0 && !gameState.paused) levelUp();
                 }
             }
         }
 
         function updateParticles(delta) {
             for (let i = particles.length - 1; i >= 0; i--) {
-                const particle = particles[i];
-                
-                particle.position.add(particle.velocity);
-                particle.velocity.y -= 0.01;
-                particle.life--;
-                particle.material.opacity = particle.life / 30;
-                
-                if (particle.life <= 0) {
-                    particle.geometry.dispose();
-                    particle.material.dispose();
-                    scene.remove(particle);
-                    particles.splice(i, 1);
-                }
+                const p = particles[i];
+                p.position.add(p.velocity);
+                p.velocity.y -= 0.01;
+                p.life--;
+                p.material.opacity = p.life / 30;
+                if (p.life <= 0) { p.geometry.dispose(); p.material.dispose(); scene.remove(p); particles.splice(i, 1); }
             }
         }
 
-        // ===========================================
-        // GAME FLOW
-        // ===========================================
+        // Game Flow
         function takeDamage(amount) {
             gameState.health -= amount;
-            
             const flash = document.getElementById('damage-flash');
             flash.style.opacity = '1';
             setTimeout(() => flash.style.opacity = '0', 100);
-            
             if (player && player.bodyMaterial) {
                 player.bodyMaterial.emissive.setHex(0xff0000);
                 player.bodyMaterial.emissiveIntensity = 1;
-                setTimeout(() => {
-                    if (player && player.bodyMaterial) {
-                        player.bodyMaterial.emissive.setHex(0x224488);
-                        player.bodyMaterial.emissiveIntensity = 0.3;
-                    }
-                }, DAMAGE_COOLDOWN);
+                setTimeout(() => { if (player && player.bodyMaterial) { player.bodyMaterial.emissive.setHex(0x224488); player.bodyMaterial.emissiveIntensity = 0.3; } }, DAMAGE_COOLDOWN);
             }
-            
-            if (gameState.health <= 0) {
-                gameState.health = 0;
-                gameOver();
-            }
-            
-            updateUI();
+            if (gameState.health <= 0) { gameState.health = 0; gameOver(); }
         }
 
         function levelUp() {
-            gameState.level++;
-            gameState.score += 50;
-            gameState.pendingLevelUps = Math.max(0, (gameState.pendingLevelUps || 1) - 1);
+            gameState.level++; gameState.score += 50;
+            gameState.pendingLevelUps = Math.max(0, gameState.pendingLevelUps - 1);
             gameState.health = Math.min(gameState.health + 10, gameState.maxHealth);
-            
             showUpgradeMenu();
-            updateUI();
         }
 
         function showUpgradeMenu() {
             gameState.paused = true;
             document.exitPointerLock();
-            
-            const menu = document.getElementById('upgrade-menu');
             const options = document.getElementById('upgrade-options');
             options.innerHTML = '';
-            
-            const shuffled = [...upgrades].sort(() => Math.random() - 0.5);
-            const choices = shuffled.slice(0, 3);
-            
-            choices.forEach((upgrade, index) => {
+            const shuffled = [...upgrades].sort(() => Math.random() - 0.5).slice(0, 3);
+            shuffled.forEach(upgrade => {
                 const card = document.createElement('div');
                 card.className = 'upgrade-card';
-                card.innerHTML = `
-                    <div class="upgrade-icon">${upgrade.icon}</div>
-                    <div class="upgrade-name">${upgrade.name}</div>
-                    <div class="upgrade-desc">${upgrade.desc}</div>
-                `;
+                card.innerHTML = '<div class="upgrade-icon">' + upgrade.icon + '</div><div class="upgrade-name">' + upgrade.name + '</div><div class="upgrade-desc">' + upgrade.desc + '</div>';
                 card.addEventListener('click', () => selectUpgrade(upgrade));
                 options.appendChild(card);
             });
-            
-            menu.style.display = 'block';
+            document.getElementById('upgrade-menu').style.display = 'block';
         }
 
         function selectUpgrade(upgrade) {
-            if (upgrade.mult) {
-                gameState.stats[upgrade.stat] *= upgrade.mult;
-            } else if (upgrade.add) {
-                gameState.stats[upgrade.stat] += upgrade.add;
-            }
-            
-            if (upgrade.stat === 'maxHealth') {
-                gameState.maxHealth = gameState.stats.maxHealth;
-                gameState.health = Math.min(gameState.health + upgrade.add, gameState.maxHealth);
-            }
-            
+            if (upgrade.mult) gameState.stats[upgrade.stat] *= upgrade.mult;
+            else if (upgrade.add) gameState.stats[upgrade.stat] += upgrade.add;
+            if (upgrade.stat === 'maxHealth') { gameState.maxHealth = gameState.stats.maxHealth; gameState.health = Math.min(gameState.health + upgrade.add, gameState.maxHealth); }
             document.getElementById('upgrade-menu').style.display = 'none';
-            
-            if (gameState.pendingLevelUps > 0) {
-                levelUp();
-            } else {
-                gameState.paused = false;
-            }
-            updateUI();
+            if (gameState.pendingLevelUps > 0) levelUp();
+            else gameState.paused = false;
         }
 
         function gameOver() {
             gameState.running = false;
             document.exitPointerLock();
-            
             const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            
-            document.getElementById('final-time').textContent = 
-                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('final-time').textContent = Math.floor(elapsed/60) + ':' + (elapsed%60).toString().padStart(2, '0');
             document.getElementById('final-arena').textContent = gameState.currentArena;
             document.getElementById('final-level').textContent = gameState.level;
             document.getElementById('final-kills').textContent = gameState.kills;
             document.getElementById('final-score').textContent = gameState.score;
-            
             document.getElementById('game-over').style.display = 'block';
         }
 
         function startGame() {
             document.getElementById('start-screen').style.display = 'none';
-            
-            // Generate first arena
             generateArena(1);
-            
             gameState.running = true;
             gameState.waveState = WAVE_STATE.WAVE_INTRO;
             gameState.waveTimer = 0;
             gameStartTime = Date.now();
-            
             animate();
         }
 
         function restartGame() {
-            // Reset game state
-            gameState.health = 100;
-            gameState.maxHealth = 100;
-            gameState.xp = 0;
-            gameState.xpToLevel = 10;
-            gameState.level = 1;
-            gameState.kills = 0;
-            gameState.score = 0;
-            gameState.paused = false;
-            gameState.currentArena = 1;
-            gameState.currentWave = 1;
-            gameState.waveState = WAVE_STATE.WAVE_INTRO;
-            gameState.waveTimer = 0;
-            gameState.bossActive = false;
-            gameState.pendingLevelUps = 0;
+            Object.assign(gameState, { health: 100, maxHealth: 100, xp: 0, xpToLevel: 10, level: 1, kills: 0, score: 0, paused: false, currentArena: 1, currentWave: 1, waveState: WAVE_STATE.WAVE_INTRO, waveTimer: 0, bossActive: false, pendingLevelUps: 0 });
+            gameState.unlockedMechanics = { pillars: false, ramps: false, platforms: false, tunnels: false, hybridChaos: false };
+            gameState.unlockedEnemyBehaviors = { jumping: false, ambush: false, multiLevel: false };
+            gameState.stats = { damage: 10, attackSpeed: 1, projectileCount: 1, projectileSpeed: 0.8, moveSpeed: 0.15, maxHealth: 100, pickupRange: 3, xpMultiplier: 1 };
             
-            // Reset unlocks
-            gameState.unlockedMechanics = {
-                pillars: false,
-                ramps: false,
-                platforms: false,
-                tunnels: false,
-                hybridChaos: false
-            };
-            gameState.unlockedEnemyBehaviors = {
-                jumping: false,
-                ambush: false,
-                multiLevel: false
-            };
-            
-            gameState.stats = {
-                damage: 10,
-                attackSpeed: 1,
-                projectileCount: 1,
-                projectileSpeed: 0.8,
-                moveSpeed: 0.15,
-                maxHealth: 100,
-                pickupRange: 3,
-                xpMultiplier: 1
-            };
-            
-            // Clear entities
-            enemies.forEach(e => { e.geometry.dispose(); e.material.dispose(); scene.remove(e); });
+            enemies.forEach(e => { if (e.geometry) e.geometry.dispose(); if (e.material) e.material.dispose(); scene.remove(e); });
             projectiles.forEach(p => { p.geometry.dispose(); p.material.dispose(); scene.remove(p); });
+            enemyProjectiles.forEach(p => { p.geometry.dispose(); p.material.dispose(); scene.remove(p); });
             xpGems.forEach(g => { g.geometry.dispose(); g.material.dispose(); scene.remove(g); });
             particles.forEach(p => { p.geometry.dispose(); p.material.dispose(); scene.remove(p); });
-            hearts.forEach(h => { 
-                h.children.forEach(child => {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) child.material.dispose();
-                });
-                scene.remove(h); 
-            });
+            hearts.forEach(h => { h.children.forEach(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); scene.remove(h); });
+            if (currentBoss) { currentBoss.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); scene.remove(currentBoss); currentBoss = null; }
             
-            if (currentBoss) {
-                currentBoss.traverse(child => {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) child.material.dispose();
-                });
-                scene.remove(currentBoss);
-                currentBoss = null;
-            }
-            
-            enemies = [];
-            projectiles = [];
-            xpGems = [];
-            particles = [];
-            hearts = [];
-            
-            // Reset trail
+            enemies = []; projectiles = []; enemyProjectiles = []; xpGems = []; particles = []; hearts = [];
             trailPool.forEach(t => { t.visible = false; t.life = 0; });
-            trailIndex = 0;
-            lastTrailPos = null;
-            
-            // Reset player
-            player.position.set(0, 1, 0);
-            player.velocity.set(0, 0, 0);
-            player.isGrounded = true;
-            player.bounceCount = 0;
-            player.wasInAir = false;
-            
-            // Generate first arena
+            trailIndex = 0; lastTrailPos = null;
+            player.position.set(0, 1, 0); player.velocity.set(0, 0, 0); player.isGrounded = true; player.bounceCount = 0; player.wasInAir = false; player.scale.set(1, 1, 1); player.squashTime = 0;
             generateArena(1);
-            
-            // Hide UI elements
             document.getElementById('game-over').style.display = 'none';
             document.getElementById('pause-indicator').style.display = 'none';
             document.getElementById('boss-health-container').style.display = 'none';
-            
-            // Reset timers
-            lastDamageTime = 0;
-            lastShot = 0;
-            lastDash = 0;
-            isDashing = false;
-            
-            cameraAngleX = 0;
-            cameraAngleY = 0.3;
-            
-            gameState.running = true;
-            gameStartTime = Date.now();
-            updateUI();
-            
-            animate();
+            lastDamageTime = 0; lastShot = 0; lastDash = 0; isDashing = false; cameraAngleX = 0; cameraAngleY = 0.3;
+            gameState.running = true; gameStartTime = Date.now(); updateUI(); animate();
         }
 
         function onMouseMove(event) {
             if (!isPointerLocked) return;
-            
-            const sensitivity = 0.002;
-            cameraAngleX -= event.movementX * sensitivity;
-            cameraAngleY += event.movementY * sensitivity;
-            cameraAngleY = Math.max(-0.5, Math.min(1, cameraAngleY));
+            cameraAngleX -= event.movementX * 0.002;
+            cameraAngleY = Math.max(-0.5, Math.min(1, cameraAngleY + event.movementY * 0.002));
         }
 
         function onWindowResize() {
@@ -2597,32 +1434,25 @@
 
         function animate() {
             if (!gameState.running) return;
-            
             requestAnimationFrame(animate);
-            
             if (!gameState.paused) {
-                const delta = 1;
-                
-                updatePlayer(delta);
-                updateEnemies(delta);
+                updatePlayer(1);
+                updateEnemies(1);
                 updateBoss();
-                updateProjectiles(delta);
-                updateXpGems(delta);
-                updateHearts(delta);
-                updateParticles(delta);
+                updateProjectiles(1);
+                updateXpGems(1);
+                updateHearts(1);
+                updateParticles(1);
                 updateTrail();
+                updateHazardZones();
                 updateWaveSystem();
-                
-                // Auto-shoot
                 shootProjectile();
-                
-                updateUI();
+                const now = Date.now();
+                if (now - lastUIUpdate > UI_UPDATE_INTERVAL) { updateUI(); lastUIUpdate = now; }
             }
-            
             renderer.render(scene, camera);
         }
 
-        // Initialize on load
         window.onload = init;
     </script>
 </body>
