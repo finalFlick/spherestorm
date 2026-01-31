@@ -1,0 +1,237 @@
+# SPHERESTORM Development Rules
+
+This document provides guidance for AI agents and developers working on the SPHERESTORM codebase.
+
+## Project Overview
+
+SPHERESTORM is a 3D arena survival game built with:
+- **Three.js r134** (loaded via CDN, NOT as npm package)
+- **Vanilla JavaScript** with ES Modules
+- **No build system** - runs directly in browser
+
+## Critical Rules
+
+### 1. Three.js Usage
+
+**DO NOT** attempt to install Three.js via npm. It is loaded via CDN in index.html:
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+```
+
+**THREE is a global variable** - all modules access it without importing.
+
+**Use r134-compatible APIs only:**
+- NO `CapsuleGeometry` (use cylinder + spheres)
+- NO modern Three.js features not in r134
+
+### 2. Module Architecture
+
+All game code uses ES Modules. Follow this import pattern:
+
+```javascript
+// Config imports
+import { CONSTANT } from '../config/constants.js';
+
+// Core imports  
+import { gameState } from '../core/gameState.js';
+import { scene } from '../core/scene.js';
+
+// Entity imports
+import { player } from '../entities/player.js';
+```
+
+**Avoid circular dependencies:**
+- If A imports from B and B needs A, use getter functions
+- Entity modules should not import from each other's update functions
+- Use the `handleEnemyDeath` pattern for cross-module death effects
+
+### 3. State Management
+
+**Central state is in `js/core/gameState.js`:**
+```javascript
+gameState.health      // Player health
+gameState.currentArena // Current arena number
+gameState.currentWave  // Current wave number
+gameState.waveState    // Wave state machine state
+gameState.stats        // Player stats (damage, speed, etc.)
+```
+
+**Entity arrays are in `js/core/entities.js`:**
+```javascript
+enemies[]           // All active enemies
+projectiles[]       // Player projectiles
+enemyProjectiles[]  // Enemy projectiles
+obstacles[]         // Arena obstacles
+hazardZones[]       // Damage zones
+```
+
+**Boss uses getter/setter:**
+```javascript
+import { getCurrentBoss, setCurrentBoss } from '../core/entities.js';
+```
+
+### 4. Adding New Features
+
+#### New Enemy Type
+1. Add definition to `js/config/enemies.js`
+2. Add behavior function in `js/entities/enemies.js`
+3. Add case in `updateEnemies()` switch statement
+
+#### New Boss
+1. Add configuration to `js/config/bosses.js`
+2. Add AI function `update[BossName]AI()` in `js/entities/boss.js`
+3. Add case in `updateBoss()` switch statement
+
+#### New Arena Feature
+1. Add feature name to arena's `features` array in `js/config/arenas.js`
+2. Create `add[Feature]()` function in `js/arena/generator.js`
+3. Add conditional call in `generateArena()`
+
+#### New Upgrade
+1. Add to `UPGRADES` array in `js/config/upgrades.js`
+2. Ensure stat exists in `gameState.stats`
+
+### 5. Code Style
+
+**Naming:**
+- Functions: `camelCase` (e.g., `updatePlayer`, `spawnWaveEnemy`)
+- Constants: `UPPER_SNAKE_CASE` (e.g., `PLAYER_JUMP_VELOCITY`)
+- Config objects: `UPPER_SNAKE_CASE` (e.g., `ENEMY_TYPES`, `BOSS_CONFIG`)
+
+**File organization:**
+- One primary concept per file
+- Export functions and variables explicitly
+- Keep related functions together
+
+**Performance:**
+- Reuse `THREE.Vector3` instances (`tempVec3`, `tempVec3_2`, `tempVec3_3`)
+- Use array `.length = 0` instead of reassigning to clear arrays
+- Pool frequently created/destroyed objects (see trail system)
+
+### 6. Common Patterns
+
+**Spawn Pattern:**
+```javascript
+export function spawnThing(position) {
+    const thing = new THREE.Mesh(geometry, material);
+    thing.position.copy(position);
+    // Set properties
+    scene.add(thing);
+    thingsArray.push(thing);
+    return thing;
+}
+```
+
+**Update Pattern:**
+```javascript
+export function updateThings(delta) {
+    for (let i = things.length - 1; i >= 0; i--) {
+        const thing = things[i];
+        // Update logic
+        if (shouldRemove) {
+            thing.geometry.dispose();
+            thing.material.dispose();
+            scene.remove(thing);
+            things.splice(i, 1);
+        }
+    }
+}
+```
+
+**Boss AI Pattern:**
+```javascript
+function updateBossAI(boss) {
+    if (boss.aiState === 'idle') {
+        // Default behavior
+        if (condition) {
+            boss.aiState = 'attacking';
+            boss.aiTimer = 0;
+        }
+    } else if (boss.aiState === 'attacking') {
+        // Attack behavior
+        if (boss.aiTimer > duration) {
+            boss.aiState = 'idle';
+            boss.aiTimer = 0;
+        }
+    }
+}
+```
+
+### 7. Testing Changes
+
+**Local testing requires a web server** due to ES Modules:
+```bash
+python -m http.server 8000
+# Then open http://localhost:8000
+```
+
+**Test checklist:**
+- [ ] Game starts without console errors
+- [ ] Player can move and shoot
+- [ ] Enemies spawn and have correct behavior
+- [ ] Bosses spawn after wave 10
+- [ ] Level up menu appears on XP gain
+- [ ] Pause works (ESC or lose pointer lock)
+- [ ] Game over triggers at 0 health
+- [ ] Restart works correctly
+
+### 8. Balance Guidelines
+
+**Player feel targets:**
+- Jump should feel responsive but not floaty
+- Dash should be snappy and useful for dodging
+- Shooting should feel impactful
+
+**Difficulty curve:**
+- Arena 1: Player learns basics, minimal challenge
+- Arena 2-3: Introduce complexity gradually
+- Arena 4-5: Significant challenge, require upgrade builds
+- Arena 6: Endgame challenge, requires mastery
+
+**Enemy balance:**
+- Common enemies (weight > 20): Fodder, die quickly
+- Uncommon enemies (weight 10-20): Moderate threat
+- Rare enemies (weight < 10): Significant threat, reward more XP
+
+### 9. File Reference
+
+| File | Purpose |
+|------|---------|
+| `js/main.js` | Entry point, game loop |
+| `js/config/*.js` | All game data/configuration |
+| `js/core/gameState.js` | Central state |
+| `js/core/scene.js` | Three.js setup |
+| `js/core/entities.js` | Shared arrays |
+| `js/entities/player.js` | Player logic |
+| `js/entities/enemies.js` | Enemy spawning/AI |
+| `js/entities/boss.js` | Boss spawning/AI |
+| `js/systems/waveSystem.js` | Wave state machine |
+| `js/arena/generator.js` | Arena building |
+| `js/ui/hud.js` | UI updates |
+
+### 10. Don'ts
+
+- **DON'T** add npm dependencies
+- **DON'T** add a build system (webpack, vite, etc.)
+- **DON'T** use TypeScript (keep vanilla JS)
+- **DON'T** modify Three.js version without testing compatibility
+- **DON'T** create circular imports between modules
+- **DON'T** store references to entities that may be disposed
+- **DON'T** forget to dispose geometries/materials when removing objects
+- **DON'T** use `setTimeout` for game logic (use frame-based timers)
+
+## Quick Command Reference
+
+```bash
+# Start local server
+python -m http.server 8000
+
+# Alternative servers
+npx serve .
+php -S localhost:8000
+
+# Git workflow
+git add -A
+git commit -m "feat: description"
+git push
+```
