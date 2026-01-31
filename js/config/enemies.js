@@ -1,0 +1,108 @@
+// Enemy type definitions with weighted spawning
+export const ENEMY_TYPES = {
+    grunt: {
+        name: 'Grunt',
+        size: 0.5,
+        health: 12,
+        speed: 0.035,
+        damage: 10,
+        color: 0xff4466,
+        xpValue: 1,
+        behavior: 'chase',
+        spawnWeight: 40
+    },
+    shooter: {
+        name: 'Shooter',
+        size: 0.45,
+        health: 8,
+        speed: 0.025,
+        damage: 8,
+        color: 0x44ff66,
+        xpValue: 2,
+        behavior: 'shooter',
+        shootRange: 15,
+        shootCooldown: 2000,
+        spawnWeight: 25
+    },
+    shielded: {
+        name: 'Shielded',
+        size: 0.6,
+        health: 30,
+        speed: 0.02,
+        damage: 12,
+        color: 0x6666ff,
+        xpValue: 3,
+        behavior: 'chase',
+        damageReduction: 0.5,
+        spawnWeight: 15
+    },
+    fastBouncer: {
+        name: 'Fast Bouncer',
+        size: 0.35,
+        health: 6,
+        speed: 0.12,
+        damage: 8,
+        color: 0xffff44,
+        xpValue: 3,
+        behavior: 'bouncer',
+        spawnWeight: 10,
+        minArena: 2
+    },
+    splitter: {
+        name: 'Splitter',
+        size: 0.7,
+        health: 20,
+        speed: 0.03,
+        damage: 10,
+        color: 0xff44ff,
+        xpValue: 4,
+        behavior: 'chase',
+        onDeath: 'split',
+        splitCount: 3,
+        spawnWeight: 8,
+        minArena: 2
+    },
+    shieldBreaker: {
+        name: 'Shield Breaker',
+        size: 0.55,
+        health: 15,
+        speed: 0.04,
+        damage: 18,
+        color: 0xff8844,
+        xpValue: 4,
+        behavior: 'shieldBreaker',
+        rushRange: 8,
+        rushSpeed: 0.15,
+        spawnWeight: 8,
+        minArena: 3
+    },
+    waterBalloon: {
+        name: 'Water Balloon',
+        size: 0.4,
+        health: 25,
+        speed: 0.015,
+        damage: 5,
+        color: 0x44ffff,
+        xpValue: 6,
+        behavior: 'waterBalloon',
+        growRate: 0.002,
+        maxSize: 1.2,
+        explosionRadius: 4,
+        spawnWeight: 4,
+        minArena: 3
+    },
+    teleporter: {
+        name: 'Teleporter',
+        size: 0.45,
+        health: 12,
+        speed: 0.03,
+        damage: 15,
+        color: 0xaa44ff,
+        xpValue: 5,
+        behavior: 'teleporter',
+        teleportCooldown: 3000,
+        teleportRange: 8,
+        spawnWeight: 4,
+        minArena: 4
+    }
+};

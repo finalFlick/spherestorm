@@ -1,0 +1,151 @@
+import { scene } from '../core/scene.js';
+import { gameState } from '../core/gameState.js';
+import { xpGems, hearts, tempVec3 } from '../core/entities.js';
+import { player } from '../entities/player.js';
+import { HEART_TTL } from '../config/constants.js';
+import { spawnParticle } from '../effects/particles.js';
+import { levelUp } from '../ui/menus.js';
+
+export function spawnXpGem(position, value) {
+    const gem = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.2, 0),
+        new THREE.MeshBasicMaterial({
+            color: 0x44ff44,
+            transparent: true,
+            opacity: 0.9
+        })
+    );
+    
+    gem.position.copy(position);
+    gem.position.y = 0.5;
+    gem.value = value * gameState.stats.xpMultiplier;
+    gem.bobOffset = Math.random() * Math.PI * 2;
+    
+    scene.add(gem);
+    xpGems.push(gem);
+}
+
+export function spawnHeart(position, healAmount) {
+    const heartGroup = new THREE.Group();
+    const heartMat = new THREE.MeshBasicMaterial({
+        color: 0xff4488,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    const sphereGeo = new THREE.SphereGeometry(0.15, 8, 8);
+    const left = new THREE.Mesh(sphereGeo, heartMat);
+    left.position.set(-0.1, 0.1, 0);
+    heartGroup.add(left);
+    
+    const right = new THREE.Mesh(sphereGeo, heartMat.clone());
+    right.position.set(0.1, 0.1, 0);
+    heartGroup.add(right);
+    
+    const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.2, 0.3, 8),
+        heartMat.clone()
+    );
+    cone.position.y = -0.1;
+    cone.rotation.x = Math.PI;
+    heartGroup.add(cone);
+    
+    heartGroup.position.copy(position);
+    heartGroup.position.y = 0.5;
+    heartGroup.healAmount = healAmount;
+    heartGroup.bobOffset = Math.random() * Math.PI * 2;
+    heartGroup.ttl = HEART_TTL;
+    
+    scene.add(heartGroup);
+    hearts.push(heartGroup);
+}
+
+export function updateXpGems(delta) {
+    const time = Date.now() * 0.003;
+    
+    for (let i = xpGems.length - 1; i >= 0; i--) {
+        const gem = xpGems[i];
+        gem.position.y = 0.5 + Math.sin(time + gem.bobOffset) * 0.2;
+        gem.rotation.y += 0.05;
+        
+        const dist = gem.position.distanceTo(player.position);
+        
+        // Attract to player
+        if (dist < gameState.stats.pickupRange) {
+            tempVec3.subVectors(player.position, gem.position).normalize();
+            gem.position.add(tempVec3.multiplyScalar(0.3));
+        }
+        
+        // Collect
+        if (dist < 1) {
+            gameState.xp += gem.value;
+            spawnParticle(gem.position, 0x44ff44, 5);
+            
+            gem.geometry.dispose();
+            gem.material.dispose();
+            scene.remove(gem);
+            xpGems.splice(i, 1);
+            
+            // Check level up
+            while (gameState.xp >= gameState.xpToLevel) {
+                gameState.xp -= gameState.xpToLevel;
+                gameState.pendingLevelUps++;
+                gameState.xpToLevel = Math.floor(gameState.xpToLevel * 1.5);
+            }
+            
+            if (gameState.pendingLevelUps > 0 && !gameState.paused) {
+                levelUp();
+            }
+        }
+    }
+}
+
+export function updateHearts(delta) {
+    const time = Date.now() * 0.004;
+    
+    for (let i = hearts.length - 1; i >= 0; i--) {
+        const heart = hearts[i];
+        heart.position.y = 0.5 + Math.sin(time + heart.bobOffset) * 0.2;
+        heart.rotation.y += 0.03;
+        heart.ttl--;
+        
+        // Fade out near expiry
+        if (heart.ttl < 60) {
+            heart.children.forEach(c => {
+                if (c.material) c.material.opacity = (heart.ttl / 60) * 0.9;
+            });
+        }
+        
+        // Remove expired
+        if (heart.ttl <= 0) {
+            heart.children.forEach(c => {
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) c.material.dispose();
+            });
+            scene.remove(heart);
+            hearts.splice(i, 1);
+            continue;
+        }
+        
+        const dist = heart.position.distanceTo(player.position);
+        
+        // Attract to player
+        if (dist < gameState.stats.pickupRange) {
+            tempVec3.subVectors(player.position, heart.position).normalize();
+            heart.position.add(tempVec3.multiplyScalar(0.25));
+        }
+        
+        // Collect
+        if (dist < 1) {
+            gameState.health = Math.min(gameState.health + heart.healAmount, gameState.maxHealth);
+            spawnParticle(heart.position, 0xff4488, 8);
+            
+            heart.children.forEach(c => {
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) c.material.dispose();
+            });
+            scene.remove(heart);
+            hearts.splice(i, 1);
+        }
+    }
+}
