@@ -3,14 +3,17 @@ import { enemies, getCurrentBoss } from '../core/entities.js';
 import { player } from '../entities/player.js';
 import { spawnWaveEnemy } from '../entities/enemies.js';
 import { spawnBoss } from '../entities/boss.js';
-import { WAVE_STATE, WAVES_PER_ARENA } from '../config/constants.js';
+import { WAVE_STATE } from '../config/constants.js';
+import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { generateArena } from '../arena/generator.js';
+import { awardArenaBadge } from './badges.js';
 import { 
     showWaveAnnouncement, 
     hideWaveAnnouncement, 
     showBossAnnouncement, 
     hideBossAnnouncement,
     showUnlockNotification,
+    showBadgeUnlock,
     updateUI 
 } from '../ui/hud.js';
 
@@ -24,6 +27,11 @@ export function updateWaveSystem() {
         case WAVE_STATE.BOSS_DEFEATED: handleBossDefeated(); break;
         case WAVE_STATE.ARENA_TRANSITION: handleArenaTransition(); break;
     }
+}
+
+// Get max waves for current arena (tiered progression)
+function getMaxWaves() {
+    return getArenaWaves(gameState.currentArena);
 }
 
 function handleWaveIntro() {
@@ -64,7 +72,8 @@ function handleWaveClear() {
     gameState.waveTimer++;
     
     if (gameState.waveTimer > 90) {
-        if (gameState.currentWave >= WAVES_PER_ARENA) {
+        const maxWaves = getMaxWaves();
+        if (gameState.currentWave >= maxWaves) {
             gameState.waveState = WAVE_STATE.BOSS_INTRO;
         } else {
             gameState.currentWave++;
@@ -98,6 +107,12 @@ function handleBossActive() {
 function handleBossDefeated() {
     if (gameState.waveTimer === 0) {
         unlockArenaMechanics(gameState.currentArena);
+        
+        // Award persistent arena badge
+        const badge = awardArenaBadge(gameState.currentArena);
+        if (badge) {
+            showBadgeUnlock(badge);
+        }
     }
     gameState.waveTimer++;
     

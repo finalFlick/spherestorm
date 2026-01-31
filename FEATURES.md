@@ -1,5 +1,16 @@
 # SPHERESTORM - Feature List
 
+## Design Philosophy
+
+SPHERESTORM is an **arcade-style score runner** with:
+- **Progressive arena complexity** - Each arena teaches new mechanics
+- **Boss fights as mastery tests** - Bosses puzzle together learned skills
+- **Fast early loops** - Short early arenas reduce friction, enable more attempts
+- **Visual progression** - Badges show investment and achievement
+- **Local competition** - Leaderboards drive replayability
+
+---
+
 ## Current Features (Implemented)
 
 ### Core Gameplay
@@ -24,97 +35,138 @@
 - [x] Enemy hit flash (white flash on hit)
 - [x] Boss glow aura
 
-#### Enemy System
+### Badge System
+
+#### Stat-Based Badges (Earned During Run)
+| Badge | Icon | Requirement |
+|-------|------|-------------|
+| Rapid Fire | ⚡ | Attack Speed ≥ 1.2x |
+| Multi-Shot | 🎯 | Projectile Count ≥ 2 |
+| Power Shot | ⚔️ | Damage ≥ 15 |
+| Sniper | 💨 | Projectile Speed ≥ 1.2x |
+| Speedster | 👟 | Move Speed ≥ 0.2 |
+| Tank | ❤️ | Max Health ≥ 150 |
+| Collector | 🧲 | Pickup Range ≥ 5 |
+| Scholar | ✨ | XP Multiplier ≥ 1.4x |
+
+#### Arena Mastery Badges (Persistent)
+| Badge | Icon | Arena | Boss |
+|-------|------|-------|------|
+| Initiate | 🏆 | 1 | The Pillar Guardian |
+| Bulwark Breaker | 🛡️ | 2 | The Slime Queen |
+| Ascension Adept | ⬆️ | 3 | The Teleporting Tyrant |
+| Platform Knight | 👑 | 4 | The Balloon King |
+| Maze Runner | 🌀 | 5 | The Tunnel Wyrm |
+| Chaos Conqueror | 💀 | 6 | Chaos Incarnate |
+
+### Local Leaderboard
+
+- [x] Top 10 scores saved to LocalStorage
+- [x] Tracks: Name (3 chars), Score, Arena, Wave, Level, Badges, Time
+- [x] High score entry form on qualifying runs
+- [x] Leaderboard accessible from main menu
+- [x] Sorted by score (highest first)
+- [x] Persists between sessions
+
+### Arena Progression (Tiered Waves)
+
+| Arena | Name | Waves | New Features | What It Teaches |
+|-------|------|-------|--------------|-----------------|
+| 1 | The Training Grounds | 3 | Flat ground | Move, shoot, dodge |
+| 2 | Obstacle Field | 5 | + Pillars, cover | Cover & movement synergy |
+| 3 | Vertical Loop | 6 | + Platforms, ramps | Z-axis awareness, jumping |
+| 4 | Platform Gardens | 8 | + Corner platforms | Height advantage, gap management |
+| 5 | The Labyrinth | 8 | + Tunnel walls | Corridor pressure, line control |
+| 6 | Chaos Realm | 10 | + Hazard zones | Everything combined |
+
+### Enemy System
 - [x] 8 unique enemy types with different behaviors
 - [x] Weighted spawn system (rarer enemies in later waves)
-- [x] Arena-gated enemy unlocks (some enemies only appear in later arenas)
+- [x] Arena-gated enemy unlocks
 - [x] Enemy scaling with arena/wave progression
 - [x] Enemy jumping (unlocked after Arena 2 boss)
 
 **Enemy Types:**
-| Type | Behavior |
-|------|----------|
-| Grunt | Basic chase AI |
-| Shooter | Maintains distance, fires projectiles |
-| Shielded | 50% damage reduction |
-| Fast Bouncer | Bounces off walls, slight homing |
-| Splitter | Splits into 3 smaller enemies on death |
-| Shield Breaker | Charges at player when in range |
-| Water Balloon | Grows over time, explodes into hazard zone |
-| Teleporter | Teleports near player periodically |
+| Type | Behavior | Min Arena |
+|------|----------|-----------|
+| Grunt | Basic chase AI | 1 |
+| Shooter | Maintains distance, fires projectiles | 1 |
+| Shielded | 50% damage reduction | 1 |
+| Fast Bouncer | Bounces off walls, slight homing | 2 |
+| Splitter | Splits into 3 smaller enemies on death | 2 |
+| Shield Breaker | Charges at player when in range | 3 |
+| Water Balloon | Grows over time, explodes into hazard zone | 3 |
+| Teleporter | Teleports near player periodically | 4 |
 
-#### Boss System
-- [x] 6 unique bosses, one per arena
+### Boss System
+
+Bosses are **puzzle tests** of arena mechanics, not just bullet sponges.
+
+| Boss | Arena | Mechanics Tested | Puzzle Element |
+|------|-------|------------------|----------------|
+| The Pillar Guardian | 1 | Movement, dodging | Charge attack timing, minion management |
+| The Slime Queen | 2 | Cover usage | Hazard avoidance, spawn control |
+| The Teleporting Tyrant | 3 | Spatial awareness | Predict teleport patterns |
+| The Balloon King | 4 | Platform control | Height management, split phase |
+| The Tunnel Wyrm | 5 | Corridor navigation | Burrow prediction, emerge timing |
+| Chaos Incarnate | 6 | All mechanics | Adapting to cycling abilities |
+
+**Boss Features:**
 - [x] Phase-based difficulty (phases at 66% and 33% health)
 - [x] Boss-specific AI patterns
 - [x] Boss health bar UI
 - [x] Guaranteed heart drop on boss kill
 - [x] Boss minion spawning
+- [x] Persistent badge awarded on defeat
 
-**Boss Abilities:**
-| Boss | Arena | Abilities |
-|------|-------|-----------|
-| Pillar Guardian | 1 | Charge attack, summons Fast Bouncers |
-| Slime Queen | 2 | Jump attack, leaves hazard pools, spawns Grunts |
-| Teleporting Tyrant | 3 | Teleports around, spawns Teleporters |
-| Balloon King | 4 | Grows larger, spawns Water Balloons, splits into mini-bosses |
-| Tunnel Wyrm | 5 | Burrows underground, emerges near player |
-| Chaos Incarnate | 6 | Cycles through all boss abilities |
-
-#### Arena Progression System
-- [x] 6 distinct arenas with progressive complexity
-- [x] 10 waves per arena + boss fight
-- [x] Mechanic unlocks tied to boss defeats
-- [x] Arena geometry builds incrementally (each arena adds to previous)
-
-**Arena Progression:**
-| Arena | New Features |
-|-------|--------------|
-| 1 - Proving Grounds | Flat ground only |
-| 2 - Pillar Sanctum | + Pillars, cover blocks |
-| 3 - Sky Rise | + Vertical platforms, stepped ramps |
-| 4 - Platform Gardens | + Corner platforms, bridges |
-| 5 - The Labyrinth | + Tunnel walls |
-| 6 - Chaos Realm | + Hazard zones |
-
-#### Wave System
-- [x] State machine: Intro → Active → Clear → (Boss Intro → Boss Active → Boss Defeated → Transition)
-- [x] Wave announcements with arena name
-- [x] Progressive enemy count scaling
-- [x] Dynamic spawn intervals (faster in later waves/arenas)
-
-#### Upgrade System
+### Upgrade System
 - [x] Level up on XP thresholds
 - [x] 3 random upgrades offered per level
 - [x] 8 upgrade types affecting different stats
 - [x] Multiplicative and additive stat modifiers
-- [x] Multiple pending level-ups queue properly
 
-#### Pickups
+### Pickups
 - [x] XP gems from killed enemies
-- [x] Heart pickups for healing (15/25/50 HP for normal/elite/boss)
-- [x] Magnetic attraction to player (configurable range)
+- [x] Heart pickups for healing (15/25/50 HP)
+- [x] Magnetic attraction to player
 - [x] Heart TTL with fade-out
-- [x] Floating bob animation
 
-#### UI/HUD
+### UI/HUD
 - [x] Health bar with percentage fill
 - [x] XP bar with level display
-- [x] Arena and wave indicators
+- [x] Arena and wave indicators (with tiered counts)
 - [x] Timer and score display
 - [x] Kill counter
-- [x] Boss health bar (appears during boss fights)
+- [x] **Badge panel** showing active stat badges
+- [x] Boss health bar
 - [x] Wave/Boss announcements
 - [x] Unlock notifications
+- [x] **Badge unlock celebrations**
 - [x] Pause indicator
 - [x] Game over screen with stats
+- [x] **Leaderboard screen**
+- [x] **High score entry form**
+- [x] **Badge collection screen**
 
-#### Technical
-- [x] ES Module architecture
-- [x] Modular file structure
-- [x] Performance optimizations (reusable Vector3, ring buffer for trails)
-- [x] Pointer lock for immersive controls
-- [x] Responsive canvas sizing
+---
+
+## Replayability Design
+
+### Why Players Return
+1. **Beat your score** - Leaderboard competition
+2. **Earn badges** - Visual progression markers
+3. **Master arenas** - Each arena has distinct skills
+4. **Unlock cosmetics** - Persistent arena mastery badges
+5. **Faster loops** - Short early arenas = more attempts
+
+### Progression Loops
+
+| Loop | Duration | Reward |
+|------|----------|--------|
+| Wave | 30-60s | XP, health |
+| Arena | 2-8 min | Boss fight, badge |
+| Run | 15-30 min | Leaderboard position |
+| Meta | Sessions | Mastery badge collection |
 
 ---
 
@@ -125,51 +177,40 @@
 - [ ] Active abilities with cooldowns
 - [ ] Combo system for chained kills
 - [ ] Critical hits
-- [ ] Shield/armor system
-- [ ] Dodging with i-frames
+- [ ] Score multipliers for combos
 
 ### Enemy Enhancements
 - [ ] Elite enemy variants with modifiers
 - [ ] Enemy formations/group tactics
 - [ ] Flying enemies
-- [ ] Ranged enemy projectile patterns
-- [ ] Mini-boss waves mid-arena
 
 ### Arena Enhancements
 - [ ] Moving platforms
 - [ ] Destructible obstacles
-- [ ] Environmental hazards (lava, spikes)
 - [ ] Arena modifiers (low gravity, darkness)
-- [ ] Secret areas with bonus loot
 
 ### Progression
-- [ ] Meta-progression (permanent unlocks between runs)
-- [ ] Character selection with different abilities
-- [ ] Difficulty modes
+- [ ] Daily challenges
 - [ ] Challenge modes (time attack, boss rush)
 - [ ] Achievements
+- [ ] Ghost replay of top runs
 
 ### Visual/Audio
 - [ ] Sound effects
 - [ ] Music
 - [ ] Screen shake on impacts
-- [ ] Post-processing effects (bloom, vignette)
-- [ ] Better enemy death animations
-- [ ] Projectile trails
+- [ ] Post-processing effects
 
 ### Quality of Life
-- [ ] Settings menu (sensitivity, volume)
-- [ ] Control rebinding
-- [ ] Mobile touch controls
-- [ ] Save/load game state
+- [ ] Settings menu
 - [ ] Statistics tracking
+- [ ] Run history
 
 ---
 
 ## Known Limitations
 
 1. **No audio** - Game is currently silent
-2. **No persistence** - Progress resets on page refresh
+2. **No cloud saves** - Progress is local only
 3. **Desktop only** - No mobile support
-4. **Single player** - No multiplayer functionality
-5. **Fixed arena sizes** - All arenas are 100x100 units
+4. **Single player** - No multiplayer
