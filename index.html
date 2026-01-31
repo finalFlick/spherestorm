@@ -318,6 +318,27 @@
             z-index: 50;
             transition: opacity 0.1s ease;
         }
+        
+        #pause-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px 50px;
+            border-radius: 15px;
+            color: white;
+            font-size: 24px;
+            text-align: center;
+            z-index: 150;
+            display: none;
+        }
+        
+        #pause-indicator p {
+            margin-top: 15px;
+            font-size: 16px;
+            color: #888;
+        }
     </style>
 </head>
 <body>
@@ -346,6 +367,11 @@
         </div>
         <div id="crosshair"></div>
         <div id="kill-counter">Kills: <span id="kills">0</span></div>
+        
+        <div id="pause-indicator">
+            PAUSED
+            <p>Click anywhere to resume</p>
+        </div>
         
         <div id="upgrade-menu">
             <h2>LEVEL UP!</h2>
@@ -499,6 +525,17 @@
             });
             document.addEventListener('pointerlockchange', () => {
                 isPointerLocked = document.pointerLockElement === renderer.domElement;
+                
+                // Show/hide pause indicator when pointer lock changes during gameplay
+                const pauseIndicator = document.getElementById('pause-indicator');
+                const upgradeMenu = document.getElementById('upgrade-menu');
+                const gameOverScreen = document.getElementById('game-over');
+                
+                if (gameState.running && !gameState.paused && 
+                    upgradeMenu.style.display !== 'block' && 
+                    gameOverScreen.style.display !== 'block') {
+                    pauseIndicator.style.display = isPointerLocked ? 'none' : 'block';
+                }
             });
             
             window.addEventListener('resize', onWindowResize);
@@ -1128,8 +1165,9 @@
             player.position.set(0, 1, 0);
             player.velocity.set(0, 0, 0);
             
-            // Hide game over screen
+            // Hide game over screen and pause indicator
             document.getElementById('game-over').style.display = 'none';
+            document.getElementById('pause-indicator').style.display = 'none';
             
             // Reset timers
             lastDamageTime = 0;
