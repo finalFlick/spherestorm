@@ -374,7 +374,7 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
         // Game State
         const gameState = {
@@ -422,6 +422,8 @@
         let lastDash = 0;
         let isDashing = false;
         let dashDirection = new THREE.Vector3();
+        let lastDamageTime = 0;
+        const DAMAGE_COOLDOWN = 500; // ms between damage ticks
         
         // Upgrades available
         const upgrades = [
@@ -782,9 +784,9 @@
             
             moveDir.normalize();
             
-            // Dashing
+            // Dashing (both left and right shift work)
             const now = Date.now();
-            if (keys['ShiftLeft'] && now - lastDash > 1000 && moveDir.length() > 0) {
+            if ((keys['ShiftLeft'] || keys['ShiftRight']) && now - lastDash > 1000 && moveDir.length() > 0) {
                 isDashing = true;
                 lastDash = now;
                 dashDirection.copy(moveDir);
@@ -850,11 +852,17 @@
                 // Check collision with player
                 const distToPlayer = enemy.position.distanceTo(player.position);
                 if (distToPlayer < enemy.size + 0.5) {
-                    takeDamage(enemy.damage);
+                    const now = Date.now();
+                    if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+                        takeDamage(enemy.damage);
+                        lastDamageTime = now;
+                    }
                     
-                    // Knockback
-                    const knockback = direction.multiplyScalar(-2);
-                    enemy.position.add(knockback);
+                    // Knockback enemy away from player
+                    const knockbackDir = new THREE.Vector3()
+                        .subVectors(enemy.position, player.position)
+                        .normalize();
+                    enemy.position.add(knockbackDir.multiplyScalar(0.5));
                 }
             }
         }
@@ -927,8 +935,9 @@
                     scene.remove(gem);
                     xpGems.splice(i, 1);
                     
-                    // Check level up
-                    if (gameState.xp >= gameState.xpToLevel) {
+                    // Check level up (handle multiple level ups)
+                    while (gameState.xp >= gameState.xpToLevel) {
+                        gameState.xp -= gameState.xpToLevel;
                         levelUp();
                     }
                     
@@ -956,10 +965,22 @@
         function takeDamage(amount) {
             gameState.health -= amount;
             
-            // Flash effect
+            // Screen flash effect
             const flash = document.getElementById('damage-flash');
             flash.style.opacity = '1';
             setTimeout(() => flash.style.opacity = '0', 100);
+            
+            // Player flash effect (blink during invincibility)
+            if (player) {
+                player.material.emissive.setHex(0xff0000);
+                player.material.emissiveIntensity = 1;
+                setTimeout(() => {
+                    if (player && player.material) {
+                        player.material.emissive.setHex(0x224488);
+                        player.material.emissiveIntensity = 0.3;
+                    }
+                }, DAMAGE_COOLDOWN);
+            }
             
             if (gameState.health <= 0) {
                 gameState.health = 0;
@@ -971,9 +992,11 @@
 
         function levelUp() {
             gameState.level++;
-            gameState.xp = 0;
             gameState.xpToLevel = Math.floor(gameState.xpToLevel * 1.5);
             gameState.score += 50;
+            
+            // Heal a bit on level up
+            gameState.health = Math.min(gameState.health + 10, gameState.maxHealth);
             
             // Show upgrade menu
             showUpgradeMenu();
@@ -1026,10 +1049,10 @@
         }
 
         function updateUI() {
-            const healthPercent = (gameState.health / gameState.maxHealth) * 100;
+            const healthPercent = Math.min(100, (gameState.health / gameState.maxHealth) * 100);
             document.getElementById('health-bar').style.width = healthPercent + '%';
             
-            const xpPercent = (gameState.xp / gameState.xpToLevel) * 100;
+            const xpPercent = Math.min(100, (gameState.xp / gameState.xpToLevel) * 100);
             document.getElementById('xp-bar').style.width = xpPercent + '%';
             
             document.getElementById('level').textContent = gameState.level;
@@ -1108,10 +1131,24 @@
             // Hide game over screen
             document.getElementById('game-over').style.display = 'none';
             
+            // Reset timers
+            lastDamageTime = 0;
+            lastShot = 0;
+            lastSpawn = 0;
+            lastDash = 0;
+            isDashing = false;
+            
+            // Reset camera
+            cameraAngleX = 0;
+            cameraAngleY = 0.3;
+            
             // Start game
             gameState.running = true;
             gameStartTime = Date.now();
             updateUI();
+            
+            // Restart animation loop
+            animate();
         }
 
         function onMouseMove(event) {
