@@ -1,5 +1,4 @@
 import { gameState } from './gameState.js';
-import { renderer } from './scene.js';
 
 // Input state
 export const keys = {};
