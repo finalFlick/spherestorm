@@ -191,7 +191,21 @@ python -m http.server 8000
 | `js/ui/hud.js` | HUD updates |
 | `js/ui/leaderboardUI.js` | Leaderboard display |
 
-### 10. Balance Guidelines
+### 10. Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| `docs/EPICS.md` | Feature tracking and epic status |
+| `docs/PROJECT_STATE.md` | Current implementation state and known issues |
+| `docs/PULSE_MUSIC_SYSTEM.md` | Adaptive music system design |
+| `FEATURES.md` | Complete feature list with checkboxes |
+
+**Before committing changes:**
+- Update `docs/EPICS.md` if feature/epic status changed
+- Update `docs/PROJECT_STATE.md` if behavior or architecture changed
+- Update `FEATURES.md` if adding/completing features
+
+### 11. Balance Guidelines
 
 **Difficulty Curve:**
 - Arena 1: Learn basics, minimal challenge
@@ -208,7 +222,7 @@ python -m http.server 8000
 - Should be achievable by wave 6-8
 - Encourage specific build choices
 
-### 11. Don'ts
+### 12. Don'ts
 
 - **DON'T** add npm dependencies
 - **DON'T** add a build system
