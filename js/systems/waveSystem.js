@@ -46,7 +46,7 @@ function handleWaveIntro() {
         gameState.waveState = WAVE_STATE.WAVE_ACTIVE;
         gameState.waveTimer = 0;
         
-        const base = 4 + gameState.currentArena * 2;
+        const base = 6 + gameState.currentArena * 3;  // More enemies per wave
         const scaling = 1 + (gameState.currentWave - 1) * 0.25;
         gameState.enemiesToSpawn = Math.floor(base * scaling);
         gameState.waveEnemiesRemaining = gameState.enemiesToSpawn;
@@ -63,11 +63,15 @@ function handleWaveIntro() {
 
 function handleWaveActive() {
     const now = Date.now();
-    const spawnInterval = Math.max(350, 1400 - gameState.currentArena * 80 - gameState.currentWave * 40);
+    const spawnInterval = Math.max(250, 900 - gameState.currentArena * 60 - gameState.currentWave * 30);  // Faster spawning
     
     if (gameState.enemiesToSpawn > 0 && now - gameState.lastWaveSpawn > spawnInterval) {
-        spawnWaveEnemy();
-        gameState.enemiesToSpawn--;
+        // 20% chance for burst spawn (2-3 enemies at once)
+        const burstCount = Math.random() < 0.2 ? (2 + Math.floor(Math.random() * 2)) : 1;
+        for (let i = 0; i < burstCount && gameState.enemiesToSpawn > 0; i++) {
+            spawnWaveEnemy();
+            gameState.enemiesToSpawn--;
+        }
         gameState.lastWaveSpawn = now;
     }
     

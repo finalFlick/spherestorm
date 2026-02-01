@@ -8,12 +8,13 @@ export const ENEMY_TYPES = {
         name: 'Grunt',
         size: 0.50,          // Standard
         health: 12,
-        speed: 0.035,
+        speed: 0.055,        // Faster (+57%)
         damage: 10,
         color: 0xff2222,     // Bright red - basic threat
         xpValue: 1,
         behavior: 'chase',
         spawnWeight: 40,
+        arenaIntro: 1,       // Introduced in Arena 1
         // Roster display fields
         tagline: 'The Relentless Pursuer',
         description: 'Basic infantry of the storm. Grunts mindlessly chase their targets, overwhelming through sheer numbers. What they lack in tactics, they make up for in persistence.',
@@ -32,7 +33,7 @@ export const ENEMY_TYPES = {
         name: 'Shooter',
         size: 0.45,          // Standard (smaller)
         health: 8,
-        speed: 0.025,
+        speed: 0.035,        // Faster (+40%)
         damage: 8,
         color: 0x22ff22,     // Bright green - ranged
         xpValue: 2,
@@ -40,7 +41,7 @@ export const ENEMY_TYPES = {
         shootRange: 15,
         shootCooldown: 2000,
         spawnWeight: 25,
-        minArena: 3,         // GATED: Shooters only Arena 3+
+        arenaIntro: 3,       // Introduced in Arena 3
         // Roster display fields
         tagline: 'Death From a Distance',
         description: 'Cowardly but deadly. Shooters prefer to engage from range, retreating when threatened. Their projectiles are slow but punishing if you ignore them.',
@@ -59,14 +60,14 @@ export const ENEMY_TYPES = {
         name: 'Shielded',
         size: 1.00,          // Heavy (bigger!)
         health: 30,
-        speed: 0.032,        // Faster than before (was 0.02)
+        speed: 0.045,        // Faster (+40%)
         damage: 12,
         color: 0x4444ff,     // Deep blue - tanky
         xpValue: 3,
         behavior: 'chase',
         damageReduction: 0.5,
         spawnWeight: 15,
-        minArena: 2,         // GATED: Shielded from Arena 2+
+        arenaIntro: 2,       // Introduced in Arena 2
         // Roster display fields
         tagline: 'The Walking Fortress',
         description: 'Encased in hardened energy, Shielded enemies absorb half of all incoming damage. Slow but inevitable, they force you to commit resources or reposition.',
@@ -112,7 +113,7 @@ export const ENEMY_TYPES = {
         name: 'Splitter',
         size: 1.10,          // Heavy (very big!)
         health: 20,
-        speed: 0.03,
+        speed: 0.045,        // Faster (+50%)
         damage: 10,
         color: 0xff00ff,     // Bright magenta - splits
         xpValue: 4,
@@ -120,7 +121,7 @@ export const ENEMY_TYPES = {
         onDeath: 'split',
         splitCount: 3,
         spawnWeight: 8,
-        minArena: 2,
+        arenaIntro: 5,       // Introduced in Arena 5
         // Roster display fields
         tagline: 'Death Breeds More Death',
         description: 'A ticking time bomb of multiplication. When destroyed, Splitters fragment into three smaller, faster versions of themselves. Killing one is never the end.',
@@ -140,7 +141,7 @@ export const ENEMY_TYPES = {
         name: 'Shield Breaker',
         size: 0.55,          // Standard
         health: 15,
-        speed: 0.04,
+        speed: 0.055,        // Faster (+37%)
         damage: 18,
         color: 0xff8800,     // Orange - aggressive
         xpValue: 4,
@@ -148,7 +149,7 @@ export const ENEMY_TYPES = {
         rushRange: 8,
         rushSpeed: 0.15,
         spawnWeight: 8,
-        minArena: 3,
+        arenaIntro: 4,       // Introduced in Arena 4
         // Roster display fields
         tagline: 'The Charging Menace',
         description: 'Aggressive and deceptively patient. Shield Breakers approach calmly until you enter their rush range, then explode forward at devastating speed. Their high damage punishes careless positioning.',
@@ -204,7 +205,7 @@ export const ENEMY_TYPES = {
         teleportCooldown: 3000,
         teleportRange: 8,
         spawnWeight: 4,
-        minArena: 4,
+        arenaIntro: 6,       // Introduced in Arena 6
         // Roster display fields
         tagline: 'Now You See Me...',
         description: 'Masters of spatial manipulation. Teleporters blink to random positions near you every few seconds, making them frustratingly hard to pin down. Their unpredictable movement demands constant vigilance.',
