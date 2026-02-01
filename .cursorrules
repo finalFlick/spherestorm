@@ -88,11 +88,30 @@ Each boss failure should teach something.
 1. Add to `js/config/enemies.js`
 2. Add behavior in `js/entities/enemies.js`
 3. Set `minArena` to gate appearance
+4. **Include roster display fields:** `tagline`, `description`, `behaviorText`
 
 #### New Boss
 1. Add to `js/config/bosses.js`
 2. Add AI in `js/entities/boss.js`
 3. Add arena badge in `js/config/badges.js`
+4. **Include roster display fields:** `tagline`, `description`, `behaviorText`
+
+#### Character Roster Maintenance
+The roster screen (`js/ui/rosterUI.js`) dynamically reads from enemy and boss configs.
+
+**When adding/modifying enemies or bosses, always include these display fields:**
+```javascript
+tagline: 'Short catchy phrase',           // Shows under name
+description: 'Lore-friendly explanation', // Main description text
+behaviorText: 'What it does in gameplay'  // Green behavior hint
+```
+
+**The roster auto-updates when:**
+- New enemy/boss configs are added (appears as "???" until encountered)
+- Display field text is changed
+- Stats/colors are modified
+
+**No separate roster file to maintain** - single source of truth in configs.
 
 #### New Arena
 1. Add to `js/config/arenas.js` with:
@@ -190,6 +209,7 @@ python -m http.server 8000
 | `js/systems/waveSystem.js` | Wave/arena progression |
 | `js/ui/hud.js` | HUD updates |
 | `js/ui/leaderboardUI.js` | Leaderboard display |
+| `js/ui/rosterUI.js` | Character roster (reads from enemy/boss configs) |
 
 ### 10. Documentation
 

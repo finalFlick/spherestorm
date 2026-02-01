@@ -52,11 +52,11 @@ SPHERESTORM is an **arcade-style score runner** with:
 #### Arena Mastery Badges (Persistent)
 | Badge | Icon | Arena | Boss |
 |-------|------|-------|------|
-| Initiate | 🏆 | 1 | The Pillar Guardian |
-| Bulwark Breaker | 🛡️ | 2 | The Slime Queen |
-| Ascension Adept | ⬆️ | 3 | The Teleporting Tyrant |
-| Platform Knight | 👑 | 4 | The Balloon King |
-| Maze Runner | 🌀 | 5 | The Tunnel Wyrm |
+| Initiate | 🏆 | 1 | The Gatekeeper |
+| Bulwark Breaker | 🛡️ | 2 | The Monolith |
+| Ascension Adept | ⬆️ | 3 | The Ascendant |
+| Platform Knight | 👑 | 4 | The Overgrowth |
+| Maze Runner | 🌀 | 5 | The Burrower |
 | Chaos Conqueror | 💀 | 6 | Chaos Incarnate |
 
 ### Local Leaderboard
@@ -104,11 +104,11 @@ Bosses are **puzzle tests** of arena mechanics, not just bullet sponges.
 
 | Boss | Arena | Mechanics Tested | Puzzle Element |
 |------|-------|------------------|----------------|
-| The Pillar Guardian | 1 | Movement, dodging | Charge attack timing, minion management |
-| The Slime Queen | 2 | Cover usage | Hazard avoidance, spawn control |
-| The Teleporting Tyrant | 3 | Spatial awareness | Predict teleport patterns |
-| The Balloon King | 4 | Platform control | Height management, split phase |
-| The Tunnel Wyrm | 5 | Corridor navigation | Burrow prediction, emerge timing |
+| The Gatekeeper | 1 | Movement, dodging | Charge attack timing, minion management |
+| The Monolith | 2 | Cover usage | Hazard avoidance, spawn control |
+| The Ascendant | 3 | Spatial awareness | Predict teleport patterns |
+| The Overgrowth | 4 | Platform control | Height management, split phase |
+| The Burrower | 5 | Corridor navigation | Burrow prediction, emerge timing |
 | Chaos Incarnate | 6 | All mechanics | Adapting to cycling abilities |
 
 **Boss Features:**

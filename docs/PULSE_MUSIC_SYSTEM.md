@@ -39,11 +39,11 @@ ARENA_CONFIG = {
 #### Boss Configurations (6 Bosses)
 | Arena | Boss Name | AI Type | Musical Identity |
 |-------|-----------|---------|------------------|
-| 1 | THE PILLAR GUARDIAN | `pillarGuardian` | Stoic, ritualistic |
-| 2 | THE SLIME QUEEN | `slimeQueen` | Organic, pulsating |
-| 3 | THE TELEPORTING TYRANT | `teleportingTyrant` | Glitchy, unpredictable |
-| 4 | THE BALLOON KING | `balloonKing` | Swelling, ominous |
-| 5 | THE TUNNEL WYRM | `tunnelWyrm` | Subterranean, rumbling |
+| 1 | THE GATEKEEPER | `pillarGuardian` | Stoic, ritualistic |
+| 2 | THE MONOLITH | `slimeQueen` | Organic, pulsating |
+| 3 | THE ASCENDANT | `teleportingTyrant` | Glitchy, unpredictable |
+| 4 | THE OVERGROWTH | `balloonKing` | Swelling, ominous |
+| 5 | THE BURROWER | `tunnelWyrm` | Subterranean, rumbling |
 | 6 | CHAOS INCARNATE | `chaosIncarnate` | All patterns combined |
 
 #### Wave State Machine
@@ -370,27 +370,27 @@ interface MusicProfile {
 
 ### Boss-Specific Musical Behaviors
 
-#### THE PILLAR GUARDIAN (Arena 1)
+#### THE GATEKEEPER (Arena 1)
 - **Charge Attack**: Music cuts to silence → impact on hit
 - **Summon**: Each spawned enemy adds a voice to the choir
 - **Cooldown**: Sustained organ note
 
-#### THE SLIME QUEEN (Arena 2)
+#### THE MONOLITH (Arena 2)
 - **Jump Prep**: Rising pitch bend
 - **Landing**: Sub-bass impact + hazard zone hiss
 - **Hazard Trail**: Acidic sizzle tuned to F#
 
-#### THE TELEPORTING TYRANT (Arena 3)
+#### THE ASCENDANT (Arena 3)
 - **Teleport Out**: Audio ducking + buffer stutter
 - **Teleport In**: Reverse cymbal swell
 - **Spawned Teleporters**: Pitch-shifted echo of main theme
 
-#### THE BALLOON KING (Arena 4)
+#### THE OVERGROWTH (Arena 4)
 - **Growth**: Swelling pad volume
 - **Hazard Spawn**: Water droplet percussion
 - **Mini-Boss Split**: Theme fragments into 3 voices
 
-#### THE TUNNEL WYRM (Arena 5)
+#### THE BURROWER (Arena 5)
 - **Burrow**: Low rumble, music muffles
 - **Underground**: Heartbeat-like pulse only
 - **Emergence**: Explosive full-spectrum hit

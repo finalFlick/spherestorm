@@ -69,11 +69,11 @@ Arenas teach mechanics progressively with **tiered wave counts** for faster earl
 
 Bosses are **puzzle tests** of learned mechanics, not just damage sponges:
 
-- **The Pillar Guardian** - Charges and summons; tests dodging
-- **The Slime Queen** - Creates hazard pools; tests positioning
-- **The Teleporting Tyrant** - Warps around; tests prediction
-- **The Balloon King** - Grows and splits; tests priority management
-- **The Tunnel Wyrm** - Burrows underground; tests awareness
+- **The Gatekeeper** - Charges and summons; tests dodging
+- **The Monolith** - Creates hazard pools; tests positioning
+- **The Ascendant** - Warps around; tests prediction
+- **The Overgrowth** - Grows and splits; tests priority management
+- **The Burrower** - Burrows underground; tests awareness
 - **Chaos Incarnate** - Uses all abilities; tests adaptation
 
 ### Badge System
