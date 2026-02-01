@@ -106,7 +106,7 @@ export const BADGES = {
         icon: '🏆',
         category: BADGE_CATEGORIES.ARENA,
         color: '#bronze',
-        description: 'Defeated The Pillar Guardian',
+        description: 'Defeated The Gatekeeper',
         arena: 1,
         persistent: true
     },
@@ -116,7 +116,7 @@ export const BADGES = {
         icon: '🛡️',
         category: BADGE_CATEGORIES.ARENA,
         color: '#silver',
-        description: 'Defeated The Slime Queen',
+        description: 'Defeated The Monolith',
         arena: 2,
         persistent: true
     },
@@ -126,7 +126,7 @@ export const BADGES = {
         icon: '⬆️',
         category: BADGE_CATEGORIES.ARENA,
         color: '#gold',
-        description: 'Defeated The Teleporting Tyrant',
+        description: 'Defeated The Ascendant',
         arena: 3,
         persistent: true
     },
@@ -136,7 +136,7 @@ export const BADGES = {
         icon: '👑',
         category: BADGE_CATEGORIES.ARENA,
         color: '#44ffff',
-        description: 'Defeated The Balloon King',
+        description: 'Defeated The Overgrowth',
         arena: 4,
         persistent: true
     },
@@ -146,7 +146,7 @@ export const BADGES = {
         icon: '🌀',
         category: BADGE_CATEGORIES.ARENA,
         color: '#ff44ff',
-        description: 'Defeated The Tunnel Wyrm',
+        description: 'Defeated The Burrower',
         arena: 5,
         persistent: true
     },
