@@ -7,6 +7,7 @@ import { WAVE_STATE } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { generateArena } from '../arena/generator.js';
 import { awardArenaBadge } from './badges.js';
+import { PulseMusic } from './pulseMusic.js';
 import { 
     showWaveAnnouncement, 
     hideWaveAnnouncement, 
@@ -35,7 +36,10 @@ function getMaxWaves() {
 }
 
 function handleWaveIntro() {
-    if (gameState.waveTimer === 0) showWaveAnnouncement();
+    if (gameState.waveTimer === 0) {
+        showWaveAnnouncement();
+        PulseMusic.onWaveStart(gameState.currentWave);
+    }
     gameState.waveTimer++;
     
     if (gameState.waveTimer > 120) {
@@ -69,6 +73,9 @@ function handleWaveActive() {
 }
 
 function handleWaveClear() {
+    if (gameState.waveTimer === 0) {
+        PulseMusic.onWaveClear();
+    }
     gameState.waveTimer++;
     
     if (gameState.waveTimer > 90) {
@@ -85,7 +92,10 @@ function handleWaveClear() {
 }
 
 function handleBossIntro() {
-    if (gameState.waveTimer === 0) showBossAnnouncement();
+    if (gameState.waveTimer === 0) {
+        showBossAnnouncement();
+        PulseMusic.onBossStart(gameState.currentArena);
+    }
     gameState.waveTimer++;
     
     if (gameState.waveTimer > 180) {
@@ -107,6 +117,7 @@ function handleBossActive() {
 function handleBossDefeated() {
     if (gameState.waveTimer === 0) {
         unlockArenaMechanics(gameState.currentArena);
+        PulseMusic.onBossDefeat();
         
         // Award persistent arena badge
         const badge = awardArenaBadge(gameState.currentArena);
@@ -133,6 +144,10 @@ function handleArenaTransition() {
         player.velocity.set(0, 0, 0);
         gameState.waveState = WAVE_STATE.WAVE_INTRO;
         gameState.waveTimer = 0;
+        
+        // Load new arena music profile
+        PulseMusic.onArenaChange(gameState.currentArena);
+        
         updateUI();
     }
 }

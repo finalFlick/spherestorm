@@ -2,7 +2,7 @@
 import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer } from './core/scene.js';
 import { initInput, resetInput } from './core/input.js';
-import { resetAllEntities } from './core/entities.js';
+import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
 import { WAVE_STATE, UI_UPDATE_INTERVAL } from './config/constants.js';
 
 import { createPlayer, updatePlayer, resetPlayer, player } from './entities/player.js';
@@ -15,6 +15,7 @@ import { updateXpGems, updateHearts } from './systems/pickups.js';
 import { resetDamageTime, setPlayerRef } from './systems/damage.js';
 import { initBadges, resetActiveBadges, updateStatBadges } from './systems/badges.js';
 import { initLeaderboard } from './systems/leaderboard.js';
+import { PulseMusic } from './systems/pulseMusic.js';
 
 import { generateArena, updateHazardZones } from './arena/generator.js';
 
@@ -54,9 +55,18 @@ function init() {
     // Initialize persistent systems
     initBadges();
     initLeaderboard();
+    PulseMusic.init();
     
     initInput(renderer.domElement);
     window.addEventListener('resize', onWindowResize);
+    
+    // Music toggle
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'm' || e.key === 'M') {
+            const enabled = PulseMusic.toggle();
+            console.log('[SPHERESTORM] Music:', enabled ? 'ON' : 'OFF');
+        }
+    });
     
     // Button event listeners
     document.getElementById('start-btn').addEventListener('click', startGame);
@@ -104,6 +114,12 @@ function startGame() {
     gameState.waveState = WAVE_STATE.WAVE_INTRO;
     gameState.waveTimer = 0;
     setGameStartTime(Date.now());
+    
+    // Start adaptive music
+    PulseMusic.resume();
+    PulseMusic.onArenaChange(1);
+    PulseMusic.startMusicLoop();
+    
     animate();
 }
 
@@ -125,6 +141,12 @@ function restartGame() {
     
     gameState.running = true;
     setGameStartTime(Date.now());
+    
+    // Restart music
+    PulseMusic.resume();
+    PulseMusic.onArenaChange(1);
+    PulseMusic.startMusicLoop();
+    
     updateUI();
     animate();
 }
@@ -132,6 +154,9 @@ function restartGame() {
 function gameOver() {
     gameState.running = false;
     document.exitPointerLock();
+    
+    // Stop music with game over stinger
+    PulseMusic.onGameOver();
     
     const score = gameState.score;
     const arena = gameState.currentArena;
@@ -165,6 +190,9 @@ function animate() {
         updateHazardZones();
         updateWaveSystem();
         shootProjectile();
+        
+        // Update adaptive music
+        PulseMusic.update(gameState, enemies, getCurrentBoss());
         
         // Check game over
         if (gameState.health <= 0) {

@@ -1,11 +1,16 @@
 import { gameState } from '../core/gameState.js';
 import { UPGRADES } from '../config/upgrades.js';
+import { PulseMusic } from '../systems/pulseMusic.js';
 
 export function levelUp() {
     gameState.level++;
     gameState.score += 50;
     gameState.pendingLevelUps = Math.max(0, gameState.pendingLevelUps - 1);
     gameState.health = Math.min(gameState.health + 10, gameState.maxHealth);
+    
+    // Play level up stinger
+    PulseMusic.onLevelUp();
+    
     showUpgradeMenu();
 }
 

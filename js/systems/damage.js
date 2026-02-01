@@ -1,5 +1,6 @@
 import { gameState } from '../core/gameState.js';
 import { DAMAGE_COOLDOWN } from '../config/constants.js';
+import { PulseMusic } from './pulseMusic.js';
 
 export let lastDamageTime = 0;
 let playerRef = null;
@@ -18,6 +19,9 @@ export function takeDamage(amount) {
     const flash = document.getElementById('damage-flash');
     flash.style.opacity = '1';
     setTimeout(() => flash.style.opacity = '0', 100);
+    
+    // Play damage music stinger
+    PulseMusic.onPlayerDamage(gameState.health / gameState.maxHealth);
     
     if (playerRef && playerRef.bodyMaterial) {
         playerRef.bodyMaterial.emissive.setHex(0xff0000);
