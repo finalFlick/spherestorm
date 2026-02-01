@@ -1,4 +1,6 @@
-# SPHERESTORM
+# Manta Sphere
+
+![Manta Sphere](assets/logo.png)
 
 A 3D arcade-style arena survival game built with Three.js. Survive waves of enemies, defeat bosses that test your skills, earn badges, and compete on the local leaderboard.
 
@@ -13,8 +15,8 @@ Then open http://localhost:8080
 
 Or manually:
 ```bash
-docker build -t spherestorm .
-docker run -p 8080:80 spherestorm
+docker build -t mantasphere .
+docker run -p 8080:80 mantasphere
 ```
 
 ### Option 2: Local Development
@@ -79,20 +81,20 @@ Bosses are **puzzle tests** of learned mechanics, not just damage sponges:
 ### Badge System
 
 **Stat Badges** (earned during run):
-- ⚡ Rapid Fire - Fast attack speed
-- 🎯 Multi-Shot - Multiple projectiles
-- ⚔️ Power Shot - High damage
-- 👟 Speedster - Fast movement
-- ❤️ Tank - High health
+- Rapid Fire - Fast attack speed
+- Multi-Shot - Multiple projectiles
+- Power Shot - High damage
+- Speedster - Fast movement
+- Tank - High health
 - And more...
 
 **Arena Mastery Badges** (persistent):
-- 🏆 Initiate - Beat Arena 1 boss
-- 🛡️ Bulwark Breaker - Beat Arena 2 boss
-- ⬆️ Ascension Adept - Beat Arena 3 boss
-- 👑 Platform Knight - Beat Arena 4 boss
-- 🌀 Maze Runner - Beat Arena 5 boss
-- 💀 Chaos Conqueror - Beat Arena 6 boss
+- Initiate - Beat Arena 1 boss
+- Bulwark Breaker - Beat Arena 2 boss
+- Ascension Adept - Beat Arena 3 boss
+- Platform Knight - Beat Arena 4 boss
+- Maze Runner - Beat Arena 5 boss
+- Chaos Conqueror - Beat Arena 6 boss
 
 ### Local Leaderboard
 
@@ -117,6 +119,8 @@ Procedural music that adapts to gameplay in real-time:
 ```
 /
 ├── index.html              # Game HTML/CSS
+├── assets/
+│   └── logo.png            # Game logo
 └── js/
     ├── main.js             # Entry point
     ├── config/             # Game configuration
@@ -143,6 +147,7 @@ Procedural music that adapts to gameplay in real-time:
     │   ├── pickups.js      # XP gems, hearts
     │   ├── projectiles.js  # Projectile handling
     │   ├── pulseMusic.js   # Adaptive music system
+    │   ├── visualFeedback.js # Visual effects system
     │   └── waveSystem.js   # Wave progression
     ├── arena/              # Arena generation
     │   └── generator.js    # Procedural building
@@ -152,7 +157,9 @@ Procedural music that adapts to gameplay in real-time:
     └── ui/                 # User interface
         ├── hud.js          # HUD elements
         ├── leaderboardUI.js # Leaderboard display
-        └── menus.js        # Menus
+        ├── menuScene.js    # 3D animated menu
+        ├── menus.js        # Menus
+        └── rosterUI.js     # Enemy roster display
 ```
 
 ## Development

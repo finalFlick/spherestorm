@@ -1,5 +1,5 @@
 # PULSE: Adaptive Music System Design
-## Code-Driven, Memorable, Diegetic Adaptive Music for SPHERESTORM
+## Code-Driven, Memorable, Diegetic Adaptive Music for Manta Sphere
 
 ---
 
@@ -874,5 +874,5 @@ const sfxPool = new AudioPool(32); // Object pool for enemy SFX
 ---
 
 *Document Version: 1.0*
-*Generated from SPHERESTORM codebase analysis*
+*Generated from Manta Sphere codebase analysis*
 *Designed for the Pulse — the heartbeat of the arena*

@@ -1,4 +1,4 @@
-# SPHERESTORM - Project State
+# Manta Sphere - Project State
 
 Current implementation status and known issues. Update this as the codebase evolves.
 

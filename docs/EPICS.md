@@ -1,4 +1,4 @@
-# SPHERESTORM - Epics & Feature Tracking
+# Manta Sphere - Epics & Feature Tracking
 
 This document tracks major features and initiatives. Update status as work progresses.
 
