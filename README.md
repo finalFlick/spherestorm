@@ -23,6 +23,7 @@ python -m http.server 8000
 | MOUSE | Look around |
 | CLICK | Lock cursor |
 | ESC | Pause |
+| M | Toggle Music |
 
 ## Game Design
 
@@ -75,6 +76,17 @@ Bosses are **puzzle tests** of learned mechanics, not just damage sponges:
 - High score entry with 3-character name
 - Viewable from main menu
 
+### PULSE Adaptive Music System
+
+Procedural music that adapts to gameplay in real-time:
+
+- **Arena Profiles** - Each arena has unique key, scale, and tempo derived from config
+- **Intensity Layers** - Music layers (kick → bass → chords → melody → arpeggio) activate based on enemy count and wave progress
+- **Boss Music** - Sub-bass drones, tension stabs, and chaotic fills during boss fights
+- **Phase Transitions** - Music intensifies as boss health drops through phases
+- **Game Events** - Wave start, wave clear, boss intro, victory, damage, and level-up stingers
+- **Toggle** - Press M to enable/disable music
+
 ## Project Structure
 
 ```
@@ -105,6 +117,7 @@ Bosses are **puzzle tests** of learned mechanics, not just damage sponges:
     │   ├── leaderboard.js  # Score persistence
     │   ├── pickups.js      # XP gems, hearts
     │   ├── projectiles.js  # Projectile handling
+    │   ├── pulseMusic.js   # Adaptive music system
     │   └── waveSystem.js   # Wave progression
     ├── arena/              # Arena generation
     │   └── generator.js    # Procedural building

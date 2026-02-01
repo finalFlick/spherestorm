@@ -1,5 +1,4 @@
 // Game constants
-export const WAVES_PER_ARENA = 10;
 export const DAMAGE_COOLDOWN = 500;
 export const PLAYER_JUMP_VELOCITY = 0.4;
 export const PLAYER_GRAVITY = 0.018;

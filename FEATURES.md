@@ -196,8 +196,8 @@ Bosses are **puzzle tests** of arena mechanics, not just bullet sponges.
 - [ ] Ghost replay of top runs
 
 ### Visual/Audio
-- [ ] Sound effects
-- [ ] Music
+- [x] Adaptive procedural music (PULSE system)
+- [ ] Sound effects (hits, pickups, UI)
 - [ ] Screen shake on impacts
 - [ ] Post-processing effects
 
@@ -208,9 +208,18 @@ Bosses are **puzzle tests** of arena mechanics, not just bullet sponges.
 
 ---
 
+### PULSE Adaptive Music System
+
+- [x] Procedural audio generation using Web Audio API
+- [x] Arena-specific music profiles (key, scale, tempo from config)
+- [x] Intensity-based layer system (kick → bass → chords → melody → arpeggio)
+- [x] Boss phase music transitions (sub-bass, tension stabs, chaos)
+- [x] Game event stingers (wave, boss, damage, level-up, victory)
+- [x] M key toggle for enable/disable
+- [x] Data-driven profile generation from ARENA_CONFIG, ENEMY_TYPES, BOSS_CONFIG
+
 ## Known Limitations
 
-1. **No audio** - Game is currently silent
-2. **No cloud saves** - Progress is local only
-3. **Desktop only** - No mobile support
-4. **Single player** - No multiplayer
+1. **No cloud saves** - Progress is local only
+2. **Desktop only** - No mobile support
+3. **Single player** - No multiplayer

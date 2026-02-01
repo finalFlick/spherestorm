@@ -30,9 +30,13 @@ export function showLeaderboard() {
                 .map(id => BADGES[id]?.icon || '')
                 .join('');
             
+            // Escape HTML in name to prevent XSS
+            const safeName = entry.name.replace(/[<>&"']/g, c => 
+                ({'<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;', "'":'&#39;'})[c]);
+            
             row.innerHTML = `
                 <span class="lb-rank">#${index + 1}</span>
-                <span class="lb-name">${entry.name}</span>
+                <span class="lb-name">${safeName}</span>
                 <span class="lb-score">${entry.score.toLocaleString()}</span>
                 <span class="lb-arena">A${entry.arena}-W${entry.wave}</span>
                 <span class="lb-badges">${badgeIcons}</span>
@@ -57,27 +61,28 @@ export function showHighScoreEntry(score, arena, wave, level, time, onSubmit) {
     document.getElementById('hs-rank').textContent = '#' + rank;
     document.getElementById('hs-score').textContent = score.toLocaleString();
     
-    const input = document.getElementById('hs-name-input');
+    // Clone input to remove old event listeners (prevents leak)
+    const oldInput = document.getElementById('hs-name-input');
+    const input = oldInput.cloneNode(true);
+    oldInput.parentNode.replaceChild(input, oldInput);
     input.value = '';
     input.focus();
     
-    // Handle submit
+    // Clone submit button to remove old event listeners
     const submitBtn = document.getElementById('hs-submit');
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
     
-    newSubmitBtn.addEventListener('click', () => {
+    const handleSubmit = () => {
         const name = input.value.trim() || 'AAA';
         const position = addScore(name, score, arena, wave, level, time);
         hideHighScoreEntry();
         if (onSubmit) onSubmit(position);
-    });
+    };
     
-    // Handle enter key
+    newSubmitBtn.addEventListener('click', handleSubmit);
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            newSubmitBtn.click();
-        }
+        if (e.key === 'Enter') handleSubmit();
     });
     
     document.getElementById('high-score-entry').style.display = 'flex';

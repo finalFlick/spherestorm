@@ -186,6 +186,7 @@ python -m http.server 8000
 | `js/core/gameState.js` | Central state |
 | `js/systems/badges.js` | Badge tracking |
 | `js/systems/leaderboard.js` | Score persistence |
+| `js/systems/pulseMusic.js` | Adaptive music system |
 | `js/systems/waveSystem.js` | Wave/arena progression |
 | `js/ui/hud.js` | HUD updates |
 | `js/ui/leaderboardUI.js` | Leaderboard display |
