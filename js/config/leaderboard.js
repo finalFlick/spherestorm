@@ -1,9 +1,10 @@
 // Leaderboard Configuration
+import { STORAGE_PREFIX } from './constants.js';
 
 export const LEADERBOARD_CONFIG = {
     maxEntries: 10,
-    storageKey: 'spherestorm_leaderboard',
-    persistentBadgesKey: 'spherestorm_badges'
+    storageKey: STORAGE_PREFIX + 'leaderboard',
+    persistentBadgesKey: STORAGE_PREFIX + 'badges'
 };
 
 // Leaderboard entry structure

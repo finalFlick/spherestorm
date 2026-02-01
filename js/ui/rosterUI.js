@@ -1,10 +1,11 @@
 // Character Roster UI - Dynamically displays enemies and bosses from config
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { BOSS_CONFIG } from '../config/bosses.js';
+import { STORAGE_PREFIX } from '../config/constants.js';
 
 // LocalStorage keys
-const ENCOUNTERED_ENEMIES_KEY = 'spherestorm_encountered_enemies';
-const ENCOUNTERED_BOSSES_KEY = 'spherestorm_encountered_bosses';
+const ENCOUNTERED_ENEMIES_KEY = STORAGE_PREFIX + 'encountered_enemies';
+const ENCOUNTERED_BOSSES_KEY = STORAGE_PREFIX + 'encountered_bosses';
 
 // Encountered tracking (loaded from localStorage)
 let encounteredEnemies = new Set();

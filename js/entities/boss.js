@@ -4,14 +4,14 @@ import { enemies, obstacles, hazardZones, tempVec3, getCurrentBoss, setCurrentBo
 import { player } from './player.js';
 import { spawnSpecificEnemy, spawnSplitEnemy } from './enemies.js';
 import { BOSS_CONFIG, ABILITY_COOLDOWNS, ABILITY_TELLS } from '../config/bosses.js';
-import { DAMAGE_COOLDOWN, HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES } from '../config/constants.js';
+import { DAMAGE_COOLDOWN, HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES, GAME_TITLE } from '../config/constants.js';
 import { spawnParticle, spawnShieldBreakVFX } from '../effects/particles.js';
 import { spawnXpGem, spawnHeart } from '../systems/pickups.js';
 import { createHazardZone } from '../arena/generator.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
-import { showBossHealthBar, updateBossHealthBar, hideBossHealthBar, showExposedBanner, showPhaseAnnouncement, showBoss6CycleAnnouncement, updateBoss6CycleIndicator, hideBoss6CycleIndicator, showTutorialCallout } from '../ui/hud.js';
+import { showBossHealthBar, updateBossHealthBar, hideBossHealthBar, showExposedBanner, showPhaseAnnouncement, showBoss6CycleAnnouncement, updateBoss6CycleIndicator, hideBoss6CycleIndicator, showTutorialCallout, showChainIndicator, hideChainIndicator, showBoss6SequencePreview, hideBoss6SequencePreview } from '../ui/hud.js';
 import { markBossEncountered } from '../ui/rosterUI.js';
-import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX } from '../systems/visualFeedback.js';
+import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX, createComboTether, updateComboTether, createComboLockInMarker, updateComboLockInMarker, createMinionTether, updateMinionTethers, createTetherSnapVFX, updateTetherSnapVFX, createChargeTrailSegment, updateChargeTrailSegment, createDetonationWarningVFX, updateDetonationWarningVFX, createTeleportDecoy, updateTeleportDecoy, createBlinkBarrageMarker, updateBlinkBarrageMarker, createVineZone, updateVineZone, createBurrowPath, updateBurrowPath, createFakeEmergeMarker, updateFakeEmergeMarker } from '../systems/visualFeedback.js';
 import { PulseMusic } from '../systems/pulseMusic.js';
 
 // Anti-stuck detection uses BOSS_STUCK_THRESHOLD and BOSS_STUCK_FRAMES from constants.js
@@ -84,6 +84,12 @@ export function spawnBoss(arenaNumber) {
     boss.comboDelayTimer = 0;
     boss.lastComboAbility = null;
     
+    // Combo VFX state
+    boss.comboTether = null;
+    boss.comboLockInMarker = null;
+    boss.comboActive = false;
+    boss.comboStanceActive = false;
+    
     // Initialize cooldowns
     for (const ability in ABILITY_COOLDOWNS) {
         boss.abilityCooldowns[ability] = 0;
@@ -97,6 +103,10 @@ export function spawnBoss(arenaNumber) {
     
     // Jump target for jump slam
     boss.jumpTarget = new THREE.Vector3();
+    
+    // Charge trail state (Gatekeeper P2+ leaves damage trails)
+    boss.chargeTrails = [];
+    boss.lastChargeTrailPos = new THREE.Vector3();
     
     // Burrow state
     boss.burrowTarget = new THREE.Vector3();
@@ -135,6 +145,7 @@ export function spawnBoss(arenaNumber) {
     // Growth tracking
     boss.growthScale = 1.0;
     boss.hasSplit = false;
+    boss.vineZones = [];  // Overgrowth P2+ vine DOT zones
     
     // Shield and exposed state (Boss 1)
     if (config.shieldConfig && config.shieldConfig.enabled) {
@@ -143,6 +154,9 @@ export function spawnBoss(arenaNumber) {
         boss.shieldMesh = createShieldBubble(boss, config.size * 1.2, config.shieldConfig.color);
         boss.shieldMesh.visible = false;
         boss.summonedMinions = [];
+        boss.minionTethers = [];      // Visible tethers from boss to minions
+        boss.tetherSnapVFXList = [];  // Active snap VFX animations
+        boss.shieldStartTime = 0;     // Track when shield was activated for failsafe timeout
     }
     
     if (config.exposedConfig) {
@@ -231,6 +245,64 @@ export function updateBoss() {
         }
     }
     
+    // Shield failsafe timeout - prevents softlock if minions get stuck
+    if (boss.shieldActive && boss.shieldConfig && boss.shieldConfig.failsafeTimeout) {
+        const shieldDuration = (Date.now() - boss.shieldStartTime) / 1000;
+        if (shieldDuration >= boss.shieldConfig.failsafeTimeout) {
+            // Auto-break shield with special message
+            boss.shieldActive = false;
+            boss.isExposed = true;
+            // Phase-scaled vulnerability window: 6s/5s/4s (360/300/240 frames)
+            const phaseVulnerability = { 1: 360, 2: 300, 3: 240 };
+            boss.exposedTimer = phaseVulnerability[boss.phase] || 300;
+            
+            if (boss.shieldMesh) {
+                boss.shieldMesh.visible = false;
+            }
+            
+            // Show failsafe message
+            showTutorialCallout('shieldOverload', 'SHIELD OVERLOAD - Boss exposed!', 2000);
+            
+            // Shield break VFX and audio
+            spawnShieldBreakVFX(boss.position, 0x4488ff);
+            PulseMusic.onBossShieldBreak();
+            PulseMusic.onBossExposed();
+            
+            // Create exposed VFX
+            boss.exposedVFX = createExposedVFX(boss);
+            
+            // Kill any remaining stuck minions and clean up tethers
+            if (boss.summonedMinions && boss.summonedMinions.length > 0) {
+                for (const minion of boss.summonedMinions) {
+                    if (minion && minion.parent) {
+                        // Create snap VFX for tether
+                        if (minion.tether) {
+                            const snapVFX = createTetherSnapVFX(minion.position.clone(), boss.baseColor);
+                            if (boss.tetherSnapVFXList) {
+                                boss.tetherSnapVFXList.push(snapVFX);
+                            }
+                            cleanupVFX(minion.tether);
+                        }
+                        
+                        spawnParticle(minion.position, minion.baseColor || 0xffffff, 5);
+                        scene.remove(minion);
+                        const idx = enemies.indexOf(minion);
+                        if (idx > -1) enemies.splice(idx, 1);
+                    }
+                }
+                boss.summonedMinions = [];
+            }
+            
+            // Clean up any remaining tethers
+            if (boss.minionTethers && boss.minionTethers.length > 0) {
+                for (const tether of boss.minionTethers) {
+                    cleanupVFX(tether);
+                }
+                boss.minionTethers = [];
+            }
+        }
+    }
+    
     // Anti-stuck detection
     updateAntiStuck(boss);
     
@@ -264,6 +336,110 @@ export function updateBoss() {
     
     // Unified AI loop
     updateBossAI(boss);
+    
+    // Update combo VFX
+    updateComboVFX(boss);
+    
+    // Update minion enrage (speed boost after 8s to prevent kiting)
+    if (boss.summonedMinions && boss.summonedMinions.length > 0) {
+        const now = Date.now();
+        for (const minion of boss.summonedMinions) {
+            if (!minion || !minion.parent) continue;  // Skip dead/removed minions
+            
+            if (minion.enrageStartTime) {
+                const elapsed = now - minion.enrageStartTime;
+                if (elapsed > minion.enrageDelay) {
+                    // Calculate enrage boost: +5%/sec after delay, capped at 40%
+                    const enrageTime = (elapsed - minion.enrageDelay) / 1000;
+                    const boost = Math.min(minion.enrageCap, enrageTime * minion.enrageRate);
+                    minion.speed = minion.baseSpeed * (1 + boost);
+                    
+                    // Visual feedback: increase emissive intensity as enrage builds
+                    if (minion.baseMaterial || minion.material) {
+                        const mat = minion.baseMaterial || minion.material;
+                        mat.emissiveIntensity = 0.4 + boost * 0.8;  // Max 0.72 intensity
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update minion tethers
+    if (boss.minionTethers && boss.minionTethers.length > 0) {
+        updateMinionTethers(boss, boss.minionTethers);
+    }
+    
+    // Update tether snap VFX
+    if (boss.tetherSnapVFXList && boss.tetherSnapVFXList.length > 0) {
+        for (let i = boss.tetherSnapVFXList.length - 1; i >= 0; i--) {
+            const vfx = boss.tetherSnapVFXList[i];
+            const shouldRemove = updateTetherSnapVFX(vfx);
+            if (shouldRemove) {
+                cleanupVFX(vfx);
+                boss.tetherSnapVFXList.splice(i, 1);
+            }
+        }
+    }
+    
+    // Update charge trails (Gatekeeper P2+)
+    if (boss.chargeTrails && boss.chargeTrails.length > 0) {
+        for (let i = boss.chargeTrails.length - 1; i >= 0; i--) {
+            const trail = boss.chargeTrails[i];
+            const shouldRemove = updateChargeTrailSegment(trail);
+            
+            // Check player collision with trail (deal damage)
+            if (!shouldRemove && trail.isDamageZone) {
+                const distToPlayer = trail.position.distanceTo(player.position);
+                if (distToPlayer < trail.damageRadius + 0.5) {
+                    const now = Date.now();
+                    if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+                        takeDamage(trail.damage, 'Charge Trail', 'hazard');
+                        setLastDamageTime(now);
+                    }
+                }
+            }
+            
+            if (shouldRemove) {
+                cleanupVFX(trail);
+                boss.chargeTrails.splice(i, 1);
+            }
+        }
+    }
+    
+    // Update vine zones (Overgrowth P2+)
+    if (boss.vineZones && boss.vineZones.length > 0) {
+        for (let i = boss.vineZones.length - 1; i >= 0; i--) {
+            const zone = boss.vineZones[i];
+            const shouldRemove = updateVineZone(zone);
+            
+            // Check player collision with vine zone
+            if (!shouldRemove && zone.isDamageZone) {
+                const distToPlayer = zone.position.distanceTo(player.position);
+                if (distToPlayer < zone.radius) {
+                    // Apply DOT damage (2 DPS = ~0.033 per frame at 60fps)
+                    const now = Date.now();
+                    if (!zone.lastDamageTime || now - zone.lastDamageTime > 500) {
+                        // Deal damage every 0.5 seconds while in zone
+                        takeDamage(zone.damagePerSecond * 0.5, 'Vine Zone', 'hazard');
+                        zone.lastDamageTime = now;
+                    }
+                    
+                    // Apply slow effect
+                    if (zone.slowFactor && player.slowTimer === undefined) {
+                        player.baseSpeed = player.speed;
+                    }
+                    if (zone.slowFactor) {
+                        player.slowTimer = 10; // Brief slow duration
+                    }
+                }
+            }
+            
+            if (shouldRemove) {
+                cleanupVFX(zone);
+                boss.vineZones.splice(i, 1);
+            }
+        }
+    }
     
     // Gravity
     boss.velocityY = (boss.velocityY || 0) - 0.015;
@@ -389,9 +565,118 @@ function triggerStuckRecovery(boss) {
 
 // ==================== UNIFIED AI LOOP ====================
 
+// Shield hibernation behavior - phase-based
+function getShieldBehavior(boss) {
+    if (!boss.shieldActive) return null;
+    
+    switch (boss.phase) {
+        case 1: return 'hibernate';        // Full hibernate - no attacks
+        case 2: return 'timedPulse';       // Light pressure every 4s
+        case 3: return 'filteredAggression'; // Full aggression minus top lethality
+        default: return 'hibernate';
+    }
+}
+
+// Check if ability is the "top lethality" move for this boss (blocked during P3 shield)
+function isTopLethalityAbility(boss, ability) {
+    // Top lethality moves per boss (blocked during Phase 3 shielded state)
+    const topLethality = {
+        1: 'charge',      // Gatekeeper's charge
+        2: 'jumpSlam',    // Monolith's slam
+        3: 'teleport',    // Ascendant's teleport
+        4: 'growth',      // Overgrowth's growth
+        5: 'burrow',      // Burrower's burrow
+        6: 'charge'       // Chaos's charge (or first in cycle)
+    };
+    
+    return topLethality[gameState.currentArena] === ability;
+}
+
 function updateBossAI(boss) {
+    // Gatekeeper P3 summon freeze - boss pauses briefly during ring summon
+    if (boss.summonFreeze && boss.summonFreezeTimer > 0) {
+        boss.summonFreezeTimer--;
+        if (boss.summonFreezeTimer <= 0) {
+            boss.summonFreeze = false;
+        }
+        return; // Skip AI while frozen
+    }
+    
     // If in strafe recovery, don't change state
     if (boss.strafeTimer > 0) return;
+    
+    // ==================== SHIELD HIBERNATION BEHAVIOR ====================
+    const shieldBehavior = getShieldBehavior(boss);
+    
+    if (shieldBehavior === 'hibernate') {
+        // Phase 1: Full hibernate - just slow orbit, no attacks
+        // Initialize pulse timer if needed
+        if (!boss.shieldPulseTimer) boss.shieldPulseTimer = 0;
+        
+        // Continue current ability if already started (don't interrupt mid-action)
+        if (boss.aiState !== 'idle' && boss.aiState !== 'cooldown') {
+            continueCurrentAbility(boss);
+            return;
+        }
+        
+        // Slow orbit around player instead of attacking
+        const orbitSpeed = 0.02;
+        const orbitDist = 10;
+        const angle = Date.now() * 0.001;
+        const targetX = player.position.x + Math.cos(angle) * orbitDist;
+        const targetZ = player.position.z + Math.sin(angle) * orbitDist;
+        
+        boss.position.x += (targetX - boss.position.x) * orbitSpeed;
+        boss.position.z += (targetZ - boss.position.z) * orbitSpeed;
+        clampBossPosition(boss);
+        return;
+    }
+    
+    if (shieldBehavior === 'timedPulse') {
+        // Phase 2: Timed pulse every 4 seconds (240 frames)
+        if (!boss.shieldPulseTimer) boss.shieldPulseTimer = 0;
+        boss.shieldPulseTimer++;
+        
+        // Continue current ability if already started
+        if (boss.aiState !== 'idle' && boss.aiState !== 'cooldown') {
+            continueCurrentAbility(boss);
+            return;
+        }
+        
+        // Move toward player slowly between pulses
+        moveTowardPlayer(boss, 0.3);
+        
+        // Every 4 seconds (240 frames), do a light pressure move
+        if (boss.shieldPulseTimer >= 240) {
+            boss.shieldPulseTimer = 0;
+            
+            // Pick a light pressure ability (hazards or summon repositioning)
+            // Avoid high-damage moves
+            if (boss.abilities.hazards && boss.abilityCooldowns.hazards <= 0) {
+                startAbility(boss, 'hazards');
+            } else if (boss.abilities.jumpSlam && boss.abilityCooldowns.jumpSlam <= 0) {
+                // Jump slam feint - reduced damage in P2 shield state
+                startAbility(boss, 'jumpSlam');
+            }
+        }
+        return;
+    }
+    
+    if (shieldBehavior === 'filteredAggression') {
+        // Phase 3: Full aggression but filter out top lethality move
+        // Reset pulse timer since we're in P3
+        boss.shieldPulseTimer = 0;
+        
+        // Continue to normal AI but will filter abilities in pickAbility
+        // (handled below in the normal flow)
+    }
+    
+    // Reset pulse timer when shield is down
+    if (!boss.shieldActive) {
+        boss.shieldPulseTimer = 0;
+    }
+    
+    // ==================== NORMAL AI FLOW ====================
     
     // Continue current action if busy
     if (boss.aiState !== 'idle' && boss.aiState !== 'cooldown') {
@@ -451,6 +736,10 @@ function updateBossAI(boss) {
             return;
         }
     } else {
+        // Combo completed - cleanup VFX
+        if (boss.comboActive) {
+            endComboVFX(boss);
+        }
         boss.currentCombo = null;
         boss.comboIndex = 0;
         boss.lastComboAbility = null;
@@ -458,7 +747,17 @@ function updateBossAI(boss) {
     }
     
     // Wait minimum time before next ability
-    if (boss.aiTimer < 60) return;
+    // Boss 6 P2+: Faster cycles (30% speed increase)
+    let minWaitTime = 60;
+    if (gameState.currentArena === 6 && boss.phase >= 2) {
+        minWaitTime = Math.floor(60 * 0.7);  // 42 frames instead of 60
+    }
+    if (boss.aiTimer < minWaitTime) return;
+    
+    // Boss 6 P3: Update sequence preview
+    if (gameState.currentArena === 6 && boss.phase >= 3) {
+        updateBoss6SequencePreview(boss);
+    }
     
     // Pick next ability
     const ability = pickAbility(boss);
@@ -471,10 +770,101 @@ function updateBossAI(boss) {
             if (matchingCombos.length > 0) {
                 boss.currentCombo = matchingCombos[Math.floor(Math.random() * matchingCombos.length)];
                 boss.comboIndex = 0;
+                
+                // Start combo VFX and audio
+                startComboVFX(boss);
             }
         }
         
         startAbility(boss, ability);
+    }
+}
+
+// ==================== COMBO VFX SYSTEM ====================
+
+function startComboVFX(boss) {
+    boss.comboActive = true;
+    
+    // Show UI chain indicator
+    showChainIndicator();
+    
+    // Play combo start audio
+    PulseMusic.onComboStart(boss.currentCombo ? boss.currentCombo.length : 2);
+    
+    // Create combo tether to next ability target (estimate based on player position)
+    const targetPos = player.position.clone();
+    boss.comboTether = createComboTether(boss, targetPos);
+    
+    // Create lock-in marker at estimated target
+    boss.comboLockInMarker = createComboLockInMarker(targetPos);
+    
+    // Phase 3 stance change - increase emissive intensity and slight tilt
+    if (boss.phase >= 3) {
+        boss.comboStanceActive = true;
+        if (boss.bodyMaterial) {
+            boss.bodyMaterial.emissiveIntensity = 0.8;
+        }
+        // Slight forward tilt for "aggressive" posture
+        boss.rotation.x = 0.1;
+    }
+}
+
+function updateComboVFX(boss) {
+    if (!boss.comboActive) return;
+    
+    // Update tether position (track player as estimated target)
+    if (boss.comboTether) {
+        updateComboTether(boss.comboTether, player.position);
+    }
+    
+    // Update lock-in marker position and animation
+    if (boss.comboLockInMarker) {
+        boss.comboLockInMarker.position.copy(player.position);
+        boss.comboLockInMarker.position.y = 0;
+        updateComboLockInMarker(boss.comboLockInMarker);
+    }
+    
+    // Phase 3 stance pulse
+    if (boss.comboStanceActive && boss.bodyMaterial) {
+        const pulse = 0.7 + 0.2 * Math.sin(Date.now() * 0.01);
+        boss.bodyMaterial.emissiveIntensity = pulse;
+    }
+}
+
+function endComboVFX(boss) {
+    if (!boss.comboActive) return;
+    
+    boss.comboActive = false;
+    
+    // Hide UI chain indicator
+    hideChainIndicator();
+    
+    // Play combo end audio
+    PulseMusic.onComboEnd();
+    
+    // Cleanup tether
+    if (boss.comboTether) {
+        // Dispose the tube geometry (not cached)
+        if (boss.comboTether.tubeGeom) {
+            boss.comboTether.tubeGeom.dispose();
+        }
+        cleanupVFX(boss.comboTether);
+        boss.comboTether = null;
+    }
+    
+    // Cleanup lock-in marker
+    if (boss.comboLockInMarker) {
+        cleanupVFX(boss.comboLockInMarker);
+        boss.comboLockInMarker = null;
+    }
+    
+    // Reset Phase 3 stance
+    if (boss.comboStanceActive) {
+        boss.comboStanceActive = false;
+        if (boss.bodyMaterial) {
+            boss.bodyMaterial.emissiveIntensity = 0.5;
+        }
+        boss.rotation.x = 0;
     }
 }
 
@@ -487,10 +877,16 @@ function pickAbility(boss) {
     const available = [];
     let totalWeight = 0;
     
+    // Check if we're in Phase 3 filtered aggression (shield active)
+    const isFilteredAggression = boss.shieldActive && boss.phase >= 3;
+    
     // Boss 2 special: favor pillar perch ability
     if (gameState.currentArena === 2 && boss.pillarPerchConfig && boss.abilityCooldowns.pillarPerch <= 0) {
         if (Math.random() < 0.4) {
-            return 'pillarPerch';
+            // Skip pillar perch if it's the top lethality during filtered aggression
+            if (!(isFilteredAggression && isTopLethalityAbility(boss, 'pillarPerch'))) {
+                return 'pillarPerch';
+            }
         }
     }
     
@@ -504,6 +900,11 @@ function pickAbility(boss) {
     for (const [ability, enabled] of Object.entries(boss.abilities)) {
         if (!enabled) continue;
         if (boss.abilityCooldowns[ability] > 0) continue;
+        
+        // Phase 3 filtered aggression: skip top lethality ability while shielded
+        if (isFilteredAggression && isTopLethalityAbility(boss, ability)) {
+            continue;
+        }
         
         const weights = boss.abilityWeights[ability];
         if (!weights) continue;
@@ -620,6 +1021,49 @@ function advanceBoss6Cycle(boss) {
     
     // Announce cycle change via HUD
     showBoss6CycleAnnouncement(BOSS6_CYCLE_NAMES[boss.currentCycleIndex]);
+}
+
+// Boss 6 P3: Get upcoming abilities for sequence preview
+function getBoss6UpcomingAbilities(boss, count = 3) {
+    if (!boss.abilityCycle) return [];
+    
+    const upcoming = [];
+    let cycleIdx = boss.currentCycleIndex;
+    let abilityIdx = boss.currentAbilityInCycle;
+    
+    for (let i = 0; i < count; i++) {
+        const cycle = boss.abilityCycle[cycleIdx];
+        if (!cycle) break;
+        
+        let ability = cycle[abilityIdx];
+        
+        // Skip split if already used or not low HP
+        if (ability === 'split' && (boss.hasSplit || boss.health >= boss.maxHealth * 0.5)) {
+            abilityIdx++;
+            if (abilityIdx >= cycle.length) {
+                cycleIdx = (cycleIdx + 1) % boss.abilityCycle.length;
+                abilityIdx = 0;
+            }
+            ability = boss.abilityCycle[cycleIdx][abilityIdx];
+        }
+        
+        upcoming.push(ability);
+        
+        // Advance to next
+        abilityIdx++;
+        if (abilityIdx >= cycle.length) {
+            cycleIdx = (cycleIdx + 1) % boss.abilityCycle.length;
+            abilityIdx = 0;
+        }
+    }
+    
+    return upcoming;
+}
+
+// Boss 6 P3: Update sequence preview in UI
+function updateBoss6SequencePreview(boss) {
+    const upcoming = getBoss6UpcomingAbilities(boss, 3);
+    showBoss6SequencePreview(upcoming);
 }
 
 // Update Boss 6 color based on current cycle (lerps toward target color)
@@ -763,11 +1207,25 @@ function continueCurrentAbility(boss) {
             break;
         case 'charging':
             boss.position.add(boss.chargeDirection.clone().multiplyScalar(boss.chargeSpeed));
+            
+            // Gatekeeper P2+: Leave damage trails during charge
+            if (gameState.currentArena === 1 && boss.phase >= 2) {
+                const distFromLastTrail = boss.position.distanceTo(boss.lastChargeTrailPos);
+                if (distFromLastTrail > 2.5 || boss.lastChargeTrailPos.length() === 0) {
+                    // Drop a trail segment
+                    const trail = createChargeTrailSegment(boss.position.clone(), boss.baseColor, 2.0);
+                    boss.chargeTrails.push(trail);
+                    boss.lastChargeTrailPos.copy(boss.position);
+                }
+            }
+            
             if (boss.aiTimer > 50 || isOutOfBounds(boss)) {
                 boss.aiState = 'cooldown';
                 boss.aiTimer = 0;
                 boss.bodyMaterial.emissiveIntensity = 0.5;
                 clampBossPosition(boss);
+                // Reset trail position for next charge
+                boss.lastChargeTrailPos.set(0, 0, 0);
             }
             break;
             
@@ -779,6 +1237,7 @@ function continueCurrentAbility(boss) {
                 // Activate shield if configured
                 if (boss.shieldConfig && boss.shieldConfig.activateOnSummon) {
                     boss.shieldActive = true;
+                    boss.shieldStartTime = Date.now();  // Track for failsafe timeout
                     if (boss.shieldMesh) {
                         boss.shieldMesh.visible = true;
                     }
@@ -792,6 +1251,17 @@ function continueCurrentAbility(boss) {
                     
                     // Audio cue for shield activation
                     PulseMusic.onBossShieldActivate();
+                }
+                
+                // Gatekeeper P3: Ring summon around PLAYER with inward arrows
+                const isGatekeeperP3 = gameState.currentArena === 1 && boss.phase >= 3;
+                const spawnCenter = isGatekeeperP3 ? player.position : boss.position;
+                const spawnRadius = isGatekeeperP3 ? 10 : 4 + Math.random() * 2;
+                
+                // Gatekeeper P3: Brief spawn freeze - boss pauses while summoning
+                if (isGatekeeperP3) {
+                    boss.summonFreeze = true;
+                    boss.summonFreezeTimer = 60; // 1 second freeze
                 }
                 
                 for (let i = 0; i < summonCount; i++) {
@@ -808,21 +1278,48 @@ function continueCurrentAbility(boss) {
                         enemyType = 'fastBouncer';
                     }
                     
-                    // Spread minions in arc around boss instead of clustering at boss position
+                    // Position minions in ring formation
                     const spawnAngle = (i / summonCount) * Math.PI * 2;
-                    const spawnDist = 4 + Math.random() * 2;
                     const spawnPos = new THREE.Vector3(
-                        boss.position.x + Math.cos(spawnAngle) * spawnDist,
+                        spawnCenter.x + Math.cos(spawnAngle) * spawnRadius,
                         boss.position.y,
-                        boss.position.z + Math.sin(spawnAngle) * spawnDist
+                        spawnCenter.z + Math.sin(spawnAngle) * spawnRadius
                     );
                     const minion = spawnSpecificEnemy(enemyType, spawnPos);
+                    
+                    // Gatekeeper P3: Create inward arrow indicator
+                    if (isGatekeeperP3 && minion) {
+                        // Point minion toward center (player position)
+                        const toCenter = new THREE.Vector3()
+                            .subVectors(spawnCenter, spawnPos)
+                            .normalize();
+                        minion.rotation.y = Math.atan2(toCenter.x, toCenter.z);
+                    }
                     
                     // Track minion for shield system
                     if (boss.shieldConfig && boss.shieldConfig.activateOnSummon) {
                         minion.isBossMinion = true;
                         minion.parentBoss = boss;
+                        
+                        // Phase 3: Summons are 30% squishier (easier to clear while boss fights)
+                        if (boss.phase >= 3) {
+                            minion.health *= 0.7;
+                            minion.maxHealth *= 0.7;
+                        }
+                        
+                        // Enrage timer: +5% speed/sec after 8 seconds, capped at +40%
+                        minion.enrageStartTime = Date.now();
+                        minion.enrageDelay = 8000;   // 8 seconds before enrage starts
+                        minion.enrageRate = 0.05;    // 5% per second
+                        minion.enrageCap = 0.4;      // Max 40% speed boost
+                        minion.baseSpeed = minion.speed;
+                        
                         boss.summonedMinions.push(minion);
+                        
+                        // Create visible tether from boss to minion
+                        const tether = createMinionTether(boss, minion, boss.baseColor);
+                        minion.tether = tether;  // Store reference on minion
+                        boss.minionTethers.push(tether);
                     }
                 }
                 spawnParticle(boss.position, boss.baseColor, 10);
@@ -848,7 +1345,9 @@ function continueCurrentAbility(boss) {
             tempVec3.normalize();
             boss.position.add(tempVec3.multiplyScalar(0.15));
             
-            if (boss.position.y <= boss.size * boss.growthScale + 0.1 && boss.velocityY < 0) {
+            // FIX: Changed velocityY < 0 to velocityY <= 0 to handle race condition
+            // where gravity resets velocityY to 0 when boss hits ground
+            if (boss.position.y <= boss.size * boss.growthScale + 0.1 && boss.velocityY <= 0) {
                 boss.aiState = 'landed';
                 boss.aiTimer = 0;
                 boss.bodyMaterial.emissiveIntensity = 0.5;
@@ -880,19 +1379,52 @@ function continueCurrentAbility(boss) {
                 const placedPositions = [];
                 const radius = 2 + boss.phase * 0.5;
                 
+                // Monolith P2+: Lane hazards (grid-aligned)
+                const isMonolithP2 = gameState.currentArena === 2 && boss.phase >= 2;
+                
                 for (let i = 0; i < hazardCount; i++) {
                     let hazardPos = null;
                     let attempts = 0;
                     
                     // Try to find a valid position that doesn't overlap and doesn't block all routes
                     while (!hazardPos && attempts < 10) {
-                        const angle = Math.random() * Math.PI * 2;
-                        const dist = 5 + Math.random() * 10;
-                        const testPos = new THREE.Vector3(
-                            boss.position.x + Math.cos(angle) * dist,
-                            0,
-                            boss.position.z + Math.sin(angle) * dist
-                        );
+                        let testPos;
+                        
+                        if (isMonolithP2) {
+                            // Lane-based placement: snap to grid lines
+                            const laneSpacing = 10;
+                            const lanes = [-20, -10, 0, 10, 20];
+                            const playerLaneX = lanes.reduce((prev, curr) => 
+                                Math.abs(curr - player.position.x) < Math.abs(prev - player.position.x) ? curr : prev
+                            );
+                            const playerLaneZ = lanes.reduce((prev, curr) => 
+                                Math.abs(curr - player.position.z) < Math.abs(prev - player.position.z) ? curr : prev
+                            );
+                            
+                            // Alternate between X-axis and Z-axis lanes
+                            if (i % 2 === 0) {
+                                // X-axis lane (same X as player, offset Z)
+                                const offsetZ = (i - hazardCount / 2) * laneSpacing;
+                                testPos = new THREE.Vector3(playerLaneX, 0, player.position.z + offsetZ);
+                            } else {
+                                // Z-axis lane (same Z as player, offset X)
+                                const offsetX = (i - hazardCount / 2) * laneSpacing;
+                                testPos = new THREE.Vector3(player.position.x + offsetX, 0, playerLaneZ);
+                            }
+                            
+                            // Clamp to arena bounds
+                            testPos.x = Math.max(-40, Math.min(40, testPos.x));
+                            testPos.z = Math.max(-40, Math.min(40, testPos.z));
+                        } else {
+                            // Random placement (original behavior)
+                            const angle = Math.random() * Math.PI * 2;
+                            const dist = 5 + Math.random() * 10;
+                            testPos = new THREE.Vector3(
+                                boss.position.x + Math.cos(angle) * dist,
+                                0,
+                                boss.position.z + Math.sin(angle) * dist
+                            );
+                        }
                         
                         // Validate position
                         const overlapping = isPositionOverlappingHazards(testPos, placedPositions, radius * 2 + 2);
@@ -911,11 +1443,25 @@ function continueCurrentAbility(boss) {
                         boss.hazardPreviews.push({ preview, pos: hazardPos, radius });
                     }
                 }
+                
+                // Monolith P3: Mark existing hazards for detonation
+                if (gameState.currentArena === 2 && boss.phase >= 3) {
+                    boss.detonationPending = true;
+                    boss.detonationTimer = 90; // 1.5 second warning
+                    // Store references to existing hazards for detonation
+                    boss.detonationTargets = hazardZones.slice(); // Copy current hazards
+                }
             }
             
             // Update preview markers
             if (boss.hazardPreviews) {
                 boss.hazardPreviews.forEach(hp => updateHazardPreviewCircle(hp.preview));
+            }
+            
+            // Monolith P3: Update detonation warning VFX
+            if (boss.detonationPending && boss.detonationWarnings) {
+                const progress = 1 - (boss.detonationTimer / 90);
+                boss.detonationWarnings.forEach(vfx => updateDetonationWarningVFX(vfx, progress));
             }
             
             // Spawn actual hazards (respects hazard budget)
@@ -930,6 +1476,58 @@ function continueCurrentAbility(boss) {
                     });
                     boss.hazardPreviews = null;
                 }
+                
+                // Monolith P3: Create detonation warnings for existing hazards
+                if (boss.detonationPending && boss.detonationTargets) {
+                    boss.detonationWarnings = [];
+                    for (const hazard of boss.detonationTargets) {
+                        if (hazard && hazard.parent) {
+                            const detonationRadius = hazard.radius * 3;
+                            const warning = createDetonationWarningVFX(
+                                hazard.position.clone(),
+                                hazard.radius,
+                                detonationRadius
+                            );
+                            warning.targetHazard = hazard;
+                            boss.detonationWarnings.push(warning);
+                        }
+                    }
+                }
+            }
+            
+            // Monolith P3: Execute detonation
+            if (boss.detonationPending && boss.detonationTimer !== undefined) {
+                boss.detonationTimer--;
+                
+                if (boss.detonationTimer <= 0) {
+                    // Detonate all marked hazards - expand to 3x radius
+                    if (boss.detonationWarnings) {
+                        for (const warning of boss.detonationWarnings) {
+                            if (warning.targetHazard && warning.targetHazard.parent) {
+                                const hazard = warning.targetHazard;
+                                const expandedRadius = hazard.radius * 3;
+                                
+                                // Check player collision with expanded radius
+                                const distToPlayer = hazard.position.distanceTo(player.position);
+                                if (distToPlayer < expandedRadius) {
+                                    const now = Date.now();
+                                    if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+                                        takeDamage(1.5, 'Hazard Detonation', 'hazard');
+                                        setLastDamageTime(now);
+                                    }
+                                }
+                                
+                                // Visual burst
+                                spawnParticle(hazard.position, 0xff8844, 15);
+                            }
+                            cleanupVFX(warning);
+                        }
+                        boss.detonationWarnings = null;
+                    }
+                    
+                    boss.detonationPending = false;
+                    boss.detonationTargets = null;
+                }
             }
             
             if (boss.aiTimer > tellDuration.hazards + 30) {
@@ -938,6 +1536,12 @@ function continueCurrentAbility(boss) {
                     boss.hazardPreviews.forEach(hp => cleanupVFX(hp.preview));
                     boss.hazardPreviews = null;
                 }
+                // Cleanup any remaining detonation warnings
+                if (boss.detonationWarnings) {
+                    boss.detonationWarnings.forEach(vfx => cleanupVFX(vfx));
+                    boss.detonationWarnings = null;
+                }
+                boss.detonationPending = false;
                 boss.aiState = 'idle';
                 boss.aiTimer = 0;
             }
@@ -949,16 +1553,80 @@ function continueCurrentAbility(boss) {
             if (boss.aiTimer === 0) {
                 boss.teleportOriginVFX = createTeleportOriginVFX(boss.position);
                 PulseMusic.onTeleport(false);
+                
+                // Ascendant P3: Start blink barrage sequence
+                if (gameState.currentArena === 3 && boss.phase >= 3 && !boss.blinkBarrageActive) {
+                    boss.blinkBarrageActive = true;
+                    boss.blinkBarrageIndex = 0;
+                    boss.blinkBarragePositions = [];
+                    boss.blinkBarrageMarkers = [];
+                    
+                    // Pre-generate 3 teleport positions and show markers
+                    for (let i = 0; i < 3; i++) {
+                        const pos = getValidTeleportDestination(boss);
+                        // Offset each position to avoid overlap
+                        pos.x += (i - 1) * 8;
+                        pos.z += (Math.random() - 0.5) * 10;
+                        boss.blinkBarragePositions.push(pos);
+                        
+                        const marker = createBlinkBarrageMarker(pos, i + 1);
+                        boss.blinkBarrageMarkers.push(marker);
+                    }
+                }
+            }
+            
+            // Ascendant: Update blink barrage markers
+            if (boss.blinkBarrageMarkers) {
+                boss.blinkBarrageMarkers.forEach(m => updateBlinkBarrageMarker(m));
             }
             
             boss.scale.setScalar(Math.max(0.01, 1 - boss.aiTimer / tellDuration.teleport));
             
             if (boss.aiTimer > tellDuration.teleport) {
-                // Determine destination using validated platform selection
-                const destPos = getValidTeleportDestination(boss);
+                // Ascendant P2+: Create decoy markers alongside real destination
+                const isAscendantP2 = gameState.currentArena === 3 && boss.phase >= 2;
                 
-                // Show destination marker
-                boss.teleportDestVFX = createTeleportDestinationVFX(destPos);
+                let destPos;
+                
+                // Ascendant P3: Use blink barrage positions
+                if (boss.blinkBarrageActive && boss.blinkBarragePositions) {
+                    destPos = boss.blinkBarragePositions[boss.blinkBarrageIndex];
+                    
+                    // Remove the marker for this position
+                    if (boss.blinkBarrageMarkers[boss.blinkBarrageIndex]) {
+                        cleanupVFX(boss.blinkBarrageMarkers[boss.blinkBarrageIndex]);
+                        boss.blinkBarrageMarkers[boss.blinkBarrageIndex] = null;
+                    }
+                    
+                    boss.blinkBarrageIndex++;
+                } else {
+                    destPos = getValidTeleportDestination(boss);
+                }
+                
+                // Ascendant P2: Create decoys (not during blink barrage)
+                if (isAscendantP2 && !boss.blinkBarrageActive) {
+                    boss.teleportDecoys = [];
+                    
+                    // Create 2 fake decoys
+                    for (let i = 0; i < 2; i++) {
+                        const fakePos = getValidTeleportDestination(boss);
+                        // Offset to spread them out
+                        fakePos.x += (Math.random() - 0.5) * 15;
+                        fakePos.z += (Math.random() - 0.5) * 15;
+                        const decoy = createTeleportDecoy(fakePos, false);
+                        boss.teleportDecoys.push(decoy);
+                    }
+                    
+                    // Create real marker with distinct visual
+                    const realDecoy = createTeleportDecoy(destPos, true);
+                    boss.teleportDecoys.push(realDecoy);
+                    
+                    // Play higher pitch audio for real destination
+                    PulseMusic.onTeleportReal?.();
+                } else {
+                    // Normal destination marker (or blink barrage)
+                    boss.teleportDestVFX = createTeleportDestinationVFX(destPos);
+                }
                 
                 // Cleanup origin VFX
                 if (boss.teleportOriginVFX) {
@@ -980,6 +1648,11 @@ function continueCurrentAbility(boss) {
                 updateTeleportDestinationVFX(boss.teleportDestVFX);
             }
             
+            // Update decoys
+            if (boss.teleportDecoys) {
+                boss.teleportDecoys.forEach(d => updateTeleportDecoy(d));
+            }
+            
             boss.scale.setScalar(Math.min(1, boss.aiTimer / 20));
             
             if (boss.aiTimer > 20) {
@@ -989,6 +1662,29 @@ function continueCurrentAbility(boss) {
                 if (boss.teleportDestVFX) {
                     cleanupVFX(boss.teleportDestVFX);
                     boss.teleportDestVFX = null;
+                }
+                
+                // Cleanup decoys
+                if (boss.teleportDecoys) {
+                    boss.teleportDecoys.forEach(d => cleanupVFX(d));
+                    boss.teleportDecoys = null;
+                }
+                
+                // Ascendant P3: Continue blink barrage
+                if (boss.blinkBarrageActive && boss.blinkBarrageIndex < 3) {
+                    // Brief pause then teleport again
+                    boss.aiState = 'teleport_out';
+                    boss.aiTimer = Math.floor(tellDuration.teleport * 0.5);  // Faster subsequent teleports
+                    return;
+                } else if (boss.blinkBarrageActive) {
+                    // Blink barrage complete - cleanup remaining markers
+                    if (boss.blinkBarrageMarkers) {
+                        boss.blinkBarrageMarkers.forEach(m => { if (m) cleanupVFX(m); });
+                        boss.blinkBarrageMarkers = null;
+                    }
+                    boss.blinkBarrageActive = false;
+                    boss.blinkBarragePositions = null;
+                    boss.blinkBarrageIndex = 0;
                 }
                 
                 // Enter vulnerability window (Boss 3+)
@@ -1065,6 +1761,25 @@ function continueCurrentAbility(boss) {
             if (boss.aiTimer === 0) {
                 boss.growthIndicator = createGrowthIndicator(boss);
                 PulseMusic.onBossGrowthStart();
+                
+                // Overgrowth P2+: Create vine DOT zones around boss
+                if (gameState.currentArena === 4 && boss.phase >= 2) {
+                    const vineCount = boss.phase >= 3 ? 4 : 2;
+                    const vineRadius = 3;
+                    
+                    for (let i = 0; i < vineCount; i++) {
+                        const angle = (i / vineCount) * Math.PI * 2 + Math.random() * 0.5;
+                        const dist = 5 + Math.random() * 3;
+                        const vinePos = new THREE.Vector3(
+                            boss.position.x + Math.cos(angle) * dist,
+                            0,
+                            boss.position.z + Math.sin(angle) * dist
+                        );
+                        
+                        const vineZone = createVineZone(vinePos, vineRadius, 5.0);
+                        boss.vineZones.push(vineZone);
+                    }
+                }
             }
             
             // Arena 6: smaller max growth (1.25) to prevent corridor blocking
@@ -1207,6 +1922,11 @@ function continueCurrentAbility(boss) {
                 boss.burrowTarget.copy(emergeTarget);
                 boss.burrowTarget.y = boss.size * boss.growthScale;
                 
+                // Burrower P3: Create visible travel path
+                if (gameState.currentArena === 5 && boss.phase >= 3) {
+                    boss.burrowPath = createBurrowPath(boss.position.clone(), boss.burrowTarget);
+                }
+                
                 // Start emerge warning
                 boss.aiState = 'emerge_warning';
                 boss.aiTimer = 0;
@@ -1218,9 +1938,42 @@ function continueCurrentAbility(boss) {
             break;
             
         case 'emerge_warning':
+            // Burrower P2+: Create fake emerge markers on first frame
+            if (boss.aiTimer === 0 && gameState.currentArena === 5 && boss.phase >= 2) {
+                boss.fakeEmergeMarkers = [];
+                const fakeCount = boss.phase >= 3 ? 3 : 2;
+                
+                for (let i = 0; i < fakeCount; i++) {
+                    // Position fake markers at random locations
+                    const fakePos = new THREE.Vector3(
+                        player.position.x + (Math.random() - 0.5) * 20,
+                        0,
+                        player.position.z + (Math.random() - 0.5) * 20
+                    );
+                    
+                    // Don't place fake too close to real
+                    if (fakePos.distanceTo(boss.burrowTarget) > 8) {
+                        const fakeMarker = createFakeEmergeMarker(fakePos);
+                        boss.fakeEmergeMarkers.push(fakeMarker);
+                    }
+                }
+                
+                // Note: Real marker already has audio cue (onBurrowWarning), fakes are silent
+            }
+            
             // Update warning VFX
             if (boss.emergeWarningVFX) {
                 updateEmergeWarningVFX(boss.emergeWarningVFX, boss.aiTimer);
+            }
+            
+            // Update fake markers
+            if (boss.fakeEmergeMarkers) {
+                boss.fakeEmergeMarkers.forEach(m => updateFakeEmergeMarker(m));
+            }
+            
+            // Update burrow path (P3)
+            if (boss.burrowPath) {
+                updateBurrowPath(boss.burrowPath);
             }
             
             const warningTime = boss.burrowConfig?.emergeWarningTime || 45;
@@ -1235,6 +1988,18 @@ function continueCurrentAbility(boss) {
                 if (boss.emergeWarningVFX) {
                     cleanupVFX(boss.emergeWarningVFX);
                     boss.emergeWarningVFX = null;
+                }
+                
+                // Cleanup fake markers
+                if (boss.fakeEmergeMarkers) {
+                    boss.fakeEmergeMarkers.forEach(m => cleanupVFX(m));
+                    boss.fakeEmergeMarkers = null;
+                }
+                
+                // Cleanup burrow path
+                if (boss.burrowPath) {
+                    cleanupVFX(boss.burrowPath);
+                    boss.burrowPath = null;
                 }
             }
             break;
@@ -1401,7 +2166,8 @@ function continueCurrentAbility(boss) {
                 boss.position.add(tempVec3);
                 
                 // Check if landed on pillar
-                if (boss.position.y >= pillarTop.y - 0.5 && boss.velocityY < 0) {
+                // FIX: Changed velocityY < 0 to velocityY <= 0 to handle race condition
+                if (boss.position.y >= pillarTop.y - 0.5 && boss.velocityY <= 0) {
                     boss.position.copy(pillarTop);
                     boss.position.y += boss.size;
                     boss.velocityY = 0;
@@ -1472,7 +2238,8 @@ function continueCurrentAbility(boss) {
             boss.position.add(tempVec3);
             
             // Impact
-            if (boss.position.y <= boss.size + 0.1 && boss.velocityY < 0) {
+            // FIX: Changed velocityY < 0 to velocityY <= 0 to handle race condition
+            if (boss.position.y <= boss.size + 0.1 && boss.velocityY <= 0) {
                 // Slam impact!
                 boss.position.y = boss.size;
                 boss.velocityY = 0;
@@ -2163,6 +2930,11 @@ function triggerPhaseTransition(boss, newPhase) {
     // Particle burst
     spawnParticle(boss.position, boss.baseColor, 30);
     
+    // Overgrowth P3: Trigger split at phase transition (not health-based)
+    if (gameState.currentArena === 4 && newPhase === 3 && !boss.hasSplit) {
+        boss.forceP3Split = true;  // Flag to trigger split in completePhaseTransition
+    }
+    
     // UI announcement
     const config = BOSS_CONFIG[gameState.currentArena];
     showPhaseAnnouncement(newPhase, config?.name || 'BOSS');
@@ -2182,6 +2954,13 @@ function completePhaseTransition(boss) {
     
     // Update visual for new phase
     updateBossPhaseVisuals(boss);
+    
+    // Overgrowth P3: Trigger split immediately
+    if (boss.forceP3Split) {
+        boss.forceP3Split = false;
+        boss.aiState = 'split';
+        boss.aiTimer = 0;
+    }
     
     boss.phaseTransitioning = false;
     boss.pendingPhase = null;
@@ -2292,6 +3071,11 @@ export function killBoss() {
     if (!currentBoss || currentBoss.isDying) return;
     currentBoss.isDying = true;
     
+    // Cleanup combo VFX if active
+    if (currentBoss.comboActive) {
+        endComboVFX(currentBoss);
+    }
+    
     // Track boss defeat for combat stats
     if (gameState.combatStats) {
         gameState.combatStats.bossesDefeated++;
@@ -2345,7 +3129,7 @@ export function killBoss() {
         PulseMusic.onFinalBossVictory();
         
         // Show victory message (triggers game completion UI)
-        showTutorialCallout('victory', 'CONGRATULATIONS! YOU HAVE CONQUERED THE SPHERESTORM!', 5000);
+        showTutorialCallout('victory', `CONGRATULATIONS! YOU HAVE CONQUERED ${GAME_TITLE.toUpperCase()}!`, 5000);
     }
     
     // Clear all remaining enemies on boss defeat

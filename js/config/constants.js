@@ -1,3 +1,7 @@
+// Game Identity
+export const GAME_TITLE = 'Manta Sphere';
+export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_';
+
 // Game constants
 export const DEBUG = false;  // Set to true for debug logging
 export const DAMAGE_COOLDOWN = 500;
@@ -12,6 +16,7 @@ export const UI_UPDATE_INTERVAL = 100;
 export const HEART_DROP_CHANCE = { normal: 0.03, elite: 0.10, boss: 1.0 };
 export const HEART_HEAL = { normal: 15, elite: 25, boss: 50 };
 export const HEART_TTL = 600;
+export const XP_GEM_TTL = 900;  // 15 seconds at 60fps
 
 export const WAVE_STATE = {
     WAVE_INTRO: 'WAVE_INTRO',
@@ -88,9 +93,9 @@ export const THREAT_BUDGET = {
         waterBalloon: { durability: 25, damage: 10, cognitive: 4 }
     },
     waveBudgets: {
-        lesson: { total: 80, maxCognitive: 6 },
-        integration: { total: 150, maxCognitive: 12 },
-        exam: { total: 250, maxCognitive: 15 }
+        lesson: { total: 400, maxCognitive: 15 },
+        integration: { total: 750, maxCognitive: 30 },
+        exam: { total: 1250, maxCognitive: 40 }
     },
     arenaScaling: { 1: 1.0, 2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8, 6: 2.0 }
 };

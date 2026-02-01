@@ -3,7 +3,7 @@ import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer, camera } from './core/scene.js';
 import { initInput, resetInput } from './core/input.js';
 import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
-import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG } from './config/constants.js';
+import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE } from './config/constants.js';
 
 import { createPlayer, updatePlayer, resetPlayer, player } from './entities/player.js';
 import { updateEnemies, clearEnemyGeometryCache } from './entities/enemies.js';
@@ -23,7 +23,7 @@ import { generateArena, updateHazardZones } from './arena/generator.js';
 
 import { initTrailPool, updateTrail, resetTrail } from './effects/trail.js';
 import { initParticlePool, updateParticles, resetParticles } from './effects/particles.js';
-import { updateSlowMo, updateScreenFlash, getTimeScale, updateCinematic, isCinematicActive, endCinematic, clearGeometryCache } from './systems/visualFeedback.js';
+import { updateSlowMo, updateScreenFlash, getTimeScale, updateCinematic, isCinematicActive, endCinematic, clearGeometryCache, startIntroCinematic, updateIntroCinematic, isIntroActive } from './systems/visualFeedback.js';
 
 import { 
     updateUI, 
@@ -39,7 +39,9 @@ import {
     showArenaSelect,
     hideArenaSelect,
     showDebugMenu,
-    hideDebugMenu
+    hideDebugMenu,
+    initAnnouncementSkip,
+    showStartBanner
 } from './ui/hud.js';
 
 import {
@@ -52,11 +54,17 @@ import {
 } from './ui/leaderboardUI.js';
 
 import { initRosterUI } from './ui/rosterUI.js';
+import { MenuScene } from './ui/menuScene.js';
 
 let lastUIUpdate = 0;
 let lastFrameTime = 0;
 
 function init() {
+    // Set document title from config
+    document.title = GAME_TITLE.toUpperCase();
+    const titleEl = document.querySelector('#start-screen h1');
+    if (titleEl) titleEl.textContent = GAME_TITLE.toUpperCase();
+    
     initScene();
     createGround();
     const playerInstance = createPlayer();
@@ -70,14 +78,21 @@ function init() {
     initLeaderboard();
     PulseMusic.init();
     
+    // Initialize animated menu background
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+        MenuScene.init(startScreen);
+    }
+    
     initInput(renderer.domElement);
+    initAnnouncementSkip();
     window.addEventListener('resize', onWindowResize);
     
     // Music toggle
     window.addEventListener('keydown', (e) => {
         if (e.key === 'm' || e.key === 'M') {
             const enabled = PulseMusic.toggle();
-            if (DEBUG) console.log('[SPHERESTORM] Music:', enabled ? 'ON' : 'OFF');
+            if (DEBUG) console.log(`[${GAME_TITLE.toUpperCase()}] Music:`, enabled ? 'ON' : 'OFF');
         }
     });
     
@@ -174,7 +189,7 @@ function init() {
     }
     
     // Start menu music on first user interaction (browser autoplay policy requires this)
-    const startScreen = document.getElementById('start-screen');
+    // Note: startScreen already declared above for MenuScene.init()
     let menuMusicStarted = false;
     
     const tryStartMenuMusic = () => {
@@ -198,8 +213,17 @@ function startGame() {
     hideStartScreen();
     resetActiveBadges();
     generateArena(1);
+    
+    // Position player but don't start waves yet - wait for intro
+    resetPlayer();
+    
+    // Start intro cinematic
+    startIntroCinematic(camera);
+    gameState.introCinematicActive = true;
+    
     gameState.running = true;
-    gameState.waveState = WAVE_STATE.WAVE_INTRO;
+    // Don't set waveState yet - wait for intro to finish
+    gameState.waveState = null;
     gameState.waveTimer = 0;
     setGameStartTime(Date.now());
     
@@ -279,12 +303,16 @@ function returnToMainMenu() {
     PulseMusic.stopMusicLoop();
     PulseMusic.startMenuMusic();
     
-    // Show main menu
+    // Show main menu and resume menu scene
     showStartScreen();
+    MenuScene.resume();
     updateMasteryDisplay();
 }
 
 function startAtArena(arenaNumber) {
+    // Pause menu scene animation
+    MenuScene.pause();
+    
     // Reset game state first
     resetGameState();
     resetAllEntities(scene);
@@ -411,6 +439,21 @@ function animate(currentTime) {
     
     if (!gameState.paused) {
         try {
+            // Handle intro cinematic (camera pan from above before gameplay starts)
+            if (gameState.introCinematicActive) {
+                const stillActive = updateIntroCinematic(camera, player);
+                if (!stillActive) {
+                    // Intro finished - show START banner and begin gameplay
+                    gameState.introCinematicActive = false;
+                    showStartBanner();
+                    gameState.waveState = WAVE_STATE.WAVE_INTRO;
+                    gameState.waveTimer = 0;
+                }
+                // Only render during intro - skip all game updates
+                renderer.render(scene, camera);
+                return;
+            }
+            
             // Always update visual effect timers (even during slow-mo)
             updateSlowMo();
             updateScreenFlash();
@@ -418,6 +461,22 @@ function animate(currentTime) {
             // Handle cinematic camera mode (boss intros)
             const cinematicActive = isCinematicActive();
             const currentBoss = getCurrentBoss();
+            
+            // Always update wave system (handles announcement timers)
+            updateWaveSystem();
+            
+            // Skip combat updates during announcement pause (but allow wave timer to tick)
+            if (gameState.announcementPaused) {
+                // Only update particles and UI during announcements
+                updateParticles(clampedDelta);
+                const now = Date.now();
+                if (now - lastUIUpdate > UI_UPDATE_INTERVAL) {
+                    updateUI();
+                    lastUIUpdate = now;
+                }
+                renderer.render(scene, camera);
+                return;
+            }
             
             if (cinematicActive && currentBoss) {
                 // Update cinematic camera - skip normal player camera update
@@ -436,7 +495,6 @@ function animate(currentTime) {
             updateParticles(clampedDelta);
             updateTrail();
             updateHazardZones();
-            updateWaveSystem();
             
             if (!cinematicActive) {
                 shootProjectile();
@@ -457,7 +515,7 @@ function animate(currentTime) {
                 lastUIUpdate = now;
             }
         } catch (error) {
-            console.error('[SPHERESTORM] Update error:', error);
+            console.error(`[${GAME_TITLE.toUpperCase()}] Update error:`, error);
             
             // Track consecutive errors for graceful degradation
             gameState._errorCount = (gameState._errorCount || 0) + 1;
@@ -467,10 +525,10 @@ function animate(currentTime) {
                 // Try to recover by resetting problematic state
                 gameState.waveState = WAVE_STATE.WAVE_ACTIVE;
                 gameState.bossActive = false;
-                console.warn(`[SPHERESTORM] Recovered from error (${gameState._errorCount}/3)`);
+                console.warn(`[${GAME_TITLE.toUpperCase()}] Recovered from error (${gameState._errorCount}/3)`);
             } else {
                 // Too many errors - stop the game to prevent cascading failures
-                console.error('[SPHERESTORM] Too many consecutive errors, stopping game');
+                console.error(`[${GAME_TITLE.toUpperCase()}] Too many consecutive errors, stopping game`);
                 gameState.running = false;
                 gameOver();
                 return;
