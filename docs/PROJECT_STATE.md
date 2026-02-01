@@ -31,15 +31,22 @@ Current implementation status and known issues. Update this as the codebase evol
 
 ### Enemy System
 - 8 enemy types with distinct behaviors
+- Config-driven visual profiles (unique silhouette attachments per type)
+- Movement signatures (sway, strafe, wobble, squash, stutter, etc.)
+- Telegraph cues before attacks (visual glow, compression, flicker)
+- Unique death VFX per enemy type (burst, shatter, splash, glitch, etc.)
 - Weighted spawn system
 - Arena-gated enemy unlocks
 - Enemy scaling with progression
 - Enemy jumping (unlocked after Arena 2)
+- Size bands: Swarm (0.30-0.40), Standard (0.45-0.62), Heavy (0.70-0.95)
 
 ### Boss System
-- 6 unique bosses with phase-based AI
+- 6 unique bosses with modular ability system
+- Accumulated tactics (each boss inherits previous boss abilities)
 - Boss health bar UI
-- Phase transitions at 66% and 33% HP
+- Phase transitions at 66% and 33% HP (with combo patterns in later phases)
+- Anti-stuck heuristics (strafe, jump bailout, teleport bailout)
 - Guaranteed heart drop on defeat
 - Persistent arena badge on defeat
 
@@ -101,14 +108,19 @@ Current implementation status and known issues. Update this as the codebase evol
 
 ### Enemies (`js/entities/enemies.js`)
 - Spawn enemies based on wave config
-- Update enemy AI each frame
+- Build enemy meshes from visual profiles (silhouette attachments)
+- Update enemy AI each frame with movement signatures
 - Handle enemy-specific behaviors (shoot, teleport, split, etc.)
-- Manage enemy death and cleanup
+- Manage telegraph state before attacks
+- Manage enemy death with type-specific VFX
 
 ### Boss (`js/entities/boss.js`)
 - Spawn arena-appropriate boss after final wave
-- Run boss-specific AI patterns
-- Track boss phases (100-66%, 66-33%, 33-0%)
+- Run unified modular AI with ability modules
+- Each boss inherits ALL previous boss abilities (accumulated tactics)
+- Anti-stuck detection and recovery (strafe, jump bailout, teleport bailout)
+- Track boss phases (100-66%, 66-33%, 33-0%) with pattern changes
+- Phase combos: higher phases chain abilities together
 - Handle boss defeat and rewards
 
 ### Wave System (`js/systems/waveSystem.js`)

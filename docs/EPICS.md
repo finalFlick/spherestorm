@@ -38,16 +38,22 @@ Progressive arena system with tiered wave counts and unique mechanics per arena.
 ### Epic: Boss System
 **Status:** Done
 
-Six unique bosses that test learned arena mechanics.
+Six unique bosses with modular ability system and accumulated tactics.
 
-| Boss | Arena | AI Type | Status |
-|------|-------|---------|--------|
-| The Pillar Guardian | 1 | Charge + summon | Done |
-| The Slime Queen | 2 | Hazard pools | Done |
-| The Teleporting Tyrant | 3 | Warp attacks | Done |
-| The Balloon King | 4 | Grow + split | Done |
-| The Tunnel Wyrm | 5 | Burrow + emerge | Done |
-| Chaos Incarnate | 6 | All abilities | Done |
+| Boss | Arena | Abilities | Inherits | Status |
+|------|-------|-----------|----------|--------|
+| The Gatekeeper | 1 | Charge + Summon | (base) | Done |
+| The Monolith | 2 | Jump Slam + Hazards | + Arena 1 | Done |
+| The Ascendant | 3 | Teleport | + Arena 1-2 | Done |
+| The Overgrowth | 4 | Growth + Split | + Arena 1-3 | Done |
+| The Burrower | 5 | Burrow/Emerge | + Arena 1-4 | Done |
+| Chaos Incarnate | 6 | All abilities | ALL | Done |
+
+**Features:**
+- Modular ability system with config-driven flags
+- Anti-stuck heuristics (strafe, jump bailout, teleport bailout)
+- Phase patterns with ability combos (Phase 2/3)
+- Shorter tells in higher phases
 
 **Files:** `js/config/bosses.js`, `js/entities/boss.js`
 
@@ -56,20 +62,27 @@ Six unique bosses that test learned arena mechanics.
 ### Epic: Enemy System  
 **Status:** Done
 
-Eight enemy types with weighted spawning and arena-gating.
+Eight enemy types with unique visual profiles for instant recognition.
 
-| Enemy | Behavior | Min Arena | Status |
-|-------|----------|-----------|--------|
-| Grunt | Chase | 1 | Done |
-| Shooter | Ranged | 1 | Done |
-| Shielded | Tank | 1 | Done |
-| Fast Bouncer | Bounce + homing | 2 | Done |
-| Splitter | Split on death | 2 | Done |
-| Shield Breaker | Charge attack | 3 | Done |
-| Water Balloon | Grow + explode | 3 | Done |
-| Teleporter | Warp near player | 4 | Done |
+| Enemy | Size Band | Visual Profile | Movement | Death VFX | Status |
+|-------|-----------|----------------|----------|-----------|--------|
+| Grunt | Standard | Spikes | Sway | Burst | Done |
+| Shooter | Standard | Turret | Strafe | Spark Ring | Done |
+| Shielded | Heavy | Ring | Stomp | Shatter | Done |
+| Fast Bouncer | Swarm | Springs | Squash | Streak | Done |
+| Splitter | Heavy | Cracks | Inertia | Crack Split | Done |
+| Shield Breaker | Standard | Horns | Jitter | Shock Cone | Done |
+| Water Balloon | Standard | Transparent | Wobble | Splash | Done |
+| Teleporter | Standard | Ghosts | Stutter | Glitch | Done |
 
-**Files:** `js/config/enemies.js`, `js/entities/enemies.js`
+**Features:**
+- Config-driven visual profiles (silhouette attachments)
+- Movement signatures per enemy type
+- Telegraph cues before attacks
+- Unique death VFX per type
+- Size bands: Swarm (0.30-0.40), Standard (0.45-0.62), Heavy (0.70-0.95)
+
+**Files:** `js/config/enemies.js`, `js/entities/enemies.js`, `js/effects/particles.js`
 
 ---
 
