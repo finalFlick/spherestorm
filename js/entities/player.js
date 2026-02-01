@@ -12,8 +12,17 @@ export let isDashing = false;
 export let lastDash = 0;
 const dashDirection = new THREE.Vector3();
 
+// Lean animation state
+let currentLeanX = 0;  // forward/back lean (W/S)
+let currentLeanZ = 0;  // left/right lean (A/D)
+
 export function createPlayer() {
     player = new THREE.Group();
+    
+    // Body group for visual model - receives lean rotation in local space
+    const bodyGroup = new THREE.Group();
+    player.add(bodyGroup);
+    player.bodyGroup = bodyGroup;
     
     const bodyMat = new THREE.MeshStandardMaterial({
         color: 0x44aaff,
@@ -21,38 +30,85 @@ export function createPlayer() {
         emissiveIntensity: 0.3
     });
     
+    // Manta ray body - wide flat ellipsoid
     const body = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.4, 0.4, 0.8, 16),
+        new THREE.SphereGeometry(0.6, 16, 12),
         bodyMat
     );
+    body.scale.set(1.5, 0.4, 1.2);  // Wide, flat, slightly elongated
     body.castShadow = true;
-    player.add(body);
+    bodyGroup.add(body);
     
-    const top = new THREE.Mesh(
-        new THREE.SphereGeometry(0.4, 16, 8),
+    // Wing left
+    const wingGeo = new THREE.ConeGeometry(0.8, 1.5, 4);
+    const wingLeft = new THREE.Mesh(wingGeo, bodyMat);
+    wingLeft.rotation.z = Math.PI / 2;
+    wingLeft.rotation.y = -0.3;
+    wingLeft.position.set(-0.8, 0, 0.1);
+    wingLeft.castShadow = true;
+    bodyGroup.add(wingLeft);
+    
+    // Wing right (mirrored)
+    const wingRight = new THREE.Mesh(wingGeo, bodyMat);
+    wingRight.rotation.z = -Math.PI / 2;
+    wingRight.rotation.y = 0.3;
+    wingRight.position.set(0.8, 0, 0.1);
+    wingRight.castShadow = true;
+    bodyGroup.add(wingRight);
+    
+    // Tail
+    const tail = new THREE.Mesh(
+        new THREE.ConeGeometry(0.15, 0.8, 8),
         bodyMat
     );
-    top.position.y = 0.4;
-    top.castShadow = true;
-    player.add(top);
+    tail.rotation.x = Math.PI / 2;
+    tail.position.set(0, 0, 0.9);
+    tail.castShadow = true;
+    bodyGroup.add(tail);
     
-    const bottom = new THREE.Mesh(
-        new THREE.SphereGeometry(0.4, 16, 8),
-        bodyMat
-    );
-    bottom.position.y = -0.4;
-    bottom.castShadow = true;
-    player.add(bottom);
-    
+    // Glow effect
     const glow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.8, 16, 16),
+        new THREE.SphereGeometry(1.2, 16, 16),
         new THREE.MeshBasicMaterial({
             color: 0x44aaff,
             transparent: true,
-            opacity: 0.2
+            opacity: 0.15
         })
     );
-    player.add(glow);
+    glow.scale.set(1.5, 0.5, 1.2);  // Match body proportions
+    bodyGroup.add(glow);
+    
+    // Attack direction indicator (180° arc on ground)
+    // Separate from player group to avoid lean rotation affecting it
+    const attackIndicator = new THREE.Group();
+    scene.add(attackIndicator);  // Add to scene, not player
+    player.attackIndicator = attackIndicator;
+    
+    const arcGeometry = new THREE.CircleGeometry(10, 32, 0, Math.PI);  // radius 10, 180°
+    const arcMaterial = new THREE.MeshBasicMaterial({
+        color: 0x44ffff,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    const attackArc = new THREE.Mesh(arcGeometry, arcMaterial);
+    attackArc.rotation.x = -Math.PI / 2;  // Lay flat on ground
+    attackIndicator.add(attackArc);
+    
+    // Edge glow for clearer boundary
+    const edgeGeometry = new THREE.RingGeometry(9.8, 10, 32, 1, 0, Math.PI);
+    const edgeMaterial = new THREE.MeshBasicMaterial({
+        color: 0x44ffff,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    const attackEdge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+    attackEdge.rotation.x = -Math.PI / 2;
+    attackEdge.position.y = 0.01;  // Slightly above arc
+    attackIndicator.add(attackEdge);
     
     player.position.y = 1;
     scene.add(player);
@@ -64,6 +120,11 @@ export function createPlayer() {
     player.wasInAir = false;
     player.squashTime = 0;
     
+    // Hit recovery state (invulnerability frames)
+    player.isRecovering = false;
+    player.recoveryTimer = 0;
+    player.flashPhase = 0;
+    
     return player;
 }
 
@@ -74,8 +135,8 @@ export function updatePlayer(delta) {
     
     if (keys['KeyW']) moveDir.add(forward.clone());
     if (keys['KeyS']) moveDir.sub(forward.clone());
-    if (keys['KeyA']) moveDir.sub(right.clone());
-    if (keys['KeyD']) moveDir.add(right.clone());
+    if (keys['KeyA']) moveDir.sub(right.clone().multiplyScalar(0.5));  // Reduced strafe - use mouse to turn
+    if (keys['KeyD']) moveDir.add(right.clone().multiplyScalar(0.5));  // Reduced strafe - use mouse to turn
     moveDir.normalize();
     
     const now = Date.now();
@@ -189,6 +250,46 @@ export function updatePlayer(delta) {
         player.scale.set(1, 1, 1);
     }
     
+    // Apply horizontal knockback velocity (from damage)
+    if (player.velocity.x !== 0 || player.velocity.z !== 0) {
+        player.position.x += player.velocity.x;
+        player.position.z += player.velocity.z;
+        // Decay knockback velocity
+        player.velocity.x *= 0.85;
+        player.velocity.z *= 0.85;
+        // Stop when very small
+        if (Math.abs(player.velocity.x) < 0.01) player.velocity.x = 0;
+        if (Math.abs(player.velocity.z) < 0.01) player.velocity.z = 0;
+    }
+    
+    // Hit recovery (invulnerability frames) - flash animation
+    if (player.isRecovering) {
+        player.recoveryTimer--;
+        player.flashPhase += 0.4;  // Speed of flash cycle
+        
+        // Cycle opacity between 0.3 and 1.0 using sine wave
+        const flashOpacity = 0.65 + 0.35 * Math.sin(player.flashPhase);
+        if (player.bodyMaterial) {
+            if (!player.bodyMaterial.transparent) {
+                player.bodyMaterial.transparent = true;
+                player.bodyMaterial.needsUpdate = true;
+            }
+            player.bodyMaterial.opacity = flashOpacity;
+        }
+        
+        // Recovery complete
+        if (player.recoveryTimer <= 0) {
+            player.isRecovering = false;
+            player.recoveryTimer = 0;
+            player.flashPhase = 0;
+            if (player.bodyMaterial) {
+                player.bodyMaterial.opacity = 1;
+                player.bodyMaterial.transparent = false;
+                player.bodyMaterial.needsUpdate = true;
+            }
+        }
+    }
+    
     // Arena bounds
     player.position.x = Math.max(-45, Math.min(45, player.position.x));
     player.position.z = Math.max(-45, Math.min(45, player.position.z));
@@ -221,6 +322,35 @@ export function updatePlayer(delta) {
         }
     }
     
+    // Rotate player group to face camera forward direction (Y axis only)
+    player.rotation.y = cameraAngleX;
+    
+    // Calculate lean targets based on movement keys
+    let targetLeanX = 0;  // forward/back
+    let targetLeanZ = 0;  // left/right
+    if (keys['KeyW']) targetLeanX = 0.15;   // lean forward
+    if (keys['KeyS']) targetLeanX = -0.15;  // lean back
+    if (keys['KeyA']) targetLeanZ = 0.15;   // lean left
+    if (keys['KeyD']) targetLeanZ = -0.15;  // lean right
+    
+    // Smooth interpolation for leaning - apply to body group (local space)
+    currentLeanX += (targetLeanX - currentLeanX) * 0.15;
+    currentLeanZ += (targetLeanZ - currentLeanZ) * 0.15;
+    player.bodyGroup.rotation.x = currentLeanX;
+    player.bodyGroup.rotation.z = currentLeanZ;
+    
+    // Position attack indicator manually (it's not a child of player, so unaffected by lean)
+    if (player.attackIndicator) {
+        // Position at player's feet, offset forward in the facing direction
+        const offsetDist = 5;
+        player.attackIndicator.position.set(
+            player.position.x - Math.sin(cameraAngleX) * offsetDist,
+            0.15,  // Above ground to avoid z-fighting
+            player.position.z - Math.cos(cameraAngleX) * offsetDist
+        );
+        player.attackIndicator.rotation.y = cameraAngleX;
+    }
+    
     // Camera follow
     camera.position.x = player.position.x + Math.sin(cameraAngleX) * 8;
     camera.position.z = player.position.z + Math.cos(cameraAngleX) * 8;
@@ -232,14 +362,30 @@ export function resetPlayer() {
     if (player) {
         player.position.set(0, 1, 0);
         player.velocity.set(0, 0, 0);
+        player.rotation.set(0, 0, 0);
+        if (player.bodyGroup) {
+            player.bodyGroup.rotation.set(0, 0, 0);
+        }
         player.isGrounded = true;
         player.bounceCount = 0;
         player.wasInAir = false;
         player.scale.set(1, 1, 1);
         player.squashTime = 0;
+        
+        // Reset hit recovery state
+        player.isRecovering = false;
+        player.recoveryTimer = 0;
+        player.flashPhase = 0;
+        if (player.bodyMaterial) {
+            player.bodyMaterial.opacity = 1;
+            player.bodyMaterial.transparent = false;
+            player.bodyMaterial.needsUpdate = true;
+        }
     }
     isDashing = false;
     lastDash = 0;
+    currentLeanX = 0;
+    currentLeanZ = 0;
 }
 
 export function getPlayer() {

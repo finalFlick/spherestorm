@@ -21,10 +21,10 @@ import {
 } from '../ui/hud.js';
 import { startCinematic, triggerSlowMo, endCinematic } from './visualFeedback.js';
 
-// Timing constants (in frames at 60fps)
-const WAVE_INTRO_FRAMES = 120;       // 2 seconds
-const WAVE_CLEAR_FRAMES = 90;        // 1.5 seconds
-const BOSS_INTRO_FRAMES = 180;       // 3 seconds
+// Timing constants (in frames at 60fps) - 3x longer for readability
+const WAVE_INTRO_FRAMES = 360;       // 6 seconds (3x original)
+const WAVE_CLEAR_FRAMES = 270;       // 4.5 seconds (3x original)
+const BOSS_INTRO_FRAMES = 540;       // 9 seconds (3x original)
 const BOSS_DEFEATED_FRAMES = 180;    // 3 seconds
 const ARENA_TRANSITION_FRAMES = 60;  // 1 second
 
@@ -49,12 +49,14 @@ function handleWaveIntro() {
     if (gameState.waveTimer === 0) {
         showWaveAnnouncement();
         PulseMusic.onWaveStart(gameState.currentWave);
+        gameState.announcementPaused = true;  // Pause during announcement
     }
     gameState.waveTimer++;
     
     if (gameState.waveTimer > WAVE_INTRO_FRAMES) {
         gameState.waveState = WAVE_STATE.WAVE_ACTIVE;
         gameState.waveTimer = 0;
+        gameState.announcementPaused = false;  // Unpause when announcement ends
         
         const maxWaves = getMaxWaves();
         const isLessonWave = (gameState.currentWave === 1);
@@ -72,13 +74,24 @@ function handleWaveIntro() {
         gameState.waveModifier = selectWaveModifier(gameState.currentArena, gameState.currentWave, maxWaves, isLessonWave);
         const modifierMult = gameState.waveModifier ? (WAVE_MODIFIERS[gameState.waveModifier].budgetMult || 1.0) : 1.0;
         
-        // Announce modifier to player
+        // Announce modifier to player (only once per arena)
         if (gameState.waveModifier && WAVE_MODIFIERS[gameState.waveModifier]) {
-            const modifier = WAVE_MODIFIERS[gameState.waveModifier];
-            const announcement = modifier.announcement || modifier.name;
-            showModifierAnnouncement(announcement);
+            const arena = gameState.currentArena;
             
-            // Trigger breather music mode for breather waves
+            // Initialize arena's shown modifiers set if needed
+            if (!gameState.shownModifiers[arena]) {
+                gameState.shownModifiers[arena] = new Set();
+            }
+            
+            // Only show announcement if not previously shown in this arena
+            if (!gameState.shownModifiers[arena].has(gameState.waveModifier)) {
+                const modifier = WAVE_MODIFIERS[gameState.waveModifier];
+                const announcement = modifier.announcement || modifier.name;
+                showModifierAnnouncement(announcement);
+                gameState.shownModifiers[arena].add(gameState.waveModifier);
+            }
+            
+            // Trigger breather music mode for breather waves (always, even if not announced)
             if (gameState.waveModifier === 'breather') {
                 PulseMusic.onBreatherStart();
             }
@@ -322,6 +335,7 @@ function checkWaveComplete() {
     const budgetExhausted = gameState.waveBudgetRemaining <= 0;
     const allEnemiesDead = enemies.length === 0;
     
+    // Wave completes when all enemies are dead - XP collection not required
     if (budgetExhausted && allEnemiesDead && !getCurrentBoss()) {
         gameState.waveState = WAVE_STATE.WAVE_CLEAR;
         gameState.waveTimer = 0;
@@ -365,6 +379,7 @@ function handleBossIntro() {
     if (gameState.waveTimer === 0) {
         showBossAnnouncement();
         PulseMusic.onBossStart(gameState.currentArena);
+        gameState.announcementPaused = true;  // Pause during announcement
     }
     gameState.waveTimer++;
     
@@ -373,6 +388,7 @@ function handleBossIntro() {
         gameState.bossActive = true;
         gameState.waveState = WAVE_STATE.BOSS_ACTIVE;
         gameState.waveTimer = 0;
+        gameState.announcementPaused = false;  // Unpause when announcement ends
         hideBossAnnouncement();
         
         // Trigger cinematic camera focus on boss with slow-mo

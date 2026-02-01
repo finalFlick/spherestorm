@@ -96,7 +96,8 @@ export const VISUAL_COLORS = {
     WARNING_ORANGE: 0xff8844,
     SAFE_GREEN: 0x44ff88,
     TELEPORT_PURPLE: 0xaa44ff,
-    BURROW_BROWN: 0x886644
+    BURROW_BROWN: 0x886644,
+    COMBO_GOLD: 0xffcc44      // White/gold for combo tethers
 };
 
 // ==================== ANIMATION TIMINGS ====================
@@ -870,6 +871,59 @@ export function endCinematic() {
     cinematicTarget = null;
 }
 
+// ==================== INTRO CINEMATIC ====================
+// Camera pan from high above the arena down to gameplay position
+
+let introActive = false;
+let introTimer = 0;
+const INTRO_DURATION = 180;  // 3 seconds at 60fps
+
+// Starting position: high above arena, looking down
+const INTRO_START = { x: 0, y: 25, z: 20 };
+// End position: normal gameplay camera position
+const INTRO_END = { x: 0, y: 5.88, z: 8 };
+
+export function startIntroCinematic(camera) {
+    introActive = true;
+    introTimer = 0;
+    camera.position.set(INTRO_START.x, INTRO_START.y, INTRO_START.z);
+    camera.lookAt(0, 0, 0);  // Look at arena center
+}
+
+export function updateIntroCinematic(camera, player) {
+    if (!introActive) return false;
+    
+    introTimer++;
+    const progress = Math.min(introTimer / INTRO_DURATION, 1);
+    
+    // Smooth easing (ease-out cubic)
+    const eased = 1 - Math.pow(1 - progress, 3);
+    
+    // Interpolate camera position
+    camera.position.x = INTRO_START.x + (INTRO_END.x - INTRO_START.x) * eased;
+    camera.position.y = INTRO_START.y + (INTRO_END.y - INTRO_START.y) * eased;
+    camera.position.z = INTRO_START.z + (INTRO_END.z - INTRO_START.z) * eased;
+    
+    // Gradually transition look target from arena center to player
+    const lookY = 0 + (player.position.y + 1) * eased;
+    camera.lookAt(player.position.x, lookY, player.position.z);
+    
+    if (progress >= 1) {
+        introActive = false;
+        return false;  // Intro complete
+    }
+    return true;  // Still active
+}
+
+export function isIntroActive() {
+    return introActive;
+}
+
+export function endIntroCinematic() {
+    introActive = false;
+    introTimer = 0;
+}
+
 // Screen flash effect
 let screenFlashActive = false;
 let screenFlashTimer = 0;
@@ -1585,6 +1639,952 @@ export function updateTemporaryWall(wall) {
     }
     
     return wall.remainingDuration <= 0;
+}
+
+// ==================== COMBO TETHER VFX ====================
+
+/**
+ * Creates a combo tether VFX - energy arc from boss to next ability target
+ * @param {THREE.Object3D} boss - The boss object
+ * @param {THREE.Vector3} targetPos - The position of the next ability target
+ * @returns {THREE.Group} The tether VFX group
+ */
+export function createComboTether(boss, targetPos) {
+    const group = new THREE.Group();
+    
+    // Calculate distance and direction
+    const startPos = boss.position.clone();
+    const direction = new THREE.Vector3().subVectors(targetPos, startPos);
+    const distance = direction.length();
+    
+    // Create curved tether beam (thin, semi-transparent)
+    // Use a simple curved line with multiple segments
+    const segments = 12;
+    const curveHeight = Math.min(distance * 0.3, 4); // Arc height proportional to distance
+    
+    const points = [];
+    for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const x = startPos.x + direction.x * t;
+        const z = startPos.z + direction.z * t;
+        // Parabolic arc
+        const y = startPos.y + curveHeight * 4 * t * (1 - t);
+        points.push(new THREE.Vector3(x, y, z));
+    }
+    
+    // Create tube along the curve
+    const curve = new THREE.CatmullRomCurve3(points);
+    const tubeGeom = new THREE.TubeGeometry(curve, segments, 0.15, 6, false);
+    const tubeMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.COMBO_GOLD,
+        transparent: true,
+        opacity: 0.6
+    });
+    const tube = new THREE.Mesh(tubeGeom, tubeMat);
+    group.add(tube);
+    group.tube = tube;
+    group.tubeGeom = tubeGeom; // Store for cleanup (not cached)
+    
+    // Energy particles along the tether
+    group.particles = [];
+    const particleCount = 5;
+    const particleGeom = getSphereGeometry(0.2, 8);
+    for (let i = 0; i < particleCount; i++) {
+        const particleMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.8
+        });
+        const particle = new THREE.Mesh(particleGeom, particleMat);
+        particle.t = i / particleCount; // Position along curve
+        particle.speed = 0.02 + Math.random() * 0.01;
+        group.add(particle);
+        group.particles.push(particle);
+    }
+    
+    // Store references for updates
+    group.boss = boss;
+    group.targetPos = targetPos.clone();
+    group.curve = curve;
+    group.createdTime = Date.now();
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates the combo tether VFX - animates particles along the arc
+ * @param {THREE.Group} tether - The tether VFX group
+ * @param {THREE.Vector3} newTargetPos - Optional new target position
+ */
+export function updateComboTether(tether, newTargetPos = null) {
+    if (!tether || !tether.curve) return;
+    
+    // Update target position if provided
+    if (newTargetPos && tether.boss) {
+        const startPos = tether.boss.position;
+        const direction = new THREE.Vector3().subVectors(newTargetPos, startPos);
+        const distance = direction.length();
+        const curveHeight = Math.min(distance * 0.3, 4);
+        const segments = 12;
+        
+        const points = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const x = startPos.x + direction.x * t;
+            const z = startPos.z + direction.z * t;
+            const y = startPos.y + curveHeight * 4 * t * (1 - t);
+            points.push(new THREE.Vector3(x, y, z));
+        }
+        
+        tether.curve = new THREE.CatmullRomCurve3(points);
+        tether.targetPos = newTargetPos.clone();
+        
+        // Rebuild tube geometry
+        if (tether.tube && tether.tubeGeom) {
+            tether.tubeGeom.dispose();
+            const newTubeGeom = new THREE.TubeGeometry(tether.curve, segments, 0.15, 6, false);
+            tether.tube.geometry = newTubeGeom;
+            tether.tubeGeom = newTubeGeom;
+        }
+    }
+    
+    // Animate particles along the curve
+    if (tether.particles && tether.curve) {
+        for (const particle of tether.particles) {
+            particle.t += particle.speed;
+            if (particle.t > 1) particle.t -= 1;
+            
+            const pos = tether.curve.getPointAt(particle.t);
+            particle.position.copy(pos);
+            
+            // Pulse opacity
+            particle.material.opacity = 0.5 + 0.5 * Math.sin(particle.t * Math.PI);
+        }
+    }
+    
+    // Pulse the tube opacity
+    if (tether.tube) {
+        const age = (Date.now() - tether.createdTime) / 1000;
+        tether.tube.material.opacity = 0.4 + 0.2 * Math.sin(age * 6);
+    }
+}
+
+/**
+ * Creates a lock-in marker at the next ability target position
+ * @param {THREE.Vector3} position - The target position
+ * @returns {THREE.Group} The lock-in marker group
+ */
+export function createComboLockInMarker(position) {
+    const group = new THREE.Group();
+    
+    // Outer ring (pulsing)
+    const outerRingMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.COMBO_GOLD,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+    });
+    const outerRing = new THREE.Mesh(
+        getRingGeometry(1.5, 2, 32),
+        outerRingMat
+    );
+    outerRing.rotation.x = -Math.PI / 2;
+    outerRing.position.y = 0.1;
+    group.add(outerRing);
+    group.outerRing = outerRing;
+    
+    // Inner crosshair
+    const crosshairMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    // Horizontal line
+    const hLine = new THREE.Mesh(
+        getPlaneGeometry(3, 0.15),
+        crosshairMat
+    );
+    hLine.rotation.x = -Math.PI / 2;
+    hLine.position.y = 0.15;
+    group.add(hLine);
+    
+    // Vertical line (actually Z axis on ground)
+    const vLine = new THREE.Mesh(
+        getPlaneGeometry(0.15, 3),
+        crosshairMat.clone()
+    );
+    vLine.rotation.x = -Math.PI / 2;
+    vLine.position.y = 0.15;
+    group.add(vLine);
+    
+    // Center dot
+    const centerDot = new THREE.Mesh(
+        getSphereGeometry(0.25, 8),
+        new THREE.MeshBasicMaterial({
+            color: VISUAL_COLORS.COMBO_GOLD,
+            transparent: true,
+            opacity: 0.9
+        })
+    );
+    centerDot.position.y = 0.3;
+    group.add(centerDot);
+    group.centerDot = centerDot;
+    
+    group.position.copy(position);
+    group.position.y = 0;
+    group.createdTime = Date.now();
+    scene.add(group);
+    
+    return group;
+}
+
+/**
+ * Updates the combo lock-in marker (pulsing animation)
+ * @param {THREE.Group} marker - The lock-in marker group
+ */
+export function updateComboLockInMarker(marker) {
+    if (!marker) return;
+    
+    const age = (Date.now() - marker.createdTime) / 1000;
+    
+    // Pulse outer ring
+    if (marker.outerRing) {
+        const scale = 1 + 0.1 * Math.sin(age * 8);
+        marker.outerRing.scale.setScalar(scale);
+        marker.outerRing.material.opacity = 0.4 + 0.3 * Math.sin(age * 6);
+    }
+    
+    // Rotate slightly
+    marker.rotation.y += 0.02;
+    
+    // Pulse center dot
+    if (marker.centerDot) {
+        marker.centerDot.material.opacity = 0.6 + 0.4 * Math.sin(age * 10);
+    }
+}
+
+// ==================== MINION TETHER VFX ====================
+
+/**
+ * Creates a tether beam from boss to a minion
+ * @param {THREE.Object3D} boss - The boss object
+ * @param {THREE.Object3D} minion - The minion object
+ * @param {number} color - The tether color (boss base color)
+ * @returns {THREE.Line} The tether line
+ */
+export function createMinionTether(boss, minion, color) {
+    // Create a simple line geometry for the tether
+    const points = [
+        boss.position.clone(),
+        minion.position.clone()
+    ];
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.5,
+        linewidth: 2
+    });
+    
+    const tether = new THREE.Line(geometry, material);
+    tether.boss = boss;
+    tether.minion = minion;
+    tether.tetherColor = color;
+    tether.createdTime = Date.now();
+    
+    scene.add(tether);
+    return tether;
+}
+
+/**
+ * Updates all minion tethers for a boss
+ * @param {THREE.Object3D} boss - The boss object
+ * @param {Array} tethers - Array of tether lines
+ */
+export function updateMinionTethers(boss, tethers) {
+    if (!tethers || !boss) return;
+    
+    const age = (Date.now() - (boss.shieldStartTime || Date.now())) / 1000;
+    
+    for (const tether of tethers) {
+        if (!tether || !tether.minion || !tether.minion.parent) continue;
+        
+        // Update tether positions
+        const positions = tether.geometry.attributes.position.array;
+        
+        // Start point (boss position, offset to center)
+        positions[0] = boss.position.x;
+        positions[1] = boss.position.y;
+        positions[2] = boss.position.z;
+        
+        // End point (minion position)
+        positions[3] = tether.minion.position.x;
+        positions[4] = tether.minion.position.y;
+        positions[5] = tether.minion.position.z;
+        
+        tether.geometry.attributes.position.needsUpdate = true;
+        
+        // Pulse opacity based on time
+        tether.material.opacity = 0.35 + 0.15 * Math.sin(age * 4);
+    }
+}
+
+/**
+ * Creates snap VFX when a minion tether breaks (minion dies)
+ * @param {THREE.Vector3} position - The position where tether snapped
+ * @param {number} color - The tether color
+ */
+export function createTetherSnapVFX(position, color) {
+    const group = new THREE.Group();
+    
+    // Snap particle burst - small sparks
+    const sparkCount = 6;
+    const sparkGeom = getSphereGeometry(0.15, 6);
+    
+    group.sparks = [];
+    for (let i = 0; i < sparkCount; i++) {
+        const sparkMat = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.9
+        });
+        const spark = new THREE.Mesh(sparkGeom, sparkMat);
+        
+        // Random velocity outward
+        const angle = (i / sparkCount) * Math.PI * 2;
+        spark.velocity = new THREE.Vector3(
+            Math.cos(angle) * 0.3,
+            0.2 + Math.random() * 0.2,
+            Math.sin(angle) * 0.3
+        );
+        
+        spark.position.copy(position);
+        group.add(spark);
+        group.sparks.push(spark);
+    }
+    
+    group.position.set(0, 0, 0);
+    group.createdTime = Date.now();
+    group.lifespan = 500; // 0.5 seconds
+    scene.add(group);
+    
+    return group;
+}
+
+/**
+ * Updates the tether snap VFX
+ * @param {THREE.Group} vfx - The snap VFX group
+ * @returns {boolean} true if VFX should be removed
+ */
+export function updateTetherSnapVFX(vfx) {
+    if (!vfx || !vfx.sparks) return true;
+    
+    const age = Date.now() - vfx.createdTime;
+    if (age > vfx.lifespan) return true;
+    
+    const progress = age / vfx.lifespan;
+    
+    for (const spark of vfx.sparks) {
+        // Move spark
+        spark.position.add(spark.velocity);
+        spark.velocity.y -= 0.02; // Gravity
+        
+        // Fade out
+        spark.material.opacity = 0.9 * (1 - progress);
+        
+        // Shrink
+        spark.scale.setScalar(1 - progress * 0.5);
+    }
+    
+    return false;
+}
+
+// ==================== TELEPORT DECOY VFX ====================
+
+/**
+ * Creates a decoy teleport destination marker (Ascendant P2+)
+ * @param {THREE.Vector3} position - The decoy position
+ * @param {boolean} isReal - Whether this is the real destination (affects visual)
+ * @returns {THREE.Group} The decoy VFX group
+ */
+export function createTeleportDecoy(position, isReal = false) {
+    const group = new THREE.Group();
+    
+    // Ground ring (same as real destination, but slightly different opacity)
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.TELEPORT_PURPLE,
+        transparent: true,
+        opacity: isReal ? 0.8 : 0.6,  // Real is slightly brighter
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(
+        getRingGeometry(2, 2.5, 32),
+        ringMat
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.1;
+    group.add(ring);
+    group.ring = ring;
+    
+    // Inner sigil - real has a distinct rune pattern (6 sides vs 4)
+    const sigilMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.TELEPORT_PURPLE,
+        transparent: true,
+        opacity: isReal ? 0.9 : 0.5,
+        side: THREE.DoubleSide
+    });
+    const sigilSegments = isReal ? 6 : 4;  // Real has hexagon, fake has square
+    const sigil = new THREE.Mesh(
+        getRingGeometry(1, 1.5, sigilSegments),
+        sigilMat
+    );
+    sigil.rotation.x = -Math.PI / 2;
+    sigil.position.y = 0.15;
+    group.add(sigil);
+    group.sigil = sigil;
+    
+    // Vertical beam
+    const beamMat = new THREE.MeshBasicMaterial({
+        color: isReal ? 0xffffff : VISUAL_COLORS.TELEPORT_PURPLE,
+        transparent: true,
+        opacity: isReal ? 0.5 : 0.3
+    });
+    const beam = new THREE.Mesh(
+        getCylinderGeometry(0.15, 0.3, 6, 8),
+        beamMat
+    );
+    beam.position.y = 3;
+    group.add(beam);
+    group.beam = beam;
+    
+    group.isReal = isReal;
+    group.position.copy(position);
+    group.position.y = 0;
+    group.createdTime = Date.now();
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates the teleport decoy VFX
+ * @param {THREE.Group} decoy - The decoy VFX group
+ */
+export function updateTeleportDecoy(decoy) {
+    if (!decoy) return;
+    
+    const age = (Date.now() - decoy.createdTime) / 1000;
+    
+    // Rotate sigil
+    if (decoy.sigil) {
+        decoy.sigil.rotation.z += decoy.isReal ? 0.05 : 0.02;
+    }
+    
+    // Pulse beam
+    if (decoy.beam) {
+        const pulse = 0.8 + 0.2 * Math.sin(age * (decoy.isReal ? 8 : 4));
+        decoy.beam.material.opacity = (decoy.isReal ? 0.5 : 0.3) * pulse;
+    }
+    
+    // Real marker has subtle shimmer
+    if (decoy.ring && decoy.isReal) {
+        decoy.ring.material.opacity = 0.7 + 0.1 * Math.sin(age * 6);
+    }
+}
+
+/**
+ * Creates a numbered blink barrage marker (Ascendant P3)
+ * @param {THREE.Vector3} position - The marker position
+ * @param {number} index - The sequence number (1, 2, or 3)
+ * @returns {THREE.Group} The barrage marker VFX group
+ */
+export function createBlinkBarrageMarker(position, index) {
+    const group = new THREE.Group();
+    
+    // Ground ring
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.TELEPORT_PURPLE,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(
+        getRingGeometry(1.5, 2, 32),
+        ringMat
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.1;
+    group.add(ring);
+    
+    // Number indicator (using small spheres in a pattern)
+    const dotColor = [0xffcc44, 0xff8844, 0xff4444][index - 1] || 0xffffff;
+    const dotGeom = getSphereGeometry(0.3, 8);
+    
+    // Create dots based on number (1, 2, or 3 dots)
+    for (let i = 0; i < index; i++) {
+        const dotMat = new THREE.MeshBasicMaterial({
+            color: dotColor,
+            transparent: true,
+            opacity: 0.9
+        });
+        const dot = new THREE.Mesh(dotGeom, dotMat);
+        const angle = (i / index) * Math.PI * 2 - Math.PI / 2;
+        dot.position.x = Math.cos(angle) * 0.6;
+        dot.position.y = 2;
+        dot.position.z = Math.sin(angle) * 0.6;
+        group.add(dot);
+    }
+    
+    group.index = index;
+    group.position.copy(position);
+    group.position.y = 0;
+    group.createdTime = Date.now();
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates the blink barrage marker
+ * @param {THREE.Group} marker - The barrage marker group
+ */
+export function updateBlinkBarrageMarker(marker) {
+    if (!marker) return;
+    
+    const age = (Date.now() - marker.createdTime) / 1000;
+    
+    // Gentle rotation
+    marker.rotation.y += 0.02;
+    
+    // Pulse effect
+    const scale = 1 + 0.1 * Math.sin(age * 4);
+    marker.scale.setScalar(scale);
+}
+
+// ==================== HAZARD DETONATION VFX ====================
+
+/**
+ * Creates a detonation warning around a hazard (Monolith P3)
+ * @param {THREE.Vector3} position - The hazard center position
+ * @param {number} currentRadius - The current hazard radius
+ * @param {number} detonationRadius - The expanded detonation radius (typically 3x)
+ * @returns {THREE.Group} The detonation warning VFX group
+ */
+export function createDetonationWarningVFX(position, currentRadius, detonationRadius) {
+    const group = new THREE.Group();
+    
+    // Pulsing outer ring showing detonation range
+    const outerRingMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.WARNING_ORANGE,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide
+    });
+    const outerRing = new THREE.Mesh(
+        getRingGeometry(detonationRadius - 0.3, detonationRadius, 32),
+        outerRingMat
+    );
+    outerRing.rotation.x = -Math.PI / 2;
+    outerRing.position.y = 0.15;
+    group.add(outerRing);
+    group.outerRing = outerRing;
+    
+    // Inner danger fill
+    const dangerFillMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.DANGER_RED,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide
+    });
+    const dangerFill = new THREE.Mesh(
+        getCircleGeometry(detonationRadius, 32),
+        dangerFillMat
+    );
+    dangerFill.rotation.x = -Math.PI / 2;
+    dangerFill.position.y = 0.1;
+    group.add(dangerFill);
+    group.dangerFill = dangerFill;
+    
+    // Exclamation icon at center
+    const iconMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.WARNING_ORANGE,
+        transparent: true,
+        opacity: 0.8
+    });
+    const icon = new THREE.Mesh(
+        getConeGeometry(0.5, 1.5, 4),
+        iconMat
+    );
+    icon.rotation.x = Math.PI; // Point down
+    icon.position.y = 2;
+    group.add(icon);
+    group.icon = icon;
+    
+    group.position.copy(position);
+    group.position.y = 0;
+    group.createdTime = Date.now();
+    group.detonationRadius = detonationRadius;
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates the detonation warning VFX (pulsing animation)
+ * @param {THREE.Group} vfx - The detonation warning VFX group
+ * @param {number} progress - Progress toward detonation (0-1)
+ */
+export function updateDetonationWarningVFX(vfx, progress) {
+    if (!vfx) return;
+    
+    // Pulse faster as detonation approaches
+    const pulseSpeed = 3 + progress * 10;
+    const pulse = Math.sin(Date.now() * 0.001 * pulseSpeed);
+    
+    // Outer ring scale and opacity
+    if (vfx.outerRing) {
+        const scale = 0.9 + 0.1 * pulse;
+        vfx.outerRing.scale.setScalar(scale);
+        vfx.outerRing.material.opacity = 0.3 + 0.4 * progress + 0.2 * pulse;
+    }
+    
+    // Danger fill intensity
+    if (vfx.dangerFill) {
+        vfx.dangerFill.material.opacity = 0.1 + 0.3 * progress;
+    }
+    
+    // Icon bob and pulse
+    if (vfx.icon) {
+        vfx.icon.position.y = 2 + 0.3 * pulse;
+        vfx.icon.material.opacity = 0.6 + 0.4 * progress;
+    }
+}
+
+// ==================== BURROW PATH VFX ====================
+
+/**
+ * Creates a visible underground travel path (Burrower P3)
+ * @param {THREE.Vector3} startPos - The start position (burrow point)
+ * @param {THREE.Vector3} endPos - The end position (emerge point)
+ * @returns {THREE.Group} The burrow path VFX group
+ */
+export function createBurrowPath(startPos, endPos) {
+    const group = new THREE.Group();
+    
+    // Calculate path
+    const direction = new THREE.Vector3().subVectors(endPos, startPos);
+    const distance = direction.length();
+    direction.normalize();
+    
+    // Create dotted path line (series of small markers)
+    const dotCount = Math.floor(distance / 2);
+    const dotGeom = getSphereGeometry(0.4, 6);
+    
+    group.dots = [];
+    for (let i = 0; i <= dotCount; i++) {
+        const t = i / dotCount;
+        const dotMat = new THREE.MeshBasicMaterial({
+            color: 0xff44ff,  // Magenta (Burrower color)
+            transparent: true,
+            opacity: 0.3 + 0.4 * (1 - t)  // Fade toward destination
+        });
+        const dot = new THREE.Mesh(dotGeom, dotMat);
+        
+        dot.position.set(
+            startPos.x + direction.x * distance * t,
+            0.2,
+            startPos.z + direction.z * distance * t
+        );
+        dot.t = t;  // Store position along path
+        
+        group.add(dot);
+        group.dots.push(dot);
+    }
+    
+    // Arrow at destination
+    const arrowMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.DANGER_RED,
+        transparent: true,
+        opacity: 0.7
+    });
+    const arrow = new THREE.Mesh(
+        getConeGeometry(0.6, 1.2, 4),
+        arrowMat
+    );
+    arrow.rotation.x = -Math.PI / 2;  // Point forward
+    arrow.rotation.y = Math.atan2(direction.x, direction.z);
+    arrow.position.copy(endPos);
+    arrow.position.y = 0.5;
+    group.add(arrow);
+    group.arrow = arrow;
+    
+    group.createdTime = Date.now();
+    group.startPos = startPos.clone();
+    group.endPos = endPos.clone();
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates the burrow path VFX (animated dots moving toward destination)
+ * @param {THREE.Group} path - The burrow path group
+ */
+export function updateBurrowPath(path) {
+    if (!path || !path.dots) return;
+    
+    const age = (Date.now() - path.createdTime) / 1000;
+    
+    // Animate dots (wave effect moving toward destination)
+    path.dots.forEach((dot, i) => {
+        const wave = Math.sin(age * 6 - dot.t * 4);
+        dot.position.y = 0.2 + 0.15 * wave;
+        dot.material.opacity = (0.3 + 0.4 * (1 - dot.t)) * (0.7 + 0.3 * wave);
+    });
+    
+    // Pulse arrow
+    if (path.arrow) {
+        const pulse = 0.7 + 0.3 * Math.sin(age * 8);
+        path.arrow.material.opacity = pulse;
+    }
+}
+
+/**
+ * Creates a fake emerge warning marker (Burrower P2 - silent decoy)
+ * @param {THREE.Vector3} position - The fake marker position
+ * @returns {THREE.Group} The fake marker VFX group
+ */
+export function createFakeEmergeMarker(position) {
+    const group = new THREE.Group();
+    
+    // Similar to real emerge warning but smaller/dimmer
+    const crackGeom = getRingGeometry(2.5, 3.5, 6);
+    const crackMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.BURROW_BROWN,
+        transparent: true,
+        opacity: 0.4,  // Dimmer than real
+        side: THREE.DoubleSide
+    });
+    const crack = new THREE.Mesh(crackGeom, crackMat);
+    crack.rotation.x = -Math.PI / 2;
+    group.add(crack);
+    group.crack = crack;
+    
+    // Pulsing inner (smaller than real)
+    const pulseGeom = getCircleGeometry(1.5, 16);
+    const pulseMat = new THREE.MeshBasicMaterial({
+        color: VISUAL_COLORS.DANGER_RED,
+        transparent: true,
+        opacity: 0.25,  // Dimmer
+        side: THREE.DoubleSide
+    });
+    const pulse = new THREE.Mesh(pulseGeom, pulseMat);
+    pulse.rotation.x = -Math.PI / 2;
+    group.add(pulse);
+    group.pulse = pulse;
+    
+    // No tall beam (unlike real marker)
+    
+    group.position.copy(position);
+    group.position.y = 0;
+    group.createdTime = Date.now();
+    group.isFake = true;
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates the fake emerge marker
+ * @param {THREE.Group} marker - The fake marker group
+ */
+export function updateFakeEmergeMarker(marker) {
+    if (!marker) return;
+    
+    const age = (Date.now() - marker.createdTime) / 1000;
+    
+    // Subtle pulse (less intense than real)
+    if (marker.pulse) {
+        marker.pulse.material.opacity = 0.2 + 0.1 * Math.sin(age * 3);
+    }
+    
+    // Slight rotation
+    marker.rotation.y += 0.01;
+}
+
+// ==================== VINE ZONE VFX ====================
+
+/**
+ * Creates a vine DOT zone around the boss (Overgrowth P2+)
+ * @param {THREE.Vector3} position - The zone center position
+ * @param {number} radius - The zone radius
+ * @param {number} duration - Zone duration in seconds
+ * @returns {THREE.Group} The vine zone VFX group
+ */
+export function createVineZone(position, radius, duration = 5.0) {
+    const group = new THREE.Group();
+    
+    // Ground texture - circular vine pattern
+    const groundMat = new THREE.MeshBasicMaterial({
+        color: 0x228822,  // Dark green
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
+    });
+    const ground = new THREE.Mesh(
+        getCircleGeometry(radius, 32),
+        groundMat
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0.05;
+    group.add(ground);
+    group.ground = ground;
+    
+    // Outer ring (pulsing)
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x44aa44,  // Brighter green
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(
+        getRingGeometry(radius - 0.3, radius, 32),
+        ringMat
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.1;
+    group.add(ring);
+    group.ring = ring;
+    
+    // Vine tendrils (small cones pointing up)
+    group.tendrils = [];
+    const tendrilCount = Math.floor(radius * 3);
+    const tendrilGeom = getConeGeometry(0.2, 0.8, 4);
+    for (let i = 0; i < tendrilCount; i++) {
+        const tendrilMat = new THREE.MeshBasicMaterial({
+            color: 0x33aa33,
+            transparent: true,
+            opacity: 0.7
+        });
+        const tendril = new THREE.Mesh(tendrilGeom, tendrilMat);
+        const angle = (i / tendrilCount) * Math.PI * 2;
+        const dist = radius * (0.3 + Math.random() * 0.6);
+        tendril.position.x = Math.cos(angle) * dist;
+        tendril.position.z = Math.sin(angle) * dist;
+        tendril.position.y = 0.4;
+        tendril.baseY = 0.4;
+        group.add(tendril);
+        group.tendrils.push(tendril);
+    }
+    
+    group.position.copy(position);
+    group.position.y = 0;
+    group.createdTime = Date.now();
+    group.duration = duration * 1000;
+    group.radius = radius;
+    group.isDamageZone = true;
+    group.damagePerSecond = 2;  // 2 DPS
+    group.slowFactor = 0.5;     // 50% slow
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates the vine zone VFX
+ * @param {THREE.Group} zone - The vine zone group
+ * @returns {boolean} true if zone should be removed
+ */
+export function updateVineZone(zone) {
+    if (!zone) return true;
+    
+    const age = Date.now() - zone.createdTime;
+    if (age > zone.duration) return true;
+    
+    const progress = age / zone.duration;
+    const ageSeconds = age / 1000;
+    
+    // Pulse ring
+    if (zone.ring) {
+        zone.ring.material.opacity = 0.4 + 0.2 * Math.sin(ageSeconds * 3);
+    }
+    
+    // Animate tendrils (wave effect)
+    if (zone.tendrils) {
+        zone.tendrils.forEach((tendril, i) => {
+            const offset = i * 0.3;
+            tendril.position.y = tendril.baseY + 0.2 * Math.sin(ageSeconds * 4 + offset);
+        });
+    }
+    
+    // Fade out near end
+    if (progress > 0.8) {
+        const fadeProgress = (progress - 0.8) / 0.2;
+        if (zone.ground) zone.ground.material.opacity = 0.4 * (1 - fadeProgress);
+        if (zone.ring) zone.ring.material.opacity = 0.6 * (1 - fadeProgress);
+        zone.tendrils?.forEach(t => { t.material.opacity = 0.7 * (1 - fadeProgress); });
+    }
+    
+    return false;
+}
+
+// ==================== CHARGE TRAIL VFX ====================
+
+/**
+ * Creates a temporary damage trail segment during boss charge (Gatekeeper P2+)
+ * @param {THREE.Vector3} position - The position of the trail segment
+ * @param {number} color - The trail color
+ * @param {number} duration - How long the trail lasts in seconds
+ * @returns {THREE.Mesh} The trail segment
+ */
+export function createChargeTrailSegment(position, color, duration = 2.0) {
+    // Flat glowing disk on the ground
+    const trailGeom = getCircleGeometry(1.5, 16);
+    const trailMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+    });
+    
+    const trail = new THREE.Mesh(trailGeom, trailMat);
+    trail.rotation.x = -Math.PI / 2;
+    trail.position.copy(position);
+    trail.position.y = 0.1;
+    
+    trail.createdTime = Date.now();
+    trail.duration = duration * 1000;
+    trail.isDamageZone = true;
+    trail.damageRadius = 1.5;
+    trail.damage = 0.5; // Light damage per hit
+    
+    scene.add(trail);
+    return trail;
+}
+
+/**
+ * Updates a charge trail segment (fade out over time)
+ * @param {THREE.Mesh} trail - The trail segment
+ * @returns {boolean} true if trail should be removed
+ */
+export function updateChargeTrailSegment(trail) {
+    if (!trail) return true;
+    
+    const age = Date.now() - trail.createdTime;
+    if (age > trail.duration) return true;
+    
+    const progress = age / trail.duration;
+    
+    // Fade out
+    trail.material.opacity = 0.6 * (1 - progress);
+    
+    // Slight scale up as it fades
+    trail.scale.setScalar(1 + progress * 0.3);
+    
+    return false;
 }
 
 // ==================== CLEANUP ====================

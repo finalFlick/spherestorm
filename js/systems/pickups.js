@@ -1,10 +1,22 @@
 import { scene } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
-import { xpGems, hearts, tempVec3 } from '../core/entities.js';
+import { xpGems, hearts, tempVec3, obstacles } from '../core/entities.js';
 import { player } from '../entities/player.js';
-import { HEART_TTL } from '../config/constants.js';
+import { HEART_TTL, XP_GEM_TTL } from '../config/constants.js';
 import { spawnParticle } from '../effects/particles.js';
 import { levelUp } from '../ui/menus.js';
+
+// Get the surface height at a given X/Z position (checks platforms/obstacles)
+function getSurfaceHeight(x, z) {
+    let maxHeight = 0;  // Floor level
+    for (const obs of obstacles) {
+        const cd = obs.collisionData;
+        if (cd && x >= cd.minX && x <= cd.maxX && z >= cd.minZ && z <= cd.maxZ) {
+            maxHeight = Math.max(maxHeight, cd.topY);
+        }
+    }
+    return maxHeight;
+}
 
 export function spawnXpGem(position, value) {
     const gem = new THREE.Mesh(
@@ -17,9 +29,13 @@ export function spawnXpGem(position, value) {
     );
     
     gem.position.copy(position);
-    gem.position.y = 0.5;
+    // Hover above the surface at spawn position
+    const surfaceHeight = getSurfaceHeight(position.x, position.z);
+    gem.baseY = surfaceHeight + 0.5;
+    gem.position.y = gem.baseY;
     gem.value = value * gameState.stats.xpMultiplier;
     gem.bobOffset = Math.random() * Math.PI * 2;
+    gem.ttl = XP_GEM_TTL;  // 15 seconds at 60fps
     
     scene.add(gem);
     xpGems.push(gem);
@@ -51,7 +67,10 @@ export function spawnHeart(position, healAmount) {
     heartGroup.add(cone);
     
     heartGroup.position.copy(position);
-    heartGroup.position.y = 0.5;
+    // Hover above the surface at spawn position
+    const surfaceHeight = getSurfaceHeight(position.x, position.z);
+    heartGroup.baseY = surfaceHeight + 0.5;
+    heartGroup.position.y = heartGroup.baseY;
     heartGroup.healAmount = healAmount;
     heartGroup.bobOffset = Math.random() * Math.PI * 2;
     heartGroup.ttl = HEART_TTL;
@@ -65,8 +84,27 @@ export function updateXpGems(delta) {
     
     for (let i = xpGems.length - 1; i >= 0; i--) {
         const gem = xpGems[i];
-        gem.position.y = 0.5 + Math.sin(time + gem.bobOffset) * 0.2;
+        // Bob relative to base height (defaults to 0.5 for backwards compatibility)
+        const baseY = gem.baseY !== undefined ? gem.baseY : 0.5;
+        gem.position.y = baseY + Math.sin(time + gem.bobOffset) * 0.2;
         gem.rotation.y += 0.05;
+        
+        // Decrement TTL
+        gem.ttl--;
+        
+        // Fade out over last 3 seconds (180 frames)
+        if (gem.ttl < 180) {
+            gem.material.opacity = (gem.ttl / 180) * 0.9;
+        }
+        
+        // Remove expired gems
+        if (gem.ttl <= 0) {
+            gem.geometry.dispose();
+            gem.material.dispose();
+            scene.remove(gem);
+            xpGems.splice(i, 1);
+            continue;
+        }
         
         const dist = gem.position.distanceTo(player.position);
         
@@ -105,7 +143,9 @@ export function updateHearts(delta) {
     
     for (let i = hearts.length - 1; i >= 0; i--) {
         const heart = hearts[i];
-        heart.position.y = 0.5 + Math.sin(time + heart.bobOffset) * 0.2;
+        // Bob relative to base height (defaults to 0.5 for backwards compatibility)
+        const baseY = heart.baseY !== undefined ? heart.baseY : 0.5;
+        heart.position.y = baseY + Math.sin(time + heart.bobOffset) * 0.2;
         heart.rotation.y += 0.03;
         heart.ttl--;
         

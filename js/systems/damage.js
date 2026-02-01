@@ -1,6 +1,11 @@
 import { gameState } from '../core/gameState.js';
 import { DAMAGE_COOLDOWN, DEATH_TIPS } from '../config/constants.js';
 import { PulseMusic } from './pulseMusic.js';
+import { cameraAngleX } from '../core/input.js';
+
+// Hit recovery constants
+const RECOVERY_DURATION = 90;  // 1.5 seconds at 60fps
+const KNOCKBACK_STRENGTH = 0.3;
 
 export let lastDamageTime = 0;
 let playerRef = null;
@@ -40,13 +45,45 @@ export function getDeathTip(source) {
     return 'Keep moving and stay alert!';
 }
 
-export function takeDamage(amount, source = 'Unknown', sourceType = 'enemy') {
+export function takeDamage(amount, source = 'Unknown', sourceType = 'enemy', sourcePosition = null) {
     // Skip damage if debug invincibility is enabled
     if (gameState.debug && gameState.debug.invincible) {
         return;
     }
     
+    // Skip damage if player is in recovery (invulnerability frames)
+    if (playerRef && playerRef.isRecovering) {
+        return;
+    }
+    
     gameState.health -= amount;
+    
+    // Apply knockback and start recovery state
+    if (playerRef) {
+        // Calculate knockback direction
+        let knockbackX, knockbackZ;
+        if (sourcePosition) {
+            // Knockback away from damage source
+            const dx = playerRef.position.x - sourcePosition.x;
+            const dz = playerRef.position.z - sourcePosition.z;
+            const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+            knockbackX = (dx / dist) * KNOCKBACK_STRENGTH;
+            knockbackZ = (dz / dist) * KNOCKBACK_STRENGTH;
+        } else {
+            // Default knockback: backward from player facing direction
+            knockbackX = Math.sin(cameraAngleX) * KNOCKBACK_STRENGTH;
+            knockbackZ = Math.cos(cameraAngleX) * KNOCKBACK_STRENGTH;
+        }
+        
+        // Apply knockback velocity
+        playerRef.velocity.x = knockbackX;
+        playerRef.velocity.z = knockbackZ;
+        
+        // Start recovery state (invulnerability frames)
+        playerRef.isRecovering = true;
+        playerRef.recoveryTimer = RECOVERY_DURATION;
+        playerRef.flashPhase = 0;
+    }
     
     // Log damage for death feedback
     damageLog.push({

@@ -5,18 +5,19 @@
 export const BOSS_CONFIG = {
     1: { 
         name: 'THE GATEKEEPER', 
-        health: 500,  // Increased from 350
+        health: 1250,  // Reduced for better pacing
         damage: 25, 
         size: 2.5, 
         color: 0xff2222, 
         speed: 0.06,
         
-        // NEW: Shield configuration
+        // Shield configuration (75% DR with loud ricochet feedback)
         shieldConfig: {
             enabled: true,
             activateOnSummon: true,
-            damageReduction: 0.95,
-            color: 0x4488ff
+            damageReduction: 0.75,       // Changed from 0.95 - chip damage feels less wasted
+            color: 0x4488ff,
+            failsafeTimeout: 12.0        // Auto-break after 12 seconds (prevents softlock)
         },
         
         // NEW: Exposed state configuration
@@ -53,7 +54,7 @@ export const BOSS_CONFIG = {
     },
     2: { 
         name: 'THE MONOLITH', 
-        health: 550, 
+        health: 2750,  // 5x for longer boss fights 
         damage: 24, 
         size: 2.8, 
         color: 0x44ff88, 
@@ -98,7 +99,7 @@ export const BOSS_CONFIG = {
     },
     3: { 
         name: 'THE ASCENDANT', 
-        health: 700, 
+        health: 3500,  // 5x for longer boss fights 
         damage: 28, 
         size: 3.0, 
         color: 0xaa44ff, 
@@ -145,7 +146,7 @@ export const BOSS_CONFIG = {
     },
     4: { 
         name: 'THE OVERGROWTH', 
-        health: 850, 
+        health: 4250,  // 5x for longer boss fights 
         damage: 26, 
         size: 3.2, 
         color: 0x44ffff, 
@@ -193,7 +194,7 @@ export const BOSS_CONFIG = {
     },
     5: { 
         name: 'THE BURROWER', 
-        health: 1000, 
+        health: 5000,  // 5x for longer boss fights 
         damage: 32, 
         size: 3.5, 
         color: 0xff44ff, 
@@ -248,7 +249,7 @@ export const BOSS_CONFIG = {
     },
     6: { 
         name: 'CHAOS INCARNATE', 
-        health: 1500, 
+        health: 7500,  // 5x for longer boss fights 
         damage: 40, 
         size: 4.0, 
         color: 0xffffff, 

@@ -1243,23 +1243,42 @@ export const PulseMusic = {
         if (this.lastShieldHit && now - this.lastShieldHit < 0.05) return;
         this.lastShieldHit = now;
         
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
+        // Enhanced ricochet "clang" sound - louder and more metallic
+        // High metallic clang
+        const clangOsc = this.ctx.createOscillator();
+        const clangGain = this.ctx.createGain();
         
-        // Metallic ping - one octave up from root
-        const note = this.currentProfile.rootMidi + 12;
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(this.midiToFreq(note), now);
+        clangOsc.type = 'triangle';
+        clangOsc.frequency.setValueAtTime(1400, now);
+        clangOsc.frequency.exponentialRampToValueAtTime(600, now + 0.06);
         
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+        clangGain.gain.setValueAtTime(0.25, now);
+        clangGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
         
-        osc.connect(gain);
-        gain.connect(this.sfxBus);
-        osc.start(now);
-        osc.stop(now + 0.1);
-        osc.endTime = now + 0.1;
-        this.activeOscillators.push(osc);
+        clangOsc.connect(clangGain);
+        clangGain.connect(this.sfxBus);
+        clangOsc.start(now);
+        clangOsc.stop(now + 0.15);
+        clangOsc.endTime = now + 0.15;
+        this.activeOscillators.push(clangOsc);
+        
+        // Low "thud" undertone - muffled, blocked feeling
+        const thudOsc = this.ctx.createOscillator();
+        const thudGain = this.ctx.createGain();
+        
+        thudOsc.type = 'sine';
+        thudOsc.frequency.setValueAtTime(120, now);
+        thudOsc.frequency.exponentialRampToValueAtTime(60, now + 0.08);
+        
+        thudGain.gain.setValueAtTime(0.3, now);
+        thudGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        
+        thudOsc.connect(thudGain);
+        thudGain.connect(this.sfxBus);
+        thudOsc.start(now);
+        thudOsc.stop(now + 0.12);
+        thudOsc.endTime = now + 0.12;
+        this.activeOscillators.push(thudOsc);
     },
     
     onShieldBreak() {
@@ -1460,6 +1479,94 @@ export const PulseMusic = {
         glassTone.stop(now + 0.22);
         glassTone.endTime = now + 0.22;
         this.activeOscillators.push(glassTone);
+    },
+    
+    // Combo start audio - rising synth note indicating combo chain beginning
+    onComboStart(comboLength = 2) {
+        if (!this.enabled || !this.initialized || !this.currentProfile) return;
+        
+        const now = this.ctx.currentTime;
+        const profile = this.currentProfile;
+        
+        // Rising "rev-up" synth - ascending arpeggio
+        const baseFreq = this.midiToFreq(profile.rootMidi + 12);
+        const notes = [0, 4, 7]; // Major triad intervals
+        
+        notes.forEach((interval, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            
+            osc.type = 'sawtooth';
+            const freq = baseFreq * Math.pow(2, interval / 12);
+            osc.frequency.setValueAtTime(freq * 0.5, now + i * 0.05);
+            osc.frequency.exponentialRampToValueAtTime(freq, now + i * 0.05 + 0.08);
+            
+            const startTime = now + i * 0.05;
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.12, startTime + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2);
+            
+            osc.connect(gain);
+            gain.connect(this.sfxBus);
+            osc.start(startTime);
+            osc.stop(startTime + 0.25);
+            osc.endTime = startTime + 0.25;
+            this.activeOscillators.push(osc);
+        });
+        
+        // Add a subtle low "power-up" hum based on combo length
+        const humOsc = this.ctx.createOscillator();
+        const humGain = this.ctx.createGain();
+        humOsc.type = 'sine';
+        humOsc.frequency.setValueAtTime(80, now);
+        humOsc.frequency.linearRampToValueAtTime(80 + comboLength * 20, now + 0.15);
+        humGain.gain.setValueAtTime(0.15, now);
+        humGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        humOsc.connect(humGain);
+        humGain.connect(this.sfxBus);
+        humOsc.start(now);
+        humOsc.stop(now + 0.25);
+        humOsc.endTime = now + 0.25;
+        this.activeOscillators.push(humOsc);
+    },
+    
+    // Combo end audio - quick "snap" closure sound
+    onComboEnd() {
+        if (!this.enabled || !this.initialized || !this.currentProfile) return;
+        
+        const now = this.ctx.currentTime;
+        
+        // Quick descending "snap" - like a whip crack
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(200, now + 0.08);
+        
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        
+        osc.connect(gain);
+        gain.connect(this.sfxBus);
+        osc.start(now);
+        osc.stop(now + 0.12);
+        osc.endTime = now + 0.12;
+        this.activeOscillators.push(osc);
+        
+        // Add a tiny "click" for closure
+        const clickOsc = this.ctx.createOscillator();
+        const clickGain = this.ctx.createGain();
+        clickOsc.type = 'sine';
+        clickOsc.frequency.value = 1200;
+        clickGain.gain.setValueAtTime(0.1, now + 0.05);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        clickOsc.connect(clickGain);
+        clickGain.connect(this.sfxBus);
+        clickOsc.start(now + 0.05);
+        clickOsc.stop(now + 0.1);
+        clickOsc.endTime = now + 0.1;
+        this.activeOscillators.push(clickOsc);
     },
     
     // Final boss victory fanfare - triumphant ascending chord progression
@@ -1984,6 +2091,23 @@ export const PulseMusic = {
     
     menuMusicLoopId: null,
     isMenuMusicPlaying: false,
+    menuBeatPhase: 0,
+    menuLastBeatTime: 0,
+    
+    // Get menu pulse intensity for visual sync (0-1 value that pulses with beat)
+    getMenuPulseIntensity() {
+        if (!this.isMenuMusicPlaying || !this.ctx) return 0;
+        
+        const now = this.ctx.currentTime;
+        const timeSinceBeat = (now - this.menuLastBeatTime) % this.beatDuration;
+        const beatProgress = timeSinceBeat / this.beatDuration;
+        
+        // Create a pulse that peaks at beat start and decays
+        // Using exponential decay for more natural feel
+        const pulse = Math.exp(-beatProgress * 4);
+        
+        return pulse;
+    },
     
     startMenuMusic() {
         if (!this.enabled || !this.initialized || this.isMenuMusicPlaying) return;
@@ -2047,6 +2171,9 @@ export const PulseMusic = {
         // Slow, powerful kick pattern - softer for ambient feel
         this.playMenuKick(barTime);
         this.playMenuKick(barTime + beatDur * 2);
+        
+        // Track beat timing for visual sync
+        this.menuLastBeatTime = barTime;
         
         // Removed hi-hats - too harsh for ambient menu music
         // Removed melody - simpler, more ambient feel

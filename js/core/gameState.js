@@ -4,6 +4,8 @@ import { WAVE_STATE } from '../config/constants.js';
 export const gameState = {
     running: false,
     paused: false,
+    announcementPaused: false,
+    introCinematicActive: false,
     health: 100,
     maxHealth: 100,
     xp: 0,
@@ -54,7 +56,8 @@ export const gameState = {
         perfectWaves: 0,
         waveDamageTaken: 0,
         bossesDefeated: 0
-    }
+    },
+    shownModifiers: {}  // Track which modifiers shown per arena { arenaNum: Set(['elite', 'swarm', ...]) }
 };
 
 export function resetGameState() {
@@ -67,6 +70,8 @@ export function resetGameState() {
         kills: 0,
         score: 0,
         paused: false,
+        announcementPaused: false,
+        introCinematicActive: false,
         currentArena: 1,
         currentWave: 1,
         waveState: WAVE_STATE.WAVE_INTRO,
@@ -109,4 +114,5 @@ export function resetGameState() {
         waveDamageTaken: 0,
         bossesDefeated: 0
     };
+    gameState.shownModifiers = {};
 }

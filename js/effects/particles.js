@@ -401,22 +401,44 @@ export function resetParticles() {
 // ==================== SHIELD VFX ====================
 
 export function spawnShieldHitVFX(position, color) {
-    // Spark effect when hitting shield
-    for (let i = 0; i < 4; i++) {
+    // Enhanced ricochet spark effect - more particles, faster, brighter
+    // Makes it VERY obvious that the shield is blocking damage
+    
+    // Main spark burst (8 particles radiating outward)
+    for (let i = 0; i < 8; i++) {
+        const p = getNextParticle();
+        p.position.copy(position);
+        const angle = (i / 8) * Math.PI * 2;
+        p.velocity.set(
+            Math.cos(angle) * 0.35,
+            0.1 + Math.random() * 0.2,
+            Math.sin(angle) * 0.35
+        );
+        p.life = 20;
+        p.maxLife = 20;
+        p.material.color.setHex(0x88ccff); // Bright shield blue
+        p.material.opacity = 1.0;
+        p.visible = true;
+        p.vfxType = 'sparkRing';
+        p.scale.setScalar(0.5);
+    }
+    
+    // White hot center sparks (3 particles)
+    for (let i = 0; i < 3; i++) {
         const p = getNextParticle();
         p.position.copy(position);
         p.velocity.set(
-            (Math.random() - 0.5) * 0.2,
-            Math.random() * 0.15,
-            (Math.random() - 0.5) * 0.2
+            (Math.random() - 0.5) * 0.15,
+            0.2 + Math.random() * 0.15,
+            (Math.random() - 0.5) * 0.15
         );
-        p.life = 15;
-        p.maxLife = 15;
-        p.material.color.setHex(0x4488ff); // Shield blue
-        p.material.opacity = 0.8;
+        p.life = 12;
+        p.maxLife = 12;
+        p.material.color.setHex(0xffffff); // White = blocked
+        p.material.opacity = 1.0;
         p.visible = true;
-        p.vfxType = 'sparkRing';
-        p.scale.setScalar(0.4);
+        p.vfxType = 'burst';
+        p.scale.setScalar(0.35);
     }
 }
 

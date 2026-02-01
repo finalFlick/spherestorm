@@ -91,6 +91,43 @@ export function showWaveAnnouncement() {
     el.classList.add('visible');
 }
 
+// Skip announcement when player clicks
+export function skipAnnouncement() {
+    if (gameState.announcementPaused) {
+        // Set timer high to trigger immediate transition
+        gameState.waveTimer = 9999;
+        gameState.announcementPaused = false;
+        
+        // Hide announcements immediately
+        hideWaveAnnouncement();
+        hideBossAnnouncement();
+        const unlockEl = document.getElementById('unlock-notification');
+        if (unlockEl) unlockEl.classList.remove('visible');
+    }
+}
+
+// Initialize announcement click handlers
+export function initAnnouncementSkip() {
+    const waveAnnouncement = document.getElementById('wave-announcement');
+    const unlockNotification = document.getElementById('unlock-notification');
+    
+    if (waveAnnouncement) {
+        waveAnnouncement.addEventListener('click', skipAnnouncement);
+    }
+    if (unlockNotification) {
+        unlockNotification.addEventListener('click', skipAnnouncement);
+    }
+}
+
+// Show START banner after intro cinematic
+export function showStartBanner() {
+    const el = document.getElementById('start-banner');
+    if (el) {
+        el.classList.add('visible');
+        setTimeout(() => el.classList.remove('visible'), 1500);
+    }
+}
+
 // Show wave threat level, enemy types, and modifier
 function showWavePreview() {
     // Get DOM elements with null checks
@@ -198,8 +235,18 @@ export function updateBossHealthBar() {
     if (!currentBoss) return;
     
     // Health bar
-    document.getElementById('boss-health-bar').style.width = 
-        (currentBoss.health / currentBoss.maxHealth * 100) + '%';
+    const healthBar = document.getElementById('boss-health-bar');
+    healthBar.style.width = (currentBoss.health / currentBoss.maxHealth * 100) + '%';
+    
+    // Lock icon and blue tint when shielded
+    const lockIcon = document.getElementById('boss-shield-lock-icon');
+    if (currentBoss.shieldConfig && currentBoss.shieldActive) {
+        healthBar.classList.add('shielded');
+        if (lockIcon) lockIcon.style.display = 'block';
+    } else {
+        healthBar.classList.remove('shielded');
+        if (lockIcon) lockIcon.style.display = 'none';
+    }
     
     // Phase indicator
     const phaseEl = document.getElementById('boss-phase');
@@ -215,13 +262,21 @@ export function updateBossHealthBar() {
         shieldContainer.style.display = 'block';
         exposedEl.style.display = 'none';
         
-        // Show minion count
+        // Show minion count with max
         const minionCount = currentBoss.summonedMinions ? currentBoss.summonedMinions.length : 0;
-        document.getElementById('boss-minion-count').textContent = `${minionCount} minion${minionCount !== 1 ? 's' : ''}`;
+        const maxMinions = currentBoss.phase + 1;  // 2/3/4 based on phase
+        document.getElementById('boss-minion-count').textContent = `${minionCount}/${maxMinions} minions`;
         
-        // Shield bar visual (based on minion count, max 4)
-        const shieldPercent = Math.min(100, (minionCount / 4) * 100);
+        // Shield bar visual (based on minion count)
+        const shieldPercent = Math.min(100, (minionCount / maxMinions) * 100);
         document.getElementById('boss-shield-bar').style.width = shieldPercent + '%';
+        
+        // Pulsing border when 1 minion left
+        if (minionCount === 1) {
+            shieldContainer.style.animation = 'shield-pulse 0.5s infinite';
+        } else {
+            shieldContainer.style.animation = 'none';
+        }
         
     } else if (currentBoss.isExposed) {
         shieldContainer.style.display = 'none';
@@ -239,6 +294,12 @@ export function updateBossHealthBar() {
 
 export function hideBossHealthBar() {
     document.getElementById('boss-health-container').style.display = 'none';
+    // Also hide chain indicator
+    const chainEl = document.getElementById('boss-combo-indicator');
+    if (chainEl) chainEl.style.display = 'none';
+    // Also hide sequence preview
+    const seqEl = document.getElementById('boss6-sequence-preview');
+    if (seqEl) seqEl.style.display = 'none';
 }
 
 export function showUnlockNotification(text) {
@@ -281,6 +342,73 @@ export function showExposedBanner() {
     }, 1000);
 }
 
+// Show combo chain indicator
+export function showChainIndicator() {
+    const el = document.getElementById('boss-combo-indicator');
+    if (el) {
+        el.style.display = 'block';
+    }
+}
+
+// Hide combo chain indicator
+export function hideChainIndicator() {
+    const el = document.getElementById('boss-combo-indicator');
+    if (el) {
+        el.style.display = 'none';
+    }
+}
+
+// Boss 6 P3: Show sequence preview (upcoming abilities)
+const ABILITY_ICONS = {
+    charge: '⚡',
+    teleport: '✨',
+    burrow: '🕳️',
+    jumpSlam: '💥',
+    hazards: '☢️',
+    growth: '🌿',
+    summon: '👥',
+    split: '✂️'
+};
+
+export function showBoss6SequencePreview(abilities) {
+    const container = document.getElementById('boss6-sequence-preview');
+    if (!container) return;
+    
+    container.style.display = 'flex';
+    container.innerHTML = '';
+    
+    abilities.forEach((ability, index) => {
+        const icon = document.createElement('div');
+        icon.className = 'sequence-icon';
+        icon.textContent = ABILITY_ICONS[ability] || '?';
+        icon.title = ability.toUpperCase();
+        
+        // First ability is highlighted
+        if (index === 0) {
+            icon.classList.add('current');
+        }
+        
+        container.appendChild(icon);
+    });
+    
+    // First-time tooltip
+    if (!window.boss6SequenceShown) {
+        window.boss6SequenceShown = true;
+        const tooltip = document.createElement('div');
+        tooltip.className = 'sequence-tooltip';
+        tooltip.textContent = 'INCOMING ATTACKS →';
+        container.insertBefore(tooltip, container.firstChild);
+        setTimeout(() => tooltip.remove(), 3000);
+    }
+}
+
+export function hideBoss6SequencePreview() {
+    const container = document.getElementById('boss6-sequence-preview');
+    if (container) {
+        container.style.display = 'none';
+    }
+}
+
 // Show wave modifier announcement
 export function showModifierAnnouncement(modifierName) {
     const el = document.getElementById('unlock-notification');
@@ -290,7 +418,7 @@ export function showModifierAnnouncement(modifierName) {
     setTimeout(() => {
         el.classList.remove('visible');
         el.style.background = '';
-    }, 2000);
+    }, 6000);  // 3x longer (was 2000ms)
 }
 
 // Show boss phase transition announcement

@@ -9,13 +9,14 @@ import {
     tempVec3_2 
 } from '../core/entities.js';
 import { player } from '../entities/player.js';
+import { cameraAngleX } from '../core/input.js';
 import { handleEnemyDeath } from '../entities/enemies.js';
 import { killBoss } from '../entities/boss.js';
 import { spawnParticle, spawnShieldHitVFX, spawnShieldBreakVFX } from '../effects/particles.js';
 import { spawnXpGem, spawnHeart } from './pickups.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from './damage.js';
 import { DAMAGE_COOLDOWN, HEART_DROP_CHANCE, HEART_HEAL } from '../config/constants.js';
-import { triggerSlowMo, triggerScreenFlash, createExposedVFX } from './visualFeedback.js';
+import { triggerSlowMo, triggerScreenFlash, createExposedVFX, createTetherSnapVFX, cleanupVFX } from './visualFeedback.js';
 import { showTutorialCallout } from '../ui/hud.js';
 import { PulseMusic } from './pulseMusic.js';
 
@@ -26,7 +27,7 @@ export function resetLastShot() {
 }
 
 // Player max shoot range
-const MAX_PROJECTILE_RANGE = 20;
+const MAX_PROJECTILE_RANGE = 25;
 
 // Object pool for projectiles - prevents memory leaks
 const PROJECTILE_POOL_SIZE = 60;
@@ -138,20 +139,29 @@ export function spawnEnemyProjectileFromPool(fromPosition, targetPosition, damag
     return projectile;
 }
 
-// Vertical aim lock-on helper
+// Vertical aim lock-on helper - only targets enemies in front of player (180° arc)
 function getNearestEnemies(count, maxRange) {
     maxRange = maxRange || MAX_PROJECTILE_RANGE;
     const currentBoss = getCurrentBoss();
     const allTargets = [...enemies];
     if (currentBoss) allTargets.push(currentBoss);
     
+    // Player forward direction (negative Z rotated by cameraAngleX)
+    const forwardX = -Math.sin(cameraAngleX);
+    const forwardZ = -Math.cos(cameraAngleX);
+    
     return allTargets
         .map(e => {
             const dx = e.position.x - player.position.x;
             const dz = e.position.z - player.position.z;
-            return { enemy: e, dist: Math.sqrt(dx * dx + dz * dz) };
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            
+            // Dot product to check if in front (positive = in front)
+            const dot = (dx * forwardX + dz * forwardZ) / (dist || 1);
+            
+            return { enemy: e, dist, dot };
         })
-        .filter(e => e.dist < maxRange)
+        .filter(e => e.dist < maxRange && e.dot > 0)  // dot > 0 = within 180° forward
         .sort((a, b) => a.dist - b.dist)
         .slice(0, count)
         .map(e => e.enemy);
@@ -159,6 +169,9 @@ function getNearestEnemies(count, maxRange) {
 
 export function shootProjectile() {
     if (!poolInitialized) initProjectilePool();
+    
+    // Block attacks during hit recovery (invulnerability frames)
+    if (player.isRecovering) return;
     
     const now = Date.now();
     const fireRate = 500 / gameState.stats.attackSpeed;
@@ -293,11 +306,32 @@ export function updateProjectiles(delta) {
                             boss.summonedMinions.splice(index, 1);
                         }
                         
+                        // Create tether snap VFX when minion dies
+                        if (enemy.tether) {
+                            // Create snap VFX at minion position
+                            const snapVFX = createTetherSnapVFX(enemy.position.clone(), boss.baseColor);
+                            if (boss.tetherSnapVFXList) {
+                                boss.tetherSnapVFXList.push(snapVFX);
+                            }
+                            
+                            // Remove tether from boss's list
+                            const tetherIndex = boss.minionTethers ? boss.minionTethers.indexOf(enemy.tether) : -1;
+                            if (tetherIndex > -1) {
+                                boss.minionTethers.splice(tetherIndex, 1);
+                            }
+                            
+                            // Cleanup tether geometry
+                            cleanupVFX(enemy.tether);
+                            enemy.tether = null;
+                        }
+                        
                         // Check if all minions dead - trigger exposed state
                         if (boss.summonedMinions.length === 0 && boss.shieldActive) {
                             boss.shieldActive = false;
                             boss.isExposed = true;
-                            boss.exposedTimer = boss.exposedConfig.duration;
+                            // Phase-scaled vulnerability window: 6s/5s/4s (360/300/240 frames)
+                            const phaseVulnerability = { 1: 360, 2: 300, 3: 240 };
+                            boss.exposedTimer = phaseVulnerability[boss.phase] || 300;
                             
                             // Shield shatter VFX and audio
                             if (boss.shieldMesh) {
@@ -309,6 +343,14 @@ export function updateProjectiles(delta) {
                             
                             // Create exposed VFX
                             boss.exposedVFX = createExposedVFX(boss);
+                            
+                            // Clean up any remaining tethers (shouldn't be any, but just in case)
+                            if (boss.minionTethers) {
+                                for (const tether of boss.minionTethers) {
+                                    cleanupVFX(tether);
+                                }
+                                boss.minionTethers = [];
+                            }
                         }
                     }
                     
@@ -353,8 +395,9 @@ export function updateProjectiles(delta) {
                 // First time hitting boss shield - show tutorial
                 showTutorialCallout('bossShield', 'Kill minions to drop the shield!', 3000);
                 
-                // Boss shield reduces damage significantly
-                damageDealt *= (1 - 0.95); // 95% damage reduction
+                // Boss shield reduces damage significantly (uses config value)
+                const shieldReduction = currentBoss.shieldConfig?.damageReduction || 0.95;
+                damageDealt *= (1 - shieldReduction);
                 spawnShieldHitVFX(proj.position, currentBoss.baseColor);
                 PulseMusic.onShieldHit();
             } else if (currentBoss.isExposed) {
