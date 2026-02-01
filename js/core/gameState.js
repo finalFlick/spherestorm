@@ -41,6 +41,19 @@ export const gameState = {
         maxHealth: 100,
         pickupRange: 3,
         xpMultiplier: 1
+    },
+    debug: {
+        enabled: false,
+        noEnemies: false,
+        invincible: false
+    },
+    combatStats: {
+        damageDealt: 0,
+        damageTaken: 0,
+        kills: {},
+        perfectWaves: 0,
+        waveDamageTaken: 0,
+        bossesDefeated: 0
     }
 };
 
@@ -82,5 +95,18 @@ export function resetGameState() {
         maxHealth: 100,
         pickupRange: 3,
         xpMultiplier: 1
+    };
+    gameState.debug = {
+        enabled: false,
+        noEnemies: false,
+        invincible: false
+    };
+    gameState.combatStats = {
+        damageDealt: 0,
+        damageTaken: 0,
+        kills: {},
+        perfectWaves: 0,
+        waveDamageTaken: 0,
+        bossesDefeated: 0
     };
 }
