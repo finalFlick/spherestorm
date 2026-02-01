@@ -42,7 +42,7 @@ Six unique bosses with modular ability system and accumulated tactics.
 
 | Boss | Arena | Abilities | Inherits | Status |
 |------|-------|-----------|----------|--------|
-| The Gatekeeper | 1 | Charge + Summon | (base) | Done |
+| Red Puffer King | 1 | Charge + Summon | (base) | Done |
 | The Monolith | 2 | Jump Slam + Hazards | + Arena 1 | Done |
 | The Ascendant | 3 | Teleport | + Arena 1-2 | Done |
 | The Overgrowth | 4 | Growth + Split | + Arena 1-3 | Done |
@@ -66,7 +66,7 @@ Eight enemy types with unique visual profiles for instant recognition.
 
 | Enemy | Size Band | Visual Profile | Movement | Death VFX | Status |
 |-------|-----------|----------------|----------|-----------|--------|
-| Grunt | Standard | Spikes | Sway | Burst | Done |
+| Red Puffer | Standard | Mini Porcupinefish | Sway | Burst | Done |
 | Shooter | Standard | Turret | Strafe | Spark Ring | Done |
 | Shielded | Heavy | Ring | Stomp | Shatter | Done |
 | Fast Bouncer | Swarm | Springs | Squash | Streak | Done |

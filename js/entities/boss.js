@@ -5,54 +5,440 @@ import { player } from './player.js';
 import { spawnSpecificEnemy, spawnSplitEnemy } from './enemies.js';
 import { BOSS_CONFIG, ABILITY_COOLDOWNS, ABILITY_TELLS } from '../config/bosses.js';
 import { DAMAGE_COOLDOWN, HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES, GAME_TITLE } from '../config/constants.js';
-import { spawnParticle, spawnShieldBreakVFX } from '../effects/particles.js';
-import { spawnXpGem, spawnHeart } from '../systems/pickups.js';
+import { spawnParticle, spawnShieldBreakVFX, spawnBubbleParticle } from '../effects/particles.js';
+import { spawnXpGem, spawnHeart, spawnArenaPortal } from '../systems/pickups.js';
 import { createHazardZone } from '../arena/generator.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
 import { showBossHealthBar, updateBossHealthBar, hideBossHealthBar, showExposedBanner, showPhaseAnnouncement, showBoss6CycleAnnouncement, updateBoss6CycleIndicator, hideBoss6CycleIndicator, showTutorialCallout, showChainIndicator, hideChainIndicator, showBoss6SequencePreview, hideBoss6SequencePreview } from '../ui/hud.js';
 import { markBossEncountered } from '../ui/rosterUI.js';
-import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX, createComboTether, updateComboTether, createComboLockInMarker, updateComboLockInMarker, createMinionTether, updateMinionTethers, createTetherSnapVFX, updateTetherSnapVFX, createChargeTrailSegment, updateChargeTrailSegment, createDetonationWarningVFX, updateDetonationWarningVFX, createTeleportDecoy, updateTeleportDecoy, createBlinkBarrageMarker, updateBlinkBarrageMarker, createVineZone, updateVineZone, createBurrowPath, updateBurrowPath, createFakeEmergeMarker, updateFakeEmergeMarker } from '../systems/visualFeedback.js';
+import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX, createComboTether, updateComboTether, createComboLockInMarker, updateComboLockInMarker, createMinionTether, updateMinionTethers, createTetherSnapVFX, updateTetherSnapVFX, createChargeTrailSegment, updateChargeTrailSegment, createDetonationWarningVFX, updateDetonationWarningVFX, createTeleportDecoy, updateTeleportDecoy, createBlinkBarrageMarker, updateBlinkBarrageMarker, createVineZone, updateVineZone, createBurrowPath, updateBurrowPath, createFakeEmergeMarker, updateFakeEmergeMarker, createEnergyTransferVFX } from '../systems/visualFeedback.js';
 import { PulseMusic } from '../systems/pulseMusic.js';
 
 // Anti-stuck detection uses BOSS_STUCK_THRESHOLD and BOSS_STUCK_FRAMES from constants.js
+
+// ==================== PORCUPINEFISH MESH (Boss 1) ====================
+// Creates a porcupinefish-style mesh with body, spines, and eyes
+// Supports inflation state: 0 = deflated (streamlined swimmer), 1 = inflated (armored orb)
+
+function createPorcupinefishMesh(size, color) {
+    const group = new THREE.Group();
+    
+    // Main body - sphere that will be scaled for inflation states
+    const bodyGeom = new THREE.SphereGeometry(size, 24, 24);
+    const bodyMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.5
+    });
+    const body = new THREE.Mesh(bodyGeom, bodyMat);
+    body.castShadow = true;
+    body.name = 'pufferBody';
+    group.add(body);
+    
+    // Glow effect
+    const glowGeom = new THREE.SphereGeometry(size * 1.15, 16, 16);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.25
+    });
+    const glow = new THREE.Mesh(glowGeom, glowMat);
+    glow.name = 'pufferGlow';
+    group.add(glow);
+    
+    // Eyes - two small spheres on the front
+    const eyeGeom = new THREE.SphereGeometry(size * 0.15, 12, 12);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilGeom = new THREE.SphereGeometry(size * 0.08, 8, 8);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    
+    // Left eye
+    const leftEye = new THREE.Group();
+    const leftEyeWhite = new THREE.Mesh(eyeGeom, eyeMat);
+    const leftPupil = new THREE.Mesh(pupilGeom, pupilMat);
+    leftPupil.position.z = size * 0.08;
+    leftEye.add(leftEyeWhite);
+    leftEye.add(leftPupil);
+    leftEye.position.set(-size * 0.4, size * 0.3, size * 0.75);
+    leftEye.name = 'leftEye';
+    group.add(leftEye);
+    
+    // Right eye
+    const rightEye = new THREE.Group();
+    const rightEyeWhite = new THREE.Mesh(eyeGeom, eyeMat.clone());
+    const rightPupil = new THREE.Mesh(pupilGeom, pupilMat.clone());
+    rightPupil.position.z = size * 0.08;
+    rightEye.add(rightEyeWhite);
+    rightEye.add(rightPupil);
+    rightEye.position.set(size * 0.4, size * 0.3, size * 0.75);
+    rightEye.name = 'rightEye';
+    group.add(rightEye);
+    
+    // Mouth - small dark ellipse
+    const mouthGeom = new THREE.SphereGeometry(size * 0.12, 8, 8);
+    const mouthMat = new THREE.MeshBasicMaterial({ color: 0x331111 });
+    const mouth = new THREE.Mesh(mouthGeom, mouthMat);
+    mouth.scale.set(1.5, 0.6, 0.5);
+    mouth.position.set(0, -size * 0.1, size * 0.9);
+    mouth.name = 'mouth';
+    group.add(mouth);
+    
+    // Tail fin - small cone at the back
+    const tailGeom = new THREE.ConeGeometry(size * 0.3, size * 0.6, 4);
+    const tailMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.3
+    });
+    const tail = new THREE.Mesh(tailGeom, tailMat);
+    tail.rotation.x = Math.PI / 2;
+    tail.position.set(0, 0, -size * 1.1);
+    tail.name = 'tail';
+    group.add(tail);
+    
+    // Side fins - small triangular planes
+    const finGeom = new THREE.ConeGeometry(size * 0.25, size * 0.5, 3);
+    const finMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.3,
+        side: THREE.DoubleSide
+    });
+    
+    const leftFin = new THREE.Mesh(finGeom, finMat);
+    leftFin.rotation.z = Math.PI / 2;
+    leftFin.rotation.y = -0.3;
+    leftFin.position.set(-size * 0.9, 0, size * 0.2);
+    leftFin.name = 'leftFin';
+    group.add(leftFin);
+    
+    const rightFin = new THREE.Mesh(finGeom, finMat.clone());
+    rightFin.rotation.z = -Math.PI / 2;
+    rightFin.rotation.y = 0.3;
+    rightFin.position.set(size * 0.9, 0, size * 0.2);
+    rightFin.name = 'rightFin';
+    group.add(rightFin);
+    
+    // Spines - distributed using icosahedron vertices for even distribution
+    // Create 20 spines (icosahedron has 12 vertices, but we use more for coverage)
+    const spineGroup = new THREE.Group();
+    spineGroup.name = 'spines';
+    
+    const spineGeom = new THREE.ConeGeometry(size * 0.08, size * 0.5, 4);
+    const spineMat = new THREE.MeshStandardMaterial({
+        color: 0xffaa44,  // Orange-yellow spines
+        emissive: 0xff6600,
+        emissiveIntensity: 0.3
+    });
+    
+    // Generate spine positions using golden spiral for even distribution
+    const spineCount = 24;
+    const goldenRatio = (1 + Math.sqrt(5)) / 2;
+    
+    for (let i = 0; i < spineCount; i++) {
+        const spine = new THREE.Mesh(spineGeom, spineMat.clone());
+        
+        // Golden spiral distribution on sphere
+        const theta = 2 * Math.PI * i / goldenRatio;
+        const phi = Math.acos(1 - 2 * (i + 0.5) / spineCount);
+        
+        // Position on unit sphere
+        const x = Math.sin(phi) * Math.cos(theta);
+        const y = Math.sin(phi) * Math.sin(theta);
+        const z = Math.cos(phi);
+        
+        // Place spine at surface
+        spine.position.set(x * size, y * size, z * size);
+        
+        // Point outward from center
+        spine.lookAt(spine.position.clone().multiplyScalar(2));
+        spine.rotateX(Math.PI / 2);  // Cone points outward
+        
+        // Store base scale for animation
+        spine.userData.baseScale = 1.0;
+        spine.userData.index = i;
+        
+        // Start hidden (deflated state)
+        spine.scale.set(0.1, 0.1, 0.1);
+        spine.visible = false;
+        
+        spineGroup.add(spine);
+    }
+    
+    group.add(spineGroup);
+    
+    // Dorsal fin (top ridge) - visible in deflated state
+    const dorsalGeom = new THREE.ConeGeometry(size * 0.15, size * 0.4, 3);
+    const dorsalMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.4
+    });
+    
+    const dorsalGroup = new THREE.Group();
+    dorsalGroup.name = 'dorsalFin';
+    for (let i = 0; i < 3; i++) {
+        const dorsal = new THREE.Mesh(dorsalGeom, dorsalMat.clone());
+        dorsal.position.set(0, size * 0.8, -size * 0.3 + i * size * 0.3);
+        dorsal.scale.set(1, 1 - i * 0.2, 1);
+        dorsalGroup.add(dorsal);
+    }
+    group.add(dorsalGroup);
+    
+    // Store references for easy access
+    group.pufferBody = body;
+    group.pufferBodyMat = bodyMat;
+    group.pufferGlow = glow;
+    group.pufferSpines = spineGroup;
+    group.pufferEyes = [leftEye, rightEye];
+    group.pufferTail = tail;
+    group.pufferFins = [leftFin, rightFin];
+    group.pufferDorsal = dorsalGroup;
+    
+    return group;
+}
+
+// Update porcupinefish inflation visuals
+// inflationState: -0.3 to 1.0 (negative = extra deflated for charge blast)
+// -0.3 = blast deflation, 0 = normal deflated, 1 = fully inflated
+function updatePorcupinefishInflation(boss, deltaInflation) {
+    if (!boss.isPorcupinefish) return;
+    
+    const inflation = boss.inflationState;
+    const body = boss.pufferBody;
+    const glow = boss.pufferGlow;
+    const spines = boss.pufferSpines;
+    const dorsal = boss.pufferDorsal;
+    const tail = boss.pufferTail;
+    const fins = boss.pufferFins;
+    
+    if (!body || !spines) return;
+    
+    // Clamp inflation for shape calculations (negative handled separately for scale)
+    const shapeInflation = Math.max(0, inflation);
+    
+    // OVERALL SIZE SCALING - dramatic size change
+    // Blast (-0.3): 0.7x, Deflated (0): 0.85x, Inflated (1): 1.3x
+    const overallScale = 0.85 + inflation * 0.45;
+    boss.scale.setScalar(Math.max(0.7, overallScale));
+    
+    // Body shape: deflated = elongated ellipsoid, inflated = sphere
+    // Deflated: (1.3, 0.75, 1.0), Inflated: (1.0, 1.0, 1.0)
+    const scaleX = 1.0 + (1 - shapeInflation) * 0.3;
+    const scaleY = 0.75 + shapeInflation * 0.25;
+    const scaleZ = 1.0;
+    body.scale.set(scaleX, scaleY, scaleZ);
+    
+    // Glow follows body
+    if (glow) {
+        glow.scale.set(scaleX, scaleY, scaleZ);
+    }
+    
+    // Spines: hidden when deflated, visible when inflated
+    spines.children.forEach((spine, i) => {
+        // Stagger spine appearance for nice effect (use shapeInflation for visibility)
+        const staggeredInflation = Math.max(0, Math.min(1, shapeInflation * 1.5 - (i / spines.children.length) * 0.5));
+        
+        spine.visible = staggeredInflation > 0.1;
+        spine.scale.setScalar(0.1 + staggeredInflation * 0.9);
+        
+        // Spines get more orange/red when fully inflated (aggressive)
+        if (spine.material && boss.phase >= 3) {
+            spine.material.emissive.setHex(0xff4400);
+            spine.material.emissiveIntensity = 0.5 + shapeInflation * 0.3;
+        }
+    });
+    
+    // Dorsal fin: visible when deflated, hidden when inflated
+    if (dorsal) {
+        const dorsalScale = 1 - shapeInflation * 0.7;
+        dorsal.scale.setScalar(dorsalScale);
+        dorsal.visible = shapeInflation < 0.8;
+    }
+    
+    // Tail: larger when deflated (propulsion), smaller when inflated
+    if (tail) {
+        const tailScale = 1.0 - shapeInflation * 0.4;
+        tail.scale.set(tailScale, tailScale, tailScale);
+    }
+    
+    // Side fins: more prominent when deflated
+    if (fins) {
+        fins.forEach(fin => {
+            const finScale = 1.0 - shapeInflation * 0.5;
+            fin.scale.setScalar(finScale);
+        });
+    }
+    
+    // Body color/emissive: brighter when deflated, dimmer when inflated (energy to shield)
+    if (boss.pufferBodyMat) {
+        boss.pufferBodyMat.emissiveIntensity = 0.6 - shapeInflation * 0.2;
+    }
+}
+
+// Animate spines (rotation, pulsing)
+function animatePorcupinefishSpines(boss, deltaTime) {
+    if (!boss.isPorcupinefish || !boss.pufferSpines) return;
+    
+    const spines = boss.pufferSpines;
+    const time = Date.now() * 0.001;
+    
+    // Only animate when inflated
+    if (boss.inflationState < 0.5) return;
+    
+    // Phase 2: Slow rotation
+    // Phase 3: Faster rotation + pulsing
+    const rotSpeed = boss.phase >= 3 ? 0.015 : 0.005;
+    spines.rotation.y += rotSpeed;
+    
+    // Pulse spines slightly
+    if (boss.phase >= 3) {
+        spines.children.forEach((spine, i) => {
+            const pulse = 1 + Math.sin(time * 4 + i * 0.5) * 0.1;
+            const baseScale = 0.1 + boss.inflationState * 0.9;
+            spine.scale.setScalar(baseScale * pulse);
+        });
+    }
+}
+
+// Bristle effect when entering inflated state
+function triggerSpineBristle(boss) {
+    if (!boss.isPorcupinefish || !boss.pufferSpines) return;
+    
+    boss.spineBristleTimer = 20;  // frames
+    boss.spineBristleScale = 1.4;  // overshoot scale
+}
+
+// Update bristle animation
+function updateSpineBristle(boss) {
+    if (!boss.spineBristleTimer || boss.spineBristleTimer <= 0) return;
+    
+    boss.spineBristleTimer--;
+    
+    const progress = boss.spineBristleTimer / 20;
+    const bristleScale = 1 + (boss.spineBristleScale - 1) * progress;
+    
+    if (boss.pufferSpines) {
+        boss.pufferSpines.children.forEach(spine => {
+            const baseScale = 0.1 + boss.inflationState * 0.9;
+            spine.scale.setScalar(baseScale * bristleScale);
+        });
+    }
+}
+
+// Reset porcupinefish visuals after charge ends (cleanup wiggle, etc.)
+function resetPufferVisuals(boss) {
+    if (!boss.isPorcupinefish || !boss.pufferBase) return;
+    
+    // Reset body rotation to base
+    if (boss.pufferBody && boss.pufferBase.bodyRot) {
+        boss.pufferBody.rotation.copy(boss.pufferBase.bodyRot);
+    }
+    // Reset tail scale to base
+    if (boss.pufferTail && boss.pufferBase.tailScale) {
+        boss.pufferTail.scale.copy(boss.pufferBase.tailScale);
+    }
+    
+    // Reset animation state
+    boss.wigglePhase = 0;
+    boss.chargeDirLocked = false;
+    boss.inflationSpeed = 0.05;  // Back to normal lerp speed
+    
+    // Reset body material color to base
+    if (boss.bodyMaterial) {
+        boss.bodyMaterial.emissive.setHex(boss.baseColor);
+    }
+}
 
 export function spawnBoss(arenaNumber) {
     const config = BOSS_CONFIG[Math.min(arenaNumber, 6)];
     const boss = new THREE.Group();
     
-    const bodyMat = new THREE.MeshStandardMaterial({
-        color: config.color,
-        emissive: config.color,
-        emissiveIntensity: 0.5
-    });
-    
-    const body = new THREE.Mesh(
-        new THREE.SphereGeometry(config.size, 16, 16),
-        bodyMat
-    );
-    body.castShadow = true;
-    boss.add(body);
-    
-    // Glow effect
-    boss.add(new THREE.Mesh(
-        new THREE.SphereGeometry(config.size * 1.2, 16, 16),
-        new THREE.MeshBasicMaterial({
+    // Boss 1 (RED PUFFER KING) uses porcupinefish mesh
+    if (arenaNumber === 1) {
+        const pufferMesh = createPorcupinefishMesh(config.size, config.color);
+        
+        // Add all porcupinefish parts to boss
+        pufferMesh.children.forEach(child => {
+            boss.add(child.clone());
+        });
+        
+        // Store references from the puffer mesh
+        boss.isPorcupinefish = true;
+        boss.pufferBody = boss.children.find(c => c.name === 'pufferBody');
+        boss.pufferBodyMat = boss.pufferBody?.material;
+        boss.pufferGlow = boss.children.find(c => c.name === 'pufferGlow');
+        boss.pufferSpines = boss.children.find(c => c.name === 'spines');
+        boss.pufferEyes = [
+            boss.children.find(c => c.name === 'leftEye'),
+            boss.children.find(c => c.name === 'rightEye')
+        ];
+        boss.pufferTail = boss.children.find(c => c.name === 'tail');
+        boss.pufferFins = [
+            boss.children.find(c => c.name === 'leftFin'),
+            boss.children.find(c => c.name === 'rightFin')
+        ];
+        boss.pufferDorsal = boss.children.find(c => c.name === 'dorsalFin');
+        
+        // Inflation state system
+        boss.inflationState = 0;       // 0 = deflated, 1 = inflated
+        boss.targetInflation = 0;      // Target we're lerping toward
+        boss.inflationSpeed = 0.05;    // Lerp speed per frame
+        boss.spineBristleTimer = 0;
+        boss.spineBristleScale = 1.0;
+        
+        // Store base transforms for animation reset (wiggle, etc.)
+        boss.pufferBase = {
+            bodyRot: boss.pufferBody ? boss.pufferBody.rotation.clone() : null,
+            tailScale: boss.pufferTail ? boss.pufferTail.scale.clone() : null,
+        };
+        boss.wigglePhase = 0;
+        boss.bubbleAcc = 0;  // For rate-limited bubble spawning
+        boss.chargeDirLocked = false;
+        
+        // Apply initial deflated state
+        updatePorcupinefishInflation(boss, 0);
+        
+        // Body material reference for standard boss systems
+        boss.bodyMaterial = boss.pufferBodyMat;
+    } else {
+        // Standard boss mesh for other bosses
+        const bodyMat = new THREE.MeshStandardMaterial({
             color: config.color,
-            transparent: true,
-            opacity: 0.3
-        })
-    ));
-    
-    // Crown/horns
-    const hornMat = new THREE.MeshStandardMaterial({ color: 0xffdd44 });
-    for (let i = 0; i < 5; i++) {
-        const horn = new THREE.Mesh(
-            new THREE.ConeGeometry(0.4, 1.2, 8),
-            hornMat
+            emissive: config.color,
+            emissiveIntensity: 0.5
+        });
+        
+        const body = new THREE.Mesh(
+            new THREE.SphereGeometry(config.size, 16, 16),
+            bodyMat
         );
-        horn.position.set((i - 2) * 0.6, config.size + 0.4, 0);
-        horn.rotation.z = (i - 2) * 0.15;
-        boss.add(horn);
+        body.castShadow = true;
+        boss.add(body);
+        
+        // Glow effect
+        boss.add(new THREE.Mesh(
+            new THREE.SphereGeometry(config.size * 1.2, 16, 16),
+            new THREE.MeshBasicMaterial({
+                color: config.color,
+                transparent: true,
+                opacity: 0.3
+            })
+        ));
+        
+        // Crown/horns for non-porcupinefish bosses
+        const hornMat = new THREE.MeshStandardMaterial({ color: 0xffdd44 });
+        for (let i = 0; i < 5; i++) {
+            const horn = new THREE.Mesh(
+                new THREE.ConeGeometry(0.4, 1.2, 8),
+                hornMat
+            );
+            horn.position.set((i - 2) * 0.6, config.size + 0.4, 0);
+            horn.rotation.z = (i - 2) * 0.15;
+            boss.add(horn);
+        }
+        
+        boss.bodyMaterial = bodyMat;
     }
     
     // Boss properties
@@ -66,7 +452,7 @@ export function spawnBoss(arenaNumber) {
     boss.isElite = false;
     boss.xpValue = 15 + arenaNumber * 5;  // Balanced: ~1-2 level-ups per boss
     boss.baseColor = config.color;
-    boss.bodyMaterial = bodyMat;
+    // bodyMaterial already set in mesh creation branch above
     boss.velocityY = 0;
     boss.aiState = 'idle';
     boss.aiTimer = 0;
@@ -104,7 +490,7 @@ export function spawnBoss(arenaNumber) {
     // Jump target for jump slam
     boss.jumpTarget = new THREE.Vector3();
     
-    // Charge trail state (Gatekeeper P2+ leaves damage trails)
+    // Charge trail state (Red Puffer King P2+ leaves damage trails)
     boss.chargeTrails = [];
     boss.lastChargeTrailPos = new THREE.Vector3();
     
@@ -196,6 +582,56 @@ export function updateBoss() {
     const boss = currentBoss;
     boss.aiTimer++;
     
+    // ==================== PORCUPINEFISH INFLATION UPDATE ====================
+    if (boss.isPorcupinefish) {
+        // Don't override inflation during charge ability - let ability code control it
+        const inChargeAbility = boss.aiState === 'wind_up' || boss.aiState === 'charging';
+        
+        if (!inChargeAbility) {
+            // Determine target inflation based on shield state
+            // Inflated when shield is active, deflated when chasing without shield
+            if (boss.shieldActive) {
+                boss.targetInflation = 1.0;  // Inflated (armored orb)
+            } else if (boss.phase === 1 || !boss.shieldConfig) {
+                boss.targetInflation = 0.0;  // Deflated (swimmer)
+            } else {
+                // Phase 2+ without shield: still slightly inflated for threat read
+                boss.targetInflation = boss.isExposed ? 0.3 : 0.0;
+            }
+        }
+        
+        // Lerp inflation state toward target
+        const prevInflation = boss.inflationState;
+        if (Math.abs(boss.inflationState - boss.targetInflation) > 0.01) {
+            boss.inflationState += (boss.targetInflation - boss.inflationState) * boss.inflationSpeed;
+        } else {
+            boss.inflationState = boss.targetInflation;
+        }
+        
+        // Update visuals based on inflation
+        const deltaInflation = boss.inflationState - prevInflation;
+        updatePorcupinefishInflation(boss, deltaInflation);
+        
+        // Animate spines when inflated
+        animatePorcupinefishSpines(boss, 1);
+        
+        // Update bristle effect
+        updateSpineBristle(boss);
+        
+        // Slowly rotate to face player (disabled during charge commitment)
+        const isCharging = boss.aiState === 'charging' || boss.chargeDirLocked;
+        if (!isCharging && !boss.shieldActive) {
+            const dx = player.position.x - boss.position.x;
+            const dz = player.position.z - boss.position.z;
+            const targetAngle = Math.atan2(dx, dz);
+            const diff = Math.atan2(Math.sin(targetAngle - boss.rotation.y), Math.cos(targetAngle - boss.rotation.y));
+            
+            // Turn rate: ~100 degrees/sec at 60fps
+            const maxStep = 0.03;
+            boss.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
+        }
+    }
+    
     // Update temporary walls
     if (boss.temporaryWalls) {
         for (let i = boss.temporaryWalls.length - 1; i >= 0; i--) {
@@ -252,16 +688,18 @@ export function updateBoss() {
             // Auto-break shield with special message
             boss.shieldActive = false;
             boss.isExposed = true;
-            // Phase-scaled vulnerability window: 6s/5s/4s (360/300/240 frames)
-            const phaseVulnerability = { 1: 360, 2: 300, 3: 240 };
-            boss.exposedTimer = phaseVulnerability[boss.phase] || 300;
+            
+            // Use nerfed failsafe duration (prevents "wait out" strats)
+            const failsafeDuration = boss.exposedConfig?.failsafeDuration || 180;
+            boss.exposedTimer = failsafeDuration;
+            boss.exposedDamageMultiplier = boss.exposedConfig?.failsafeMultiplier || 1.0;
             
             if (boss.shieldMesh) {
                 boss.shieldMesh.visible = false;
             }
             
-            // Show failsafe message
-            showTutorialCallout('shieldOverload', 'SHIELD OVERLOAD - Boss exposed!', 2000);
+            // Show failsafe message (reduced reward warning)
+            showTutorialCallout('shieldOverload', 'SHIELD OVERLOAD - Reduced vulnerable window!', 2000);
             
             // Shield break VFX and audio
             spawnShieldBreakVFX(boss.position, 0x4488ff);
@@ -331,6 +769,16 @@ export function updateBoss() {
             if (boss.bodyMaterial) {
                 boss.bodyMaterial.emissiveIntensity = 0.5;
             }
+            
+            // Boss 1 Phase 3: Reactivate shield after exposed window ends
+            const config = BOSS_CONFIG[gameState.currentArena];
+            if (gameState.currentArena === 1 && boss.phase === 3 && config.phaseBehavior?.[3]?.canShield) {
+                boss.shieldActive = true;
+                boss.shieldStartTime = Date.now();
+                if (boss.shieldMesh) {
+                    boss.shieldMesh.visible = true;
+                }
+            }
         }
     }
     
@@ -381,7 +829,7 @@ export function updateBoss() {
         }
     }
     
-    // Update charge trails (Gatekeeper P2+)
+    // Update charge trails (Red Puffer King P2+)
     if (boss.chargeTrails && boss.chargeTrails.length > 0) {
         for (let i = boss.chargeTrails.length - 1; i >= 0; i--) {
             const trail = boss.chargeTrails[i];
@@ -449,15 +897,17 @@ export function updateBoss() {
         boss.velocityY = 0;
     }
     
-    // Player collision
-    const distToPlayer = boss.position.distanceTo(player.position);
-    const effectiveSize = boss.size * boss.growthScale * boss.scale.x;
-    if (distToPlayer < effectiveSize + 0.5) {
-        const now = Date.now();
-        if (now - lastDamageTime > DAMAGE_COOLDOWN) {
-            const config = BOSS_CONFIG[gameState.currentArena];
-            takeDamage(boss.damage, config?.name || 'Boss', 'boss');
-            setLastDamageTime(now);
+    // Player collision (skip during cutscenes)
+    if (!gameState.cutsceneActive) {
+        const distToPlayer = boss.position.distanceTo(player.position);
+        const effectiveSize = boss.size * boss.growthScale * boss.scale.x;
+        if (distToPlayer < effectiveSize + 0.5) {
+            const now = Date.now();
+            if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+                const config = BOSS_CONFIG[gameState.currentArena];
+                takeDamage(boss.damage, config?.name || 'Boss', 'boss');
+                setLastDamageTime(now);
+            }
         }
     }
     
@@ -569,6 +1019,16 @@ function triggerStuckRecovery(boss) {
 function getShieldBehavior(boss) {
     if (!boss.shieldActive) return null;
     
+    const config = BOSS_CONFIG[gameState.currentArena];
+    const phaseBehavior = config.phaseBehavior?.[boss.phase];
+    
+    // Use phaseBehavior config if available (Boss 1 new system)
+    if (phaseBehavior) {
+        if (phaseBehavior.staticMode) return 'static';  // Boss 1 Phase 2
+        if (phaseBehavior.chase) return 'aggressiveChase';  // Boss 1 Phase 3
+    }
+    
+    // Legacy behavior for other bosses
     switch (boss.phase) {
         case 1: return 'hibernate';        // Full hibernate - no attacks
         case 2: return 'timedPulse';       // Light pressure every 4s
@@ -581,7 +1041,7 @@ function getShieldBehavior(boss) {
 function isTopLethalityAbility(boss, ability) {
     // Top lethality moves per boss (blocked during Phase 3 shielded state)
     const topLethality = {
-        1: 'charge',      // Gatekeeper's charge
+        1: 'charge',      // Red Puffer King's charge
         2: 'jumpSlam',    // Monolith's slam
         3: 'teleport',    // Ascendant's teleport
         4: 'growth',      // Overgrowth's growth
@@ -593,7 +1053,12 @@ function isTopLethalityAbility(boss, ability) {
 }
 
 function updateBossAI(boss) {
-    // Gatekeeper P3 summon freeze - boss pauses briefly during ring summon
+    // Skip all AI processing during cutscenes
+    if (boss.aiState === 'cutscene_idle' || gameState.cutsceneActive) {
+        return;
+    }
+    
+    // Red Puffer King P3 summon freeze - boss pauses briefly during ring summon
     if (boss.summonFreeze && boss.summonFreezeTimer > 0) {
         boss.summonFreezeTimer--;
         if (boss.summonFreezeTimer <= 0) {
@@ -608,8 +1073,25 @@ function updateBossAI(boss) {
     // ==================== SHIELD HIBERNATION BEHAVIOR ====================
     const shieldBehavior = getShieldBehavior(boss);
     
+    if (shieldBehavior === 'static') {
+        // Boss 1 Phase 2: Static shield mode - anchored, only summons
+        // Ensure we're in static_shielded state
+        if (boss.aiState !== 'summon' && boss.aiState !== 'static_shielded') {
+            boss.aiState = 'static_shielded';
+            boss.aiTimer = 0;
+        }
+        // Continue the static_shielded state (handles rotation and summon timer)
+        continueCurrentAbility(boss);
+        return;
+    }
+    
+    if (shieldBehavior === 'aggressiveChase') {
+        // Boss 1 Phase 3: Chase while shielded - full aggression
+        // Fall through to normal AI flow (chase + abilities)
+    }
+    
     if (shieldBehavior === 'hibernate') {
-        // Phase 1: Full hibernate - just slow orbit, no attacks
+        // Legacy: Full hibernate - just slow orbit, no attacks
         // Initialize pulse timer if needed
         if (!boss.shieldPulseTimer) boss.shieldPulseTimer = 0;
         
@@ -633,7 +1115,7 @@ function updateBossAI(boss) {
     }
     
     if (shieldBehavior === 'timedPulse') {
-        // Phase 2: Timed pulse every 4 seconds (240 frames)
+        // Legacy: Timed pulse every 4 seconds (240 frames)
         if (!boss.shieldPulseTimer) boss.shieldPulseTimer = 0;
         boss.shieldPulseTimer++;
         
@@ -663,7 +1145,7 @@ function updateBossAI(boss) {
     }
     
     if (shieldBehavior === 'filteredAggression') {
-        // Phase 3: Full aggression but filter out top lethality move
+        // Legacy: Phase 3: Full aggression but filter out top lethality move
         // Reset pulse timer since we're in P3
         boss.shieldPulseTimer = 0;
         
@@ -687,9 +1169,14 @@ function updateBossAI(boss) {
     // In cooldown, move toward player slowly
     if (boss.aiState === 'cooldown') {
         moveTowardPlayer(boss, 0.5);
-        if (boss.aiTimer > 30) {
+        
+        // Use chargeRecoveryTimer if set (Boss 1 phase-based recovery), otherwise default 30
+        const recoveryTime = boss.chargeRecoveryTimer !== undefined ? boss.chargeRecoveryTimer : 30;
+        
+        if (boss.aiTimer > recoveryTime) {
             boss.aiState = 'idle';
             boss.aiTimer = 0;
+            boss.chargeRecoveryTimer = undefined;  // Reset for next charge
         }
         return;
     }
@@ -1106,6 +1593,185 @@ function lerpColor(c1, c2, t) {
 // Export cycle constants for HUD
 export { BOSS6_CYCLE_NAMES, BOSS6_CYCLE_COLORS };
 
+// ==================== DEMO ABILITY SYSTEM ====================
+// For phase transition cutscenes - triggers ability in safe direction
+
+export function triggerDemoAbility(boss, abilityName) {
+    if (!boss) return;
+    
+    boss.inDemoMode = true;
+    boss.demoAbility = abilityName;
+    
+    // Calculate safe direction (away from player, or toward arena edge)
+    const playerDir = tempVec3.subVectors(player.position, boss.position).normalize();
+    const safeDir = playerDir.clone().negate();  // Opposite of player
+    safeDir.y = 0;
+    safeDir.normalize();
+    
+    // Store the safe direction for use during ability
+    boss.demoChargeDir = safeDir.clone();
+    
+    switch (abilityName) {
+        case 'charge':
+            boss.aiState = 'wind_up';
+            boss.aiTimer = 0;
+            boss.bodyMaterial.emissiveIntensity = 1;
+            boss.chargeMarker = null;
+            if (boss.isPorcupinefish) {
+                boss.targetInflation = 1.0;
+                boss.wigglePhase = 0;
+                boss.chargeDirLocked = false;
+            }
+            break;
+        case 'summon':
+            // For demo, just show the summon animation
+            boss.aiState = 'summon';
+            boss.aiTimer = 0;
+            break;
+    }
+}
+
+export function isDemoModeActive(boss) {
+    return boss && boss.inDemoMode;
+}
+
+export function endDemoMode(boss) {
+    if (boss) {
+        boss.inDemoMode = false;
+        boss.demoAbility = null;
+        boss.demoChargeDir = null;
+    }
+}
+
+// ==================== CUTSCENE SAFETY SYSTEM ====================
+// Ensures player safety during boss intro and phase transition cutscenes
+
+const CUTSCENE_SAFE_DISTANCE = 15;  // Minimum distance between boss and player
+const BOSS_CUTSCENE_POSITION = { x: 0, y: 0, z: -20 };  // Boss position during cutscenes (arena center-back)
+
+/**
+ * Prepare boss for cutscene - disengage from combat and move to safe position
+ * Call this before any boss intro or phase transition cutscene begins
+ */
+export function prepareBossForCutscene(boss) {
+    if (!boss) return;
+    
+    // Set cutscene state
+    gameState.cutsceneActive = true;
+    gameState.cutsceneInvincible = true;
+    
+    // Store previous AI state for potential restoration
+    boss.preCutsceneAiState = boss.aiState;
+    
+    // Disable boss AI - enter cutscene idle state
+    boss.aiState = 'cutscene_idle';
+    boss.aiTimer = 0;
+    
+    // Clear any active abilities/charges
+    boss.chargeDirection = null;
+    boss.chargeDirLocked = false;
+    boss.chargeMarker = null;
+    
+    // Move boss to safe cutscene position (arena center-back)
+    const config = BOSS_CONFIG[gameState.currentArena];
+    const bossY = config ? config.size : 3;
+    boss.position.set(BOSS_CUTSCENE_POSITION.x, bossY, BOSS_CUTSCENE_POSITION.z);
+    
+    // Face toward arena center (where player typically is)
+    boss.rotation.y = 0;
+}
+
+/**
+ * End cutscene and reposition player to safe distance from boss
+ * Call this when cutscene ends to ensure player isn't immediately in danger
+ */
+export function endCutsceneAndRepositionPlayer(boss) {
+    if (!boss) {
+        // No boss - just clear cutscene state
+        gameState.cutsceneActive = false;
+        gameState.cutsceneInvincible = false;
+        return;
+    }
+    
+    // Calculate safe position for player - opposite side of arena from boss
+    const bossPos = boss.position;
+    const dirFromBoss = new THREE.Vector3(0, 0, 1);  // Default: toward positive Z (front of arena)
+    
+    // If player exists, use direction away from boss
+    if (player && player.position) {
+        dirFromBoss.subVectors(player.position, bossPos);
+        dirFromBoss.y = 0;
+        if (dirFromBoss.lengthSq() > 0.1) {
+            dirFromBoss.normalize();
+        } else {
+            // Player too close to boss - use default direction
+            dirFromBoss.set(0, 0, 1);
+        }
+    }
+    
+    // Position player at safe distance from boss
+    const safePos = new THREE.Vector3(
+        bossPos.x + dirFromBoss.x * CUTSCENE_SAFE_DISTANCE,
+        1,  // Player height
+        bossPos.z + dirFromBoss.z * CUTSCENE_SAFE_DISTANCE
+    );
+    
+    // Clamp to arena bounds (approximate - arenas are roughly 40-50 units radius)
+    const maxRadius = 35;
+    const distFromCenter = Math.sqrt(safePos.x * safePos.x + safePos.z * safePos.z);
+    if (distFromCenter > maxRadius) {
+        const scale = maxRadius / distFromCenter;
+        safePos.x *= scale;
+        safePos.z *= scale;
+    }
+    
+    // Move player to safe position
+    if (player && player.position) {
+        player.position.copy(safePos);
+        player.velocity.set(0, 0, 0);  // Clear any momentum
+    }
+    
+    // Resume normal boss AI
+    boss.aiState = 'idle';
+    boss.aiTimer = 0;
+    
+    // Clear cutscene state
+    gameState.cutsceneActive = false;
+    
+    // Brief invincibility buffer after cutscene (30 frames = 0.5 seconds)
+    setTimeout(() => {
+        gameState.cutsceneInvincible = false;
+    }, 500);
+}
+
+// Helper to spawn intro minions around boss
+export function spawnIntroMinions(boss, count = 3) {
+    if (!boss) return [];
+    
+    const minions = [];
+    const radius = 6;
+    
+    for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2;
+        const spawnPos = new THREE.Vector3(
+            boss.position.x + Math.cos(angle) * radius,
+            1,
+            boss.position.z + Math.sin(angle) * radius
+        );
+        
+        // Spawn a grunt-type enemy for intro
+        const minion = spawnSpecificEnemy('grunt', spawnPos);
+        if (minion) {
+            // Mark as intro minion (won't attack immediately)
+            minion.isIntroMinion = true;
+            minion.introTimer = 120;  // 2 seconds before becoming active
+            minions.push(minion);
+        }
+    }
+    
+    return minions;
+}
+
 function startAbility(boss, ability) {
     boss.aiTimer = 0;
     boss.abilityCooldowns[ability] = ABILITY_COOLDOWNS[ability];
@@ -1115,6 +1781,12 @@ function startAbility(boss, ability) {
             boss.aiState = 'wind_up';
             boss.bodyMaterial.emissiveIntensity = 1;
             boss.chargeMarker = null;  // Will be created on first frame
+            // Porcupinefish: inflate during wind-up, reset wiggle
+            if (boss.isPorcupinefish) {
+                boss.targetInflation = 1.0;
+                boss.wigglePhase = 0;
+                boss.chargeDirLocked = false;
+            }
             break;
         case 'summon':
             boss.aiState = 'summon';
@@ -1166,8 +1838,14 @@ function continueCurrentAbility(boss) {
         case 'wind_up':
             // Create telegraph marker on first frame
             if (boss.aiTimer === 0) {
-                const dir = tempVec3.subVectors(player.position, boss.position).normalize();
-                dir.y = 0;
+                // Demo mode: use safe direction for marker
+                let dir;
+                if (boss.inDemoMode && boss.demoChargeDir) {
+                    dir = boss.demoChargeDir.clone();
+                } else {
+                    dir = tempVec3.subVectors(player.position, boss.position).normalize();
+                    dir.y = 0;
+                }
                 boss.chargeMarker = createChargePathMarker(boss.position, dir, 15);
                 
                 // Audio cue for charge wind-up
@@ -1179,21 +1857,85 @@ function continueCurrentAbility(boss) {
                 updateChargePathMarker(boss.chargeMarker, boss.aiTimer / tellDuration.charge);
             }
             
+            // Porcupinefish: Wiggle animation during wind-up (offsets from base)
+            if (boss.isPorcupinefish && boss.pufferBase) {
+                boss.wigglePhase += 0.3;
+                
+                // Intensity ramps up toward lock-in
+                const progress = boss.aiTimer / tellDuration.charge;
+                const intensity = 0.5 + progress * 0.5;
+                
+                if (boss.pufferBody && boss.pufferBase.bodyRot) {
+                    const br = boss.pufferBase.bodyRot;
+                    boss.pufferBody.rotation.set(
+                        br.x + Math.sin(boss.wigglePhase) * 0.1 * intensity,
+                        br.y,
+                        br.z + Math.cos(boss.wigglePhase * 0.7) * 0.08 * intensity
+                    );
+                }
+                
+                if (boss.pufferTail && boss.pufferBase.tailScale) {
+                    const ts = boss.pufferBase.tailScale;
+                    boss.pufferTail.scale.set(
+                        ts.x * (1 + Math.sin(boss.wigglePhase * 2) * 0.3 * intensity),
+                        ts.y,
+                        ts.z
+                    );
+                }
+            }
+            
+            // Charge lock-in moment (last ~6 frames before charging)
+            const lockInFrames = 6;
+            const framesUntilCharge = tellDuration.charge - boss.aiTimer;
+            
+            if (framesUntilCharge <= lockInFrames && boss.isPorcupinefish) {
+                // Direction is now locked - store it if not already
+                if (!boss.chargeDirLocked) {
+                    boss.chargeDirLocked = true;
+                    
+                    // Demo mode: use safe direction
+                    if (boss.inDemoMode && boss.demoChargeDir) {
+                        boss.lockedChargeDir = boss.demoChargeDir.clone();
+                    } else {
+                        boss.lockedChargeDir = tempVec3.subVectors(player.position, boss.position).normalize().clone();
+                        boss.lockedChargeDir.y = 0;
+                    }
+                    
+                    // Visual flash for lock-in (gold flash on body)
+                    if (boss.bodyMaterial) {
+                        boss.bodyMaterial.emissive.setHex(0xffdd44);
+                    }
+                }
+            }
+            
             if (boss.aiTimer > tellDuration.charge) {
                 boss.aiState = 'charging';
-                boss.chargeDirection = tempVec3.subVectors(player.position, boss.position).normalize().clone();
-                boss.chargeDirection.y = 0;
                 
-                // Corner trap protection: If player is near a corner, bias charge toward center
-                // This gives player an escape route instead of pinning them
-                const cornerDist = Math.min(
-                    45 - Math.abs(player.position.x),
-                    45 - Math.abs(player.position.z)
-                );
-                if (cornerDist < 8) {
-                    const centerBias = new THREE.Vector3(-player.position.x, 0, -player.position.z)
-                        .normalize().multiplyScalar(0.3);
-                    boss.chargeDirection.add(centerBias).normalize();
+                // Demo mode: use safe direction (away from player)
+                if (boss.inDemoMode && boss.demoChargeDir) {
+                    boss.chargeDirection = boss.demoChargeDir.clone();
+                }
+                // Use locked direction if available (porcupinefish), otherwise calculate fresh
+                else if (boss.chargeDirLocked && boss.lockedChargeDir) {
+                    boss.chargeDirection = boss.lockedChargeDir.clone();
+                } else {
+                    boss.chargeDirection = tempVec3.subVectors(player.position, boss.position).normalize().clone();
+                    boss.chargeDirection.y = 0;
+                }
+                
+                // Skip corner protection in demo mode
+                if (!boss.inDemoMode) {
+                    // Corner trap protection: If player is near a corner, bias charge toward center
+                    // This gives player an escape route instead of pinning them
+                    const cornerDist = Math.min(
+                        45 - Math.abs(player.position.x),
+                        45 - Math.abs(player.position.z)
+                    );
+                    if (cornerDist < 8) {
+                        const centerBias = new THREE.Vector3(-player.position.x, 0, -player.position.z)
+                            .normalize().multiplyScalar(0.3);
+                        boss.chargeDirection.add(centerBias).normalize();
+                    }
                 }
                 
                 boss.aiTimer = 0;
@@ -1206,9 +1948,22 @@ function continueCurrentAbility(boss) {
             }
             break;
         case 'charging':
+            // Porcupinefish: BLAST deflation during charge (puffer releasing water)
+            if (boss.isPorcupinefish) {
+                boss.targetInflation = -0.3;  // Extra-small for dramatic blast effect (0.7x scale)
+                boss.inflationSpeed = 0.2;    // Very fast deflation
+                
+                // Rate-limited bubble trail (not every frame)
+                boss.bubbleAcc = (boss.bubbleAcc || 0) + 2;  // ~2 bubbles per frame budget
+                while (boss.bubbleAcc >= 1) {
+                    boss.bubbleAcc -= 1;
+                    spawnBubbleParticle(boss);
+                }
+            }
+            
             boss.position.add(boss.chargeDirection.clone().multiplyScalar(boss.chargeSpeed));
             
-            // Gatekeeper P2+: Leave damage trails during charge
+            // Red Puffer King P2+: Leave damage trails during charge
             if (gameState.currentArena === 1 && boss.phase >= 2) {
                 const distFromLastTrail = boss.position.distanceTo(boss.lastChargeTrailPos);
                 if (distFromLastTrail > 2.5 || boss.lastChargeTrailPos.length() === 0) {
@@ -1226,13 +1981,42 @@ function continueCurrentAbility(boss) {
                 clampBossPosition(boss);
                 // Reset trail position for next charge
                 boss.lastChargeTrailPos.set(0, 0, 0);
+                
+                // Porcupinefish: Reset visuals after charge ends
+                resetPufferVisuals(boss);
+                
+                // End demo mode if active
+                if (boss.inDemoMode) {
+                    endDemoMode(boss);
+                }
+                
+                // Boss 1: Set phase-based recovery timer for charge
+                const config = BOSS_CONFIG[gameState.currentArena];
+                if (gameState.currentArena === 1 && config.chargeRecovery) {
+                    boss.chargeRecoveryTimer = config.chargeRecovery[`phase${boss.phase}`] || 30;
+                }
             }
             break;
             
         // SUMMON ABILITY
         case 'summon':
             if (boss.aiTimer === Math.floor(tellDuration.summon)) {
-                const summonCount = boss.phase + 1;
+                let summonCount = boss.phase + 1;
+                
+                // Boss 1 Phase 3: Apply summon cap (max 4 active minions)
+                const config = BOSS_CONFIG[gameState.currentArena];
+                if (gameState.currentArena === 1 && boss.phase >= 3) {
+                    const summonCap = config.phaseBehavior?.[3]?.summonCap || 4;
+                    const currentMinions = boss.summonedMinions?.filter(m => m && m.parent).length || 0;
+                    summonCount = Math.min(summonCount, Math.max(0, summonCap - currentMinions));
+                    
+                    // If already at cap, skip summon entirely
+                    if (summonCount <= 0) {
+                        boss.aiState = 'idle';
+                        boss.aiTimer = 0;
+                        break;
+                    }
+                }
                 
                 // Activate shield if configured
                 if (boss.shieldConfig && boss.shieldConfig.activateOnSummon) {
@@ -1241,8 +2025,14 @@ function continueCurrentAbility(boss) {
                     if (boss.shieldMesh) {
                         boss.shieldMesh.visible = true;
                     }
-                    // Clear previous minions array
-                    boss.summonedMinions = [];
+                    // Trigger porcupinefish inflation bristle effect
+                    if (boss.isPorcupinefish) {
+                        triggerSpineBristle(boss);
+                    }
+                    // Clear previous minions array (only if not Phase 3 with cap)
+                    if (!(gameState.currentArena === 1 && boss.phase >= 3)) {
+                        boss.summonedMinions = [];
+                    }
                     
                     // Tutorial callout for Arena 1 - explain shield mechanic to new players
                     if (gameState.currentArena === 1) {
@@ -1253,13 +2043,13 @@ function continueCurrentAbility(boss) {
                     PulseMusic.onBossShieldActivate();
                 }
                 
-                // Gatekeeper P3: Ring summon around PLAYER with inward arrows
-                const isGatekeeperP3 = gameState.currentArena === 1 && boss.phase >= 3;
-                const spawnCenter = isGatekeeperP3 ? player.position : boss.position;
-                const spawnRadius = isGatekeeperP3 ? 10 : 4 + Math.random() * 2;
+                // Red Puffer King P3: Ring summon around PLAYER with inward arrows
+                const isRedPufferKingP3 = gameState.currentArena === 1 && boss.phase >= 3;
+                const spawnCenter = isRedPufferKingP3 ? player.position : boss.position;
+                const spawnRadius = isRedPufferKingP3 ? 10 : 4 + Math.random() * 2;
                 
-                // Gatekeeper P3: Brief spawn freeze - boss pauses while summoning
-                if (isGatekeeperP3) {
+                // Red Puffer King P3: Brief spawn freeze - boss pauses while summoning
+                if (isRedPufferKingP3) {
                     boss.summonFreeze = true;
                     boss.summonFreezeTimer = 60; // 1 second freeze
                 }
@@ -1287,8 +2077,8 @@ function continueCurrentAbility(boss) {
                     );
                     const minion = spawnSpecificEnemy(enemyType, spawnPos);
                     
-                    // Gatekeeper P3: Create inward arrow indicator
-                    if (isGatekeeperP3 && minion) {
+                    // Red Puffer King P3: Create inward arrow indicator
+                    if (isRedPufferKingP3 && minion) {
                         // Point minion toward center (player position)
                         const toCenter = new THREE.Vector3()
                             .subVectors(spawnCenter, spawnPos)
@@ -1296,8 +2086,8 @@ function continueCurrentAbility(boss) {
                         minion.rotation.y = Math.atan2(toCenter.x, toCenter.z);
                     }
                     
-                    // Track minion for shield system
-                    if (boss.shieldConfig && boss.shieldConfig.activateOnSummon) {
+                    // Track minion for shield system (when shield is active OR activateOnSummon is true)
+                    if (boss.shieldConfig && (boss.shieldActive || boss.shieldConfig.activateOnSummon)) {
                         minion.isBossMinion = true;
                         minion.parentBoss = boss;
                         
@@ -2133,6 +2923,54 @@ function continueCurrentAbility(boss) {
             }
             break;
             
+        // STATIC SHIELDED (Boss 1 Phase 2)
+        case 'static_shielded':
+            // Boss stays mostly stationary, only rotating to face player
+            const staticDx = player.position.x - boss.position.x;
+            const staticDz = player.position.z - boss.position.z;
+            const staticTargetAngle = Math.atan2(staticDz, staticDx);
+            boss.rotation.y = staticTargetAngle;
+            
+            // Check if shield should be reactivated after exposed window
+            if (!boss.shieldActive && !boss.isExposed && boss.summonedMinions.length === 0) {
+                // Reactivate shield and prepare to summon again
+                boss.shieldActive = true;
+                boss.shieldStartTime = Date.now();
+                if (boss.shieldMesh) {
+                    boss.shieldMesh.visible = true;
+                }
+                // Trigger porcupinefish inflation bristle effect
+                if (boss.isPorcupinefish) {
+                    triggerSpineBristle(boss);
+                }
+                boss.summonTimer = 180;  // Short delay before next summon (3 seconds)
+            }
+            
+            // Summon minions periodically when shield is active (every 4 seconds)
+            if (boss.shieldActive) {
+                if (!boss.summonTimer) boss.summonTimer = 0;
+                boss.summonTimer++;
+                
+                if (boss.summonTimer >= 240 && boss.abilityCooldowns.summon <= 0) {
+                    boss.summonTimer = 0;
+                    startAbility(boss, 'summon');
+                }
+            }
+            
+            // Stay in this state until Phase 3 transition
+            break;
+        
+        // CUTSCENE IDLE (during boss intro and phase transitions)
+        case 'cutscene_idle':
+            // Boss does nothing during cutscenes - AI is suspended
+            // Just face toward player slowly for visual interest
+            const cutsceneDx = player.position.x - boss.position.x;
+            const cutsceneDz = player.position.z - boss.position.z;
+            const cutsceneTargetAngle = Math.atan2(cutsceneDx, cutsceneDz);
+            const cutsceneDiff = Math.atan2(Math.sin(cutsceneTargetAngle - boss.rotation.y), Math.cos(cutsceneTargetAngle - boss.rotation.y));
+            boss.rotation.y += cutsceneDiff * 0.02;  // Very slow turn
+            break;
+            
         // PILLAR PERCH + SLAM (Boss 2)
         case 'pillar_leap':
             // Find suitable pillar (tall ones)
@@ -2955,6 +3793,119 @@ function completePhaseTransition(boss) {
     // Update visual for new phase
     updateBossPhaseVisuals(boss);
     
+    // Red Puffer King Phase 2: Demo minion spawn + energy transfer + shield formation
+    const config = BOSS_CONFIG[gameState.currentArena];
+    if (gameState.currentArena === 1 && newPhase === 2) {
+        if (boss.shieldConfig && config.phaseBehavior?.[2]?.autoShield) {
+            // Initialize summon tracking
+            boss.summonedMinions = boss.summonedMinions || [];
+            boss.minionTethers = boss.minionTethers || [];
+            
+            // PHASE 2 DEMO: Spawn minions first, then show energy transfer to form shield
+            const demoMinions = [];
+            const minionCount = 3;
+            const spawnRadius = 8;
+            
+            for (let i = 0; i < minionCount; i++) {
+                const angle = (i / minionCount) * Math.PI * 2;
+                const spawnPos = new THREE.Vector3(
+                    boss.position.x + Math.cos(angle) * spawnRadius,
+                    1,
+                    boss.position.z + Math.sin(angle) * spawnRadius
+                );
+                const minion = spawnSpecificEnemy('grunt', spawnPos);
+                if (minion) {
+                    minion.isBossMinion = true;
+                    minion.parentBoss = boss;
+                    boss.summonedMinions.push(minion);
+                    demoMinions.push(minion);
+                    
+                    // Create tether VFX
+                    const tether = createMinionTether(boss, minion, boss.baseColor);
+                    if (tether) {
+                        minion.tether = tether;
+                        boss.minionTethers.push(tether);
+                    }
+                }
+            }
+            
+            // Show energy transfer VFX from minions to boss
+            if (demoMinions.length > 0) {
+                createEnergyTransferVFX(demoMinions, boss, 90);
+                // Slow-mo during energy transfer for emphasis
+                triggerSlowMo(60, 0.4);  // 1 second at 40% speed
+            }
+            
+            // Delay shield activation slightly for dramatic effect
+            setTimeout(() => {
+                boss.shieldActive = true;
+                boss.shieldStartTime = Date.now();
+                if (boss.shieldMesh) {
+                    boss.shieldMesh.visible = true;
+                }
+                
+                // Trigger porcupinefish inflation bristle effect for dramatic Phase 2 entrance
+                if (boss.isPorcupinefish) {
+                    triggerSpineBristle(boss);
+                    // Extra dramatic: instant partial inflation before lerp takes over
+                    boss.inflationState = 0.3;
+                }
+                
+                triggerScreenFlash(0x4488ff, 15);
+            }, 1500);  // 1.5 seconds after minion spawn
+            
+            // Enter static shielded state
+            boss.aiState = 'static_shielded';
+            boss.aiTimer = 0;
+            // Disable summon timer since we already spawned minions
+            boss.summonTimer = 300;  // 5 second delay before next summon wave
+            
+            // Show tutorial for first time
+            showTutorialCallout('phase2Shield', 'Kill linked minions to break the shield!', 3000);
+            PulseMusic.onBossShieldActivate?.();
+        }
+    }
+    
+    // Red Puffer King Phase 3: Demo shielded dash, then resume aggressive chase
+    if (gameState.currentArena === 1 && newPhase === 3) {
+        // Exit static_shielded state if still in it
+        if (boss.aiState === 'static_shielded') {
+            boss.aiState = 'idle';
+            boss.aiTimer = 0;
+        }
+        // Keep shield active if it was up (stacked mechanic)
+        // Shield will only break when minions are killed
+        
+        // Ensure shield is visible and prominent for demo
+        if (!boss.shieldActive) {
+            boss.shieldActive = true;
+            boss.shieldStartTime = Date.now();
+        }
+        if (boss.shieldMesh) {
+            boss.shieldMesh.visible = true;
+            // Make shield extra prominent for Phase 3 demo
+            if (boss.shieldMesh.material) {
+                boss.shieldMesh.material.opacity = 0.7;  // More visible
+                boss.shieldMesh.material.emissive?.setHex(0xff4444);  // Red tint for aggression
+                boss.shieldMesh.material.emissiveIntensity = 0.5;
+            }
+        }
+        
+        // PHASE 3 DEMO: Trigger a shielded dash demonstration
+        // Delay slightly to let phase transition visuals settle
+        setTimeout(() => {
+            if (boss && boss.health > 0) {
+                // Slow-mo during shielded charge demo for emphasis
+                triggerSlowMo(45, 0.3);  // 0.75 second at 30% speed
+                // Trigger demo charge in safe direction while shielded
+                triggerDemoAbility(boss, 'charge');
+            }
+        }, 500);  // 0.5 second delay
+        
+        // Show Phase 3 callout
+        showTutorialCallout('phase3Pressure', 'PHASE 3 - Boss charges while shielded!', 2500);
+    }
+    
     // Overgrowth P3: Trigger split immediately
     if (boss.forceP3Split) {
         boss.forceP3Split = false;
@@ -2984,6 +3935,57 @@ function updateBossPhaseVisuals(boss) {
             boss.bodyMaterial.emissive.setHex(0xff4444);
             boss.bodyMaterial.emissiveIntensity = 0.7;
             break;
+    }
+    
+    // Porcupinefish-specific phase visuals
+    if (boss.isPorcupinefish) {
+        switch (boss.phase) {
+            case 1:
+                // Deflated swimmer - orange-yellow spines (dormant)
+                if (boss.pufferSpines) {
+                    boss.pufferSpines.children.forEach(spine => {
+                        if (spine.material) {
+                            spine.material.color.setHex(0xffaa44);
+                            spine.material.emissive.setHex(0xff6600);
+                            spine.material.emissiveIntensity = 0.3;
+                        }
+                    });
+                }
+                break;
+            case 2:
+                // Inflated armored - spines become more prominent
+                if (boss.pufferSpines) {
+                    boss.pufferSpines.children.forEach(spine => {
+                        if (spine.material) {
+                            spine.material.color.setHex(0xff8833);
+                            spine.material.emissive.setHex(0xff5500);
+                            spine.material.emissiveIntensity = 0.4;
+                        }
+                    });
+                }
+                // Trigger dramatic bristle effect
+                triggerSpineBristle(boss);
+                break;
+            case 3:
+                // Aggressive inflated - red-hot spines
+                if (boss.pufferSpines) {
+                    boss.pufferSpines.children.forEach(spine => {
+                        if (spine.material) {
+                            spine.material.color.setHex(0xff4422);
+                            spine.material.emissive.setHex(0xff2200);
+                            spine.material.emissiveIntensity = 0.6;
+                        }
+                    });
+                }
+                // Body also gets red-shifted
+                if (boss.pufferBodyMat) {
+                    boss.pufferBodyMat.emissive.setHex(0xff3333);
+                }
+                // Extra dramatic bristle for Phase 3
+                boss.spineBristleScale = 1.6;
+                triggerSpineBristle(boss);
+                break;
+        }
     }
 }
 
@@ -3163,4 +4165,16 @@ export function killBoss() {
     hideBoss6CycleIndicator();
     gameState.kills++;
     gameState.score += isFinalBoss ? 2000 : 750;  // Extra score for final boss
+    
+    // Spawn arena portal after boss death (not for final boss - game ends there)
+    if (!isFinalBoss) {
+        const portalPos = currentBoss.position.clone();
+        portalPos.y = 0;  // Ground level
+        
+        // Delay portal spawn for dramatic effect (2 seconds after boss death)
+        setTimeout(() => {
+            spawnArenaPortal(portalPos);
+            showTutorialCallout('portal', 'Enter the portal to proceed to the next arena!', 3000);
+        }, 2000);
+    }
 }

@@ -71,7 +71,7 @@ Arenas teach mechanics progressively with **tiered wave counts** for faster earl
 
 Bosses are **puzzle tests** of learned mechanics, not just damage sponges:
 
-- **The Gatekeeper** - Charges and summons; tests dodging
+- **Red Puffer King** - Charges and summons; tests dodging
 - **The Monolith** - Creates hazard pools; tests positioning
 - **The Ascendant** - Warps around; tests prediction
 - **The Overgrowth** - Grows and splits; tests priority management

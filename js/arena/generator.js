@@ -2,12 +2,15 @@ import { scene, ground } from '../core/scene.js';
 import { obstacles, hazardZones, arenaWalls } from '../core/entities.js';
 import { ARENA_CONFIG } from '../config/arenas.js';
 import { cachePillarPositions } from '../entities/enemies.js';
+import { initAmbience, cleanupAmbience } from '../systems/ambience.js';
+import { clearAllPickups } from '../systems/pickups.js';
 
 // Arena landmarks (visual-only, no collision)
 const arenaLandmarks = [];
 
 export function generateArena(arenaNumber) {
     clearArenaGeometry();
+    clearAllPickups();  // Clear XP gems and hearts to prevent carryover
     
     const arenaNum = Math.min(arenaNumber, 6);
     const arenaData = ARENA_CONFIG.arenas[arenaNum];
@@ -36,6 +39,9 @@ export function generateArena(arenaNumber) {
     
     // Cache pillar positions for pillar hopper enemies
     cachePillarPositions();
+    
+    // Initialize underwater ambience (bubbles, kelp, fish)
+    initAmbience();
 }
 
 export function clearArenaGeometry() {
@@ -70,6 +76,9 @@ export function clearArenaGeometry() {
         scene.remove(lm);
     });
     arenaLandmarks.length = 0;
+    
+    // Clear underwater ambience
+    cleanupAmbience();
 }
 
 function addPillars(arenaNum) {

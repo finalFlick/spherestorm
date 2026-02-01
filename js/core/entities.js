@@ -24,6 +24,17 @@ export function setCurrentBoss(boss) {
     bossHolder.current = boss;
 }
 
+// Arena portal (for transitioning to next arena after boss defeat)
+const portalHolder = { current: null };
+
+export function getArenaPortal() {
+    return portalHolder.current;
+}
+
+export function setArenaPortal(portal) {
+    portalHolder.current = portal;
+}
+
 // Reusable vectors for performance
 export const tempVec3 = new THREE.Vector3();
 export const tempVec3_2 = new THREE.Vector3();

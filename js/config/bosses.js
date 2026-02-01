@@ -4,7 +4,7 @@
 
 export const BOSS_CONFIG = {
     1: { 
-        name: 'THE GATEKEEPER', 
+        name: 'RED PUFFER KING', 
         health: 1250,  // Reduced for better pacing
         damage: 25, 
         size: 2.5, 
@@ -14,23 +14,46 @@ export const BOSS_CONFIG = {
         // Shield configuration (75% DR with loud ricochet feedback)
         shieldConfig: {
             enabled: true,
-            activateOnSummon: true,
+            activateOnSummon: false,     // Manual activation in Phase 2+
             damageReduction: 0.75,       // Changed from 0.95 - chip damage feels less wasted
             color: 0x4488ff,
             failsafeTimeout: 12.0        // Auto-break after 12 seconds (prevents softlock)
         },
         
-        // NEW: Exposed state configuration
+        // NEW: Exposed state configuration (phase-scaled rewards)
         exposedConfig: {
-            duration: 300,
+            duration: 600,           // Base: 10 seconds for Phase 1
+            durationByPhase: {
+                1: 600,  // 10 seconds (teaching phase - generous window)
+                2: 420,  // 7 seconds
+                3: 300,  // 5 seconds (intense)
+            },
             damageMultiplier: 1.25,
-            flashRate: 15
+            flashRate: 15,
+            // Nerfed rewards if shield breaks via failsafe timeout (prevents "wait out" strats)
+            failsafeDuration: 180,   // Only 3 seconds
+            failsafeMultiplier: 1.0, // No damage bonus
         },
+        
+        // Phase-specific behavior configuration
+        phaseBehavior: {
+            1: { chase: true, canCharge: true, canSummon: false, canShield: false },
+            2: { chase: false, canCharge: false, canSummon: true, canShield: true, autoShield: true, staticMode: true },
+            3: { chase: true, canCharge: true, canSummon: true, canShield: true, summonCap: 4 }
+        },
+        
+        // Recovery windows after charge (in frames)
+        chargeRecovery: {
+            phase1: 90,   // 1.5 seconds - long punish window
+            phase2: 0,    // No charge in Phase 2
+            phase3: 45    // 0.75 seconds - shorter window under pressure
+        },
+        
         // Roster display fields
-        tagline: 'Guardian of the First Gate',
-        description: 'The first true test of a recruit\'s training. The Gatekeeper embodies pressure itself - relentless charges and summoned minions force you to prove you\'ve learned the basics of movement and timing.',
-        behaviorText: 'Charges at player and summons Fast Bouncers',
-        // Signature: Charge + Summon - "Can you survive pressure?"
+        tagline: 'Monarch of the First Gate',
+        description: 'The massive progenitor of the Red Puffer swarm. This bloated sovereign embodies pressure itself - relentless charges and summoned offspring force you to prove you\'ve learned the basics of movement and timing.',
+        behaviorText: 'Phase 1: Chases and charges. Phase 2: Static shield puzzle. Phase 3: Chases while shielded',
+        // Signature: Progressive pressure teaching - "Can you survive pressure?"
         abilities: {
             charge: true,
             summon: true,
@@ -43,13 +66,13 @@ export const BOSS_CONFIG = {
         },
         // Ability weights per phase (higher = more likely to use)
         abilityWeights: {
-            charge: [1.0, 1.2, 1.5],   // Phase 1, 2, 3
-            summon: [0.3, 0.5, 0.7]
+            charge: [1.0, 0.0, 1.5],   // Phase 1: active, Phase 2: disabled, Phase 3: high
+            summon: [0.0, 1.0, 0.6]    // Phase 1: disabled, Phase 2: primary, Phase 3: secondary
         },
         // Phase-specific combos: [ability1, ability2, ...]
         phaseCombos: {
-            2: [['charge', 'summon']],
-            3: [['charge', 'summon'], ['summon', 'charge']]
+            2: [],  // No combos in Phase 2 (static mode)
+            3: [['charge', 'summon']]  // Phase 3: Can combo while chasing
         }
     },
     2: { 
@@ -315,7 +338,7 @@ export const ABILITY_COOLDOWNS = {
 
 // Ability tell durations (wind-up time in frames)
 export const ABILITY_TELLS = {
-    charge: { phase1: 30, phase2: 25, phase3: 18 },
+    charge: { phase1: 45, phase2: 45, phase3: 15 },  // Boss 1: longer P1 (learning), shorter P3 (pressure)
     summon: { phase1: 25, phase2: 20, phase3: 15 },
     jumpSlam: { phase1: 40, phase2: 30, phase3: 22 },
     hazards: { phase1: 20, phase2: 15, phase3: 10 },

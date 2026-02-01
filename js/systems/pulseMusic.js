@@ -1381,7 +1381,7 @@ export const PulseMusic = {
         });
     },
     
-    // Boss 1 (THE GATEKEEPER) specific audio cues
+    // Boss 1 (RED PUFFER KING) specific audio cues
     onBossChargeWindup() {
         if (!this.enabled || !this.initialized || !this.currentProfile) return;
         
