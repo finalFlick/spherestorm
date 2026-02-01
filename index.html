@@ -66,8 +66,31 @@
         .mastery-badge.unlocked .mastery-name { color: #ffdd44; }
         
         /* Game Over */
-        #game-over { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.95); padding: 40px 60px; border-radius: 15px; border: 2px solid #ff4444; display: none; z-index: 250; text-align: center; color: white; }
+        #game-over { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.95); padding: 40px 60px; border-radius: 15px; border: 2px solid #ff4444; display: none; z-index: 250; text-align: center; color: white; max-height: 90vh; overflow-y: auto; }
         #game-over h2 { color: #ff4444; font-size: 48px; margin-bottom: 20px; }
+        #death-recap { background: rgba(255, 68, 68, 0.1); border: 1px solid rgba(255, 68, 68, 0.3); border-radius: 10px; padding: 15px; margin-bottom: 20px; text-align: left; }
+        #death-recap h3 { color: #ff8888; font-size: 16px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        #death-recap-list { font-size: 14px; }
+        .death-entry { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+        .death-entry:last-child { border-bottom: none; }
+        .death-entry.killing-blow { color: #ff4444; font-weight: bold; }
+        .death-entry .source { color: #ffaa88; }
+        .death-entry .amount { color: #ff6666; }
+        .death-entry .fatal { color: #ff0000; font-size: 10px; background: rgba(255, 0, 0, 0.3); padding: 2px 6px; border-radius: 4px; margin-left: 8px; }
+        #death-tip { margin-top: 12px; padding: 10px; background: rgba(68, 136, 255, 0.2); border-radius: 6px; font-size: 13px; color: #88aaff; }
+        #death-tip::before { content: 'TIP: '; font-weight: bold; color: #4488ff; }
+        #combat-recap { background: rgba(68, 136, 255, 0.1); border: 1px solid rgba(68, 136, 255, 0.3); border-radius: 10px; padding: 15px; margin: 15px 0; }
+        #combat-recap h3 { color: #88aaff; font-size: 14px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        #combat-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; text-align: left; }
+        .stat-item { display: flex; justify-content: space-between; padding: 4px 8px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; }
+        .stat-item .label { color: #888; }
+        .stat-item .value { color: #fff; font-weight: bold; }
+        #performance-grade { margin-top: 12px; font-size: 24px; font-weight: bold; text-align: center; }
+        #performance-grade.grade-S { color: #ffdd44; text-shadow: 0 0 10px rgba(255, 221, 68, 0.5); }
+        #performance-grade.grade-A { color: #44ff88; }
+        #performance-grade.grade-B { color: #44aaff; }
+        #performance-grade.grade-C { color: #ff8844; }
+        #performance-grade.grade-D { color: #ff4444; }
         .final-stats { margin: 20px 0; font-size: 18px; }
         .final-stats div { margin: 10px 0; }
         #restart-btn { padding: 15px 40px; font-size: 20px; background: linear-gradient(135deg, #ff4444, #ff6666); border: none; border-radius: 10px; cursor: pointer; color: white; font-weight: bold; margin-top: 20px; transition: all 0.3s ease; }
@@ -88,12 +111,41 @@
         #wave-announcement.visible { opacity: 1; }
         #wave-announcement .wave-text { font-size: 64px; font-weight: bold; color: #ffdd44; text-shadow: 0 0 30px rgba(255, 221, 68, 0.7); }
         #wave-announcement .arena-text { font-size: 24px; color: #aaa; margin-top: 10px; }
+        #wave-preview { margin-top: 20px; }
+        #wave-threat { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        #wave-threat.threat-low { background: rgba(68, 255, 68, 0.3); color: #44ff44; border: 1px solid rgba(68, 255, 68, 0.5); }
+        #wave-threat.threat-medium { background: rgba(255, 221, 68, 0.3); color: #ffdd44; border: 1px solid rgba(255, 221, 68, 0.5); }
+        #wave-threat.threat-high { background: rgba(255, 136, 68, 0.3); color: #ff8844; border: 1px solid rgba(255, 136, 68, 0.5); }
+        #wave-threat.threat-extreme { background: rgba(255, 68, 68, 0.3); color: #ff4444; border: 1px solid rgba(255, 68, 68, 0.5); animation: threat-pulse 0.5s infinite; }
+        @keyframes threat-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        #wave-enemy-icons { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+        .enemy-icon { width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.5); }
+        #wave-modifier { margin-top: 8px; font-size: 16px; font-weight: bold; color: #ff8844; text-shadow: 0 0 10px rgba(255, 136, 68, 0.5); }
         
         /* Boss Health Bar */
         #boss-health-container { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); width: 400px; background: rgba(0, 0, 0, 0.8); padding: 15px 20px; border-radius: 10px; border: 2px solid #ff4444; display: none; z-index: 100; }
-        #boss-name { text-align: center; color: #ff4444; font-size: 20px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
+        #boss-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #boss-name { color: #ff4444; font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+        #boss-phase { color: #ffaa44; font-size: 16px; font-weight: bold; padding: 2px 8px; border-radius: 4px; background: rgba(255, 170, 68, 0.2); }
+        #boss-phase.phase-2 { color: #ff8844; background: rgba(255, 136, 68, 0.3); }
+        #boss-phase.phase-3 { color: #ff4444; background: rgba(255, 68, 68, 0.4); animation: phase-pulse 0.5s infinite; }
+        @keyframes phase-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         #boss-health-bar-bg { width: 100%; height: 20px; background: #333; border-radius: 10px; overflow: hidden; }
         #boss-health-bar { height: 100%; background: linear-gradient(90deg, #ff2222, #ff6644); transition: width 0.3s ease; width: 100%; }
+        #boss-shield-container { margin-top: 8px; display: none; }
+        #boss-shield-bar-bg { width: 100%; height: 8px; background: #222; border-radius: 4px; overflow: hidden; }
+        #boss-shield-bar { height: 100%; background: linear-gradient(90deg, #4488ff, #66aaff); transition: width 0.3s ease; width: 100%; }
+        #boss-shield-label { display: flex; justify-content: space-between; font-size: 12px; color: #4488ff; margin-top: 4px; }
+        #boss-exposed { display: none; text-align: center; margin-top: 8px; padding: 6px; background: rgba(255, 221, 68, 0.2); border-radius: 6px; color: #ffdd44; font-weight: bold; font-size: 14px; animation: exposed-flash 0.3s infinite; }
+        @keyframes exposed-flash { 0%, 100% { opacity: 1; background: rgba(255, 221, 68, 0.2); } 50% { opacity: 0.8; background: rgba(255, 221, 68, 0.4); } }
+        
+        /* Boss 6 Cycle Indicator */
+        #boss-cycle-indicator { display: none; text-align: center; margin-top: 10px; padding: 8px 16px; background: rgba(0, 0, 0, 0.6); border-radius: 6px; border: 2px solid #ffffff; color: #ffffff; font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; transition: all 0.3s ease; }
+        
+        /* Boss 6 Cycle Announcement (flash popup) */
+        #cycle-announcement { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; font-weight: bold; text-transform: uppercase; letter-spacing: 4px; z-index: 150; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; background: rgba(0, 0, 0, 0.8); padding: 15px 30px; border-radius: 10px; }
+        #cycle-announcement.visible { opacity: 1; animation: cycle-pulse 0.5s ease-out; }
+        @keyframes cycle-pulse { 0% { transform: translateX(-50%) scale(1.2); } 100% { transform: translateX(-50%) scale(1); } }
         
         /* Unlock Notification */
         #unlock-notification { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(68, 255, 68, 0.9), rgba(34, 180, 34, 0.9)); padding: 20px 40px; border-radius: 15px; color: white; font-size: 24px; font-weight: bold; text-align: center; z-index: 130; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
@@ -148,6 +200,43 @@
         #close-badges { margin-top: 30px; padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; }
         #close-badges:hover { border-color: #ffdd44; color: #ffdd44; }
         
+        /* Arena Select Screen */
+        #arena-select-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 350; color: white; padding: 40px 20px; overflow-y: auto; }
+        #arena-select-screen h2 { font-size: 36px; color: #ffdd44; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 3px; }
+        #arena-select-screen .subtitle { font-size: 16px; color: #888; margin-bottom: 30px; }
+        #arena-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 900px; width: 100%; }
+        .arena-card { padding: 20px; background: rgba(255,255,255,0.03); border: 2px solid #444; border-radius: 15px; cursor: pointer; transition: all 0.3s ease; text-align: center; }
+        .arena-card:hover { border-color: #ffdd44; transform: translateY(-5px); box-shadow: 0 10px 30px rgba(255, 221, 68, 0.3); }
+        .arena-number { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+        .arena-card-name { font-size: 20px; font-weight: bold; color: #ffdd44; margin-bottom: 10px; }
+        .arena-card-level { font-size: 14px; color: #44ff44; margin-bottom: 10px; }
+        .arena-card-waves { font-size: 12px; color: #888; margin-bottom: 10px; }
+        .arena-card-desc { font-size: 12px; color: #aaa; line-height: 1.5; }
+        #close-arena-select { margin-top: 30px; padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; }
+        #close-arena-select:hover { border-color: #ffdd44; color: #ffdd44; }
+        
+        /* Debug Menu */
+        #debug-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: none; flex-direction: column; align-items: center; z-index: 350; color: white; padding: 40px 20px; overflow-y: auto; }
+        #debug-screen h2 { font-size: 36px; color: #ff4444; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 3px; }
+        #debug-screen .subtitle { font-size: 14px; color: #888; margin-bottom: 30px; }
+        .debug-section { width: 100%; max-width: 800px; background: rgba(255,255,255,0.03); border: 2px solid #444; border-radius: 15px; padding: 20px; margin-bottom: 20px; }
+        .debug-section h3 { font-size: 18px; color: #ffdd44; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .debug-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+        .debug-btn { padding: 10px 20px; font-size: 14px; background: linear-gradient(135deg, #444, #555); border: 2px solid #666; border-radius: 8px; cursor: pointer; color: white; transition: all 0.3s ease; }
+        .debug-btn:hover { border-color: #ffdd44; transform: translateY(-2px); }
+        .debug-btn.danger { background: linear-gradient(135deg, #661111, #881111); border-color: #aa1111; }
+        .debug-btn.danger:hover { border-color: #ff4444; }
+        .debug-btn.success { background: linear-gradient(135deg, #116611, #118811); border-color: #11aa11; }
+        .debug-btn.success:hover { border-color: #44ff44; }
+        .debug-select { padding: 10px; font-size: 14px; background: #222; border: 2px solid #444; border-radius: 8px; color: white; cursor: pointer; }
+        .debug-select:focus { border-color: #ffdd44; outline: none; }
+        .debug-input { padding: 10px; font-size: 14px; background: #222; border: 2px solid #444; border-radius: 8px; color: white; width: 80px; }
+        .debug-input:focus { border-color: #ffdd44; outline: none; }
+        .debug-label { font-size: 14px; color: #aaa; margin-right: 10px; }
+        .debug-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        #close-debug { margin-top: 20px; padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; }
+        #close-debug:hover { border-color: #ffdd44; color: #ffdd44; }
+        
         /* Character Roster Screen */
         #roster-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: none; flex-direction: column; align-items: center; z-index: 350; color: white; padding: 40px 20px; overflow-y: auto; }
         #roster-screen h2 { font-size: 36px; color: #ffdd44; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 3px; }
@@ -178,9 +267,11 @@
         #close-roster { margin-top: 30px; padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; }
         #close-roster:hover { border-color: #ffdd44; color: #ffdd44; }
         
-        /* Pause menu roster button */
-        #pause-roster-btn { margin-top: 20px; padding: 10px 25px; font-size: 14px; background: transparent; border: 2px solid #666; border-radius: 8px; cursor: pointer; color: #aaa; transition: all 0.3s ease; }
-        #pause-roster-btn:hover { border-color: #ffdd44; color: #ffdd44; }
+        /* Pause menu buttons */
+        #pause-roster-btn, #pause-main-menu-btn { margin-top: 20px; padding: 10px 25px; font-size: 14px; background: transparent; border: 2px solid #666; border-radius: 8px; cursor: pointer; color: #aaa; transition: all 0.3s ease; margin-left: 10px; }
+        #pause-roster-btn:hover, #pause-main-menu-btn:hover { border-color: #ffdd44; color: #ffdd44; }
+        #pause-main-menu-btn { border-color: #ff4444; color: #ff4444; }
+        #pause-main-menu-btn:hover { border-color: #ff6666; color: #ff6666; }
     </style>
 </head>
 <body>
@@ -218,12 +309,31 @@
         <div id="wave-announcement">
             <div class="wave-text">WAVE 1</div>
             <div class="arena-text">Arena 1 - The Training Grounds</div>
+            <div id="wave-preview">
+                <div id="wave-threat" class="threat-low">LOW THREAT</div>
+                <div id="wave-enemy-icons"></div>
+                <div id="wave-modifier"></div>
+            </div>
         </div>
         
         <div id="boss-health-container">
-            <div id="boss-name">THE GUARDIAN</div>
+            <div id="boss-header">
+                <div id="boss-name">THE GUARDIAN</div>
+                <div id="boss-phase">PHASE I</div>
+            </div>
             <div id="boss-health-bar-bg"><div id="boss-health-bar"></div></div>
+            <div id="boss-shield-container">
+                <div id="boss-shield-bar-bg"><div id="boss-shield-bar"></div></div>
+                <div id="boss-shield-label">
+                    <span>SHIELD</span>
+                    <span id="boss-minion-count">0 minions</span>
+                </div>
+            </div>
+            <div id="boss-exposed">EXPOSED! Attack now!</div>
+            <div id="boss-cycle-indicator"></div>
         </div>
+        
+        <div id="cycle-announcement"></div>
         
         <div id="unlock-notification">
             <div class="unlock-title">NEW MECHANIC UNLOCKED</div>
@@ -238,7 +348,7 @@
         </div>
         
         <!-- Menus -->
-        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button></div>
+        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button><button id="pause-main-menu-btn">Main Menu</button></div>
         
         <div id="upgrade-menu">
             <h2>LEVEL UP!</h2>
@@ -247,12 +357,22 @@
         
         <div id="game-over">
             <h2>GAME OVER</h2>
+            <div id="death-recap">
+                <h3>Death Recap</h3>
+                <div id="death-recap-list"></div>
+                <div id="death-tip"></div>
+            </div>
             <div class="final-stats">
                 <div>Time Survived: <span id="final-time"></span></div>
                 <div>Arena Reached: <span id="final-arena"></span></div>
                 <div>Level Reached: <span id="final-level"></span></div>
                 <div>Enemies Killed: <span id="final-kills"></span></div>
                 <div>Final Score: <span id="final-score"></span></div>
+            </div>
+            <div id="combat-recap">
+                <h3>Combat Stats</h3>
+                <div id="combat-stats-grid"></div>
+                <div id="performance-grade"></div>
             </div>
             <button id="restart-btn">Play Again</button>
         </div>
@@ -281,6 +401,83 @@
             <button id="close-badges">Close</button>
         </div>
         
+        <!-- Debug Screen -->
+        <div id="debug-screen">
+            <h2>Debug Menu</h2>
+            <p class="subtitle">Developer testing tools - not for regular gameplay</p>
+            
+            <div class="debug-section">
+                <h3>Empty Arena Mode</h3>
+                <div class="debug-controls">
+                    <button id="debug-empty-arena" class="debug-btn success">Start Empty Arena (No Enemies)</button>
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h3>Spawn Enemies</h3>
+                <div class="debug-row">
+                    <span class="debug-label">Enemy Type:</span>
+                    <select id="debug-enemy-select" class="debug-select">
+                        <option value="grunt">Grunt</option>
+                        <option value="shielded">Shielded</option>
+                        <option value="fastBouncer">Fast Bouncer</option>
+                        <option value="splitter">Splitter</option>
+                        <option value="teleporter">Teleporter</option>
+                        <option value="pillarPolice">Pillar Police</option>
+                        <option value="shooter">Shooter</option>
+                    </select>
+                    <button id="debug-spawn-enemy" class="debug-btn">Spawn Enemy</button>
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h3>Warp to Arena/Wave</h3>
+                <div class="debug-row">
+                    <span class="debug-label">Arena:</span>
+                    <input type="number" id="debug-warp-arena" class="debug-input" min="1" max="6" value="1">
+                    <span class="debug-label">Wave:</span>
+                    <input type="number" id="debug-warp-wave" class="debug-input" min="1" max="10" value="1">
+                    <button id="debug-warp-btn" class="debug-btn">Warp</button>
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h3>Spawn Boss</h3>
+                <div class="debug-row">
+                    <span class="debug-label">Boss Type:</span>
+                    <select id="debug-boss-select" class="debug-select">
+                        <option value="1">Boss 1 - The Gatekeeper</option>
+                        <option value="2">Boss 2 - The Monolith</option>
+                        <option value="3">Boss 3 - The Ascendant</option>
+                        <option value="4">Boss 4 - The Overgrowth</option>
+                        <option value="5">Boss 5 - The Burrower</option>
+                        <option value="6">Boss 6 - Chaos Incarnate</option>
+                    </select>
+                    <button id="debug-spawn-boss" class="debug-btn danger">Spawn Boss</button>
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h3>Player Controls</h3>
+                <div class="debug-controls">
+                    <button id="debug-give-levels" class="debug-btn">Give 10 Levels</button>
+                    <button id="debug-toggle-invincible" class="debug-btn">Toggle Invincibility</button>
+                    <button id="debug-full-heal" class="debug-btn success">Full Heal</button>
+                    <button id="debug-unlock-all" class="debug-btn">Unlock All Mechanics</button>
+                </div>
+            </div>
+            
+            <button id="close-debug">Close</button>
+        </div>
+        
+        <!-- Arena Select Screen -->
+        <div id="arena-select-screen">
+            <h2>Arena Select</h2>
+            <p class="subtitle">Test Mode - Start at any arena with scaled stats</p>
+            <div id="arena-grid"></div>
+            <button id="close-arena-select">Close</button>
+        </div>
+        
         <!-- Character Roster Screen -->
         <div id="roster-screen">
             <h2>Character Roster</h2>
@@ -304,6 +501,10 @@
                 <button id="start-btn">START GAME</button>
             </div>
             <div class="start-buttons">
+                <button id="arena-select-btn" class="secondary-btn">Arena Select</button>
+                <button id="debug-btn" class="secondary-btn">Debug Menu</button>
+            </div>
+            <div class="start-buttons">
                 <button id="leaderboard-btn" class="secondary-btn">Leaderboard</button>
                 <button id="badges-btn" class="secondary-btn">Badges</button>
                 <button id="roster-btn" class="secondary-btn">Roster</button>
@@ -317,7 +518,11 @@
         </div>
     </div>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <!-- Three.js from CDN with SRI hash for supply-chain security -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js" 
+            integrity="sha512-334uBDwY0iZ2TklV1OtDtBW9vp7jjP7SWRzT7Ehu1fdtPIjTpCwTSFb8HI/YBau9L1/kRBEOALrS229Kry4yFQ==" 
+            crossorigin="anonymous" 
+            referrerpolicy="no-referrer"></script>
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
