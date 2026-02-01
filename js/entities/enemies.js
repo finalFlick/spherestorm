@@ -1,16 +1,90 @@
 import { scene } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
-import { enemies, obstacles, enemyProjectiles, tempVec3 } from '../core/entities.js';
+import { enemies, obstacles, hazardZones, tempVec3 } from '../core/entities.js';
 import { player } from './player.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { DAMAGE_COOLDOWN } from '../config/constants.js';
 import { spawnParticle, spawnEnemyDeathVfx } from '../effects/particles.js';
 import { createHazardZone } from '../arena/generator.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
+import { createShieldBubble, updateShieldVisual, createRushTelegraph, updateRushTelegraph, cleanupVFX } from '../systems/visualFeedback.js';
+import { ENEMY_CAPS, WAVE_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, THREAT_BUDGET } from '../config/constants.js';
+import { showTutorialCallout } from '../ui/hud.js';
+import { PulseMusic } from '../systems/pulseMusic.js';
+import { ARENA_CONFIG } from '../config/arenas.js';
+import { spawnEnemyProjectileFromPool } from '../systems/projectiles.js';
+import { markEnemyEncountered } from '../ui/rosterUI.js';
 
 // Cache pillar positions for pillar hopper behavior
 let cachedPillarTops = [];
-import { markEnemyEncountered } from '../ui/rosterUI.js';
+
+// Geometry cache to prevent memory leaks from creating new geometries per enemy
+const geometryCache = new Map();
+
+function getCachedSphereGeometry(size, segments = 16) {
+    const key = `${size.toFixed(2)}_${segments}`;
+    if (!geometryCache.has(key)) {
+        geometryCache.set(key, new THREE.SphereGeometry(size, segments, segments));
+    }
+    return geometryCache.get(key);
+}
+
+// Clear geometry cache (call on game reset to prevent unbounded memory growth)
+export function clearEnemyGeometryCache() {
+    for (const geometry of geometryCache.values()) {
+        geometry.dispose();
+    }
+    geometryCache.clear();
+}
+
+// Check if a position is valid for enemy placement (not in hazards or obstacles)
+function isValidEnemyPosition(x, z, size) {
+    // Check hazard zones
+    for (const hz of hazardZones) {
+        const dist = Math.sqrt((x - hz.position.x) ** 2 + (z - hz.position.z) ** 2);
+        if (dist < hz.radius + size) {
+            return false;  // Inside hazard
+        }
+    }
+    
+    // Check obstacles
+    for (const obs of obstacles) {
+        const c = obs.collisionData;
+        if (!c) continue;
+        
+        if (x > c.minX - size && x < c.maxX + size &&
+            z > c.minZ - size && z < c.maxZ + size) {
+            return false;  // Inside obstacle
+        }
+    }
+    
+    return true;
+}
+
+// Find a valid teleport destination for teleporter enemies
+function findValidTeleportDestination(enemy, playerPos) {
+    const attempts = 10;
+    
+    for (let i = 0; i < attempts; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const d = 3 + Math.random() * 3;  // 3-6 units from player
+        const x = Math.max(-40, Math.min(40, playerPos.x + Math.cos(angle) * d));
+        const z = Math.max(-40, Math.min(40, playerPos.z + Math.sin(angle) * d));
+        
+        // Check validity
+        if (isValidEnemyPosition(x, z, enemy.size)) {
+            return new THREE.Vector3(x, enemy.size, z);
+        }
+    }
+    
+    // Fallback: position toward player from current location
+    const fallbackDir = new THREE.Vector3()
+        .subVectors(playerPos, enemy.position)
+        .normalize();
+    const fallbackX = Math.max(-40, Math.min(40, enemy.position.x + fallbackDir.x * 3));
+    const fallbackZ = Math.max(-40, Math.min(40, enemy.position.z + fallbackDir.z * 3));
+    return new THREE.Vector3(fallbackX, enemy.size, fallbackZ);
+}
 
 // Build enemy mesh - simple smooth sphere with glow/pulse/orbit effects
 function buildEnemyMesh(typeData) {
@@ -33,8 +107,9 @@ function buildEnemyMesh(typeData) {
             emissiveIntensity: profile.glowIntensity || 0.8
         });
         
-        const sphere1 = new THREE.Mesh(new THREE.SphereGeometry(sphereSize, 12, 12), orbitMat1);
-        const sphere2 = new THREE.Mesh(new THREE.SphereGeometry(sphereSize, 12, 12), orbitMat2);
+        const cachedGeom = getCachedSphereGeometry(sphereSize, 12);
+        const sphere1 = new THREE.Mesh(cachedGeom, orbitMat1);
+        const sphere2 = new THREE.Mesh(cachedGeom, orbitMat2);
         sphere1.castShadow = true;
         sphere2.castShadow = true;
         
@@ -59,7 +134,7 @@ function buildEnemyMesh(typeData) {
     }
     
     // Create simple smooth sphere (the enemy is just a Mesh, not a Group)
-    const geometry = new THREE.SphereGeometry(typeData.size, 16, 16);
+    const geometry = getCachedSphereGeometry(typeData.size, 16);
     const material = new THREE.MeshStandardMaterial({
         color: typeData.color,
         emissive: typeData.color,
@@ -86,11 +161,9 @@ function buildEnemyMesh(typeData) {
             opacity: 0.6
         });
         
+        const orbitParticleGeom = getCachedSphereGeometry(typeData.size * 0.15, 6);
         for (let i = 0; i < profile.orbitCount; i++) {
-            const particle = new THREE.Mesh(
-                new THREE.SphereGeometry(typeData.size * 0.15, 6, 6),
-                orbitMat
-            );
+            const particle = new THREE.Mesh(orbitParticleGeom, orbitMat);
             particle.orbitAngle = (i / profile.orbitCount) * Math.PI * 2;
             particle.orbitRadius = typeData.size * (1 + profile.orbitRadius);
             orbitGroup.add(particle);
@@ -109,23 +182,51 @@ export function cachePillarPositions() {
     for (const obs of obstacles) {
         const c = obs.collisionData;
         if (!c) continue;
-        // Pillars are taller obstacles (height > 2) that are roughly square
+        
         const width = c.maxX - c.minX;
         const depth = c.maxZ - c.minZ;
-        if (c.height > 2 && Math.abs(width - depth) < 1) {
+        
+        // Include platforms that are:
+        // - Tall enough to be climbable (height > 1.5)
+        // - Not too large (< 10 units) to be arena walls
+        if (c.height > 1.5 && width < 10 && depth < 10) {
             cachedPillarTops.push({
                 x: (c.minX + c.maxX) / 2,
                 z: (c.minZ + c.maxZ) / 2,
-                y: c.topY,
+                y: c.topY,           // Keep for backward compat
+                topY: c.topY,        // Explicit top surface Y
                 width: width,
-                depth: depth
+                depth: depth,
+                height: c.height
             });
         }
     }
 }
 
+// Helper: Get cap for enemy type based on arena
+function getCapForEnemy(typeName, arena) {
+    const caps = ENEMY_CAPS[typeName];
+    if (!caps) return 999; // No cap
+    
+    if (typeof caps === 'number') return caps;
+    
+    // Check arena-specific caps
+    if (caps[`arena${arena}`]) return caps[`arena${arena}`];
+    if (arena >= 5 && caps.arena5plus) return caps.arena5plus;
+    if (arena >= 4 && caps.arena4) return caps.arena4;
+    if (arena >= 3 && caps.arena3) return caps.arena3;
+    if (arena >= 2 && caps.arena2) return caps.arena2;
+    
+    return caps.base || caps.max || 999;
+}
+
+// Helper: Count enemies of a specific type currently alive
+function countEnemiesOfType(typeName) {
+    return enemies.filter(e => e.enemyType === typeName).length;
+}
+
 // Weighted enemy spawning with progressive arena introduction
-// Wave 1: Only the NEW enemy type for this arena
+// Wave 1: Only the NEW enemy type for this arena (LESSON WAVE)
 // Wave 2+: Add enemies from previous arenas
 export function getWeightedEnemyType() {
     const availableTypes = [];
@@ -133,30 +234,37 @@ export function getWeightedEnemyType() {
     const arena = gameState.currentArena;
     const wave = gameState.currentWave;
     
+    const isLessonWave = (wave === 1);
+    
     for (const [typeName, typeData] of Object.entries(ENEMY_TYPES)) {
-        // Skip enemies with spawnWeight 0 (special spawns like pillarPolice)
+        // Skip enemies with spawnWeight 0
         if (typeData.spawnWeight === 0) continue;
         
-        // Skip enemies gated by maxArena (pillar-specific enemies)
+        // Skip boss-only minions
+        if (typeData.isBossMinion) continue;
+        
+        // Skip enemies gated by maxArena
         if (typeData.maxArena && arena > typeData.maxArena) continue;
+        
+        // Skip if at cap
+        const cap = getCapForEnemy(typeName, arena);
+        const currentCount = countEnemiesOfType(typeName);
+        if (currentCount >= cap) continue;
         
         // Progressive introduction using arenaIntro
         if (typeData.arenaIntro) {
-            // Wave 1: Only spawn the NEW enemy type introduced in this arena
-            if (wave === 1 && typeData.arenaIntro !== arena) continue;
+            // Wave 1 (LESSON): Only spawn the NEW enemy type introduced in this arena
+            if (isLessonWave && typeData.arenaIntro !== arena) continue;
             
             // Wave 2+: Spawn enemies from this arena and all previous arenas
-            if (wave > 1 && typeData.arenaIntro > arena) continue;
-        } else {
-            // Fallback for enemies without arenaIntro (use minArena)
-            if (typeData.minArena && arena < typeData.minArena) continue;
+            if (!isLessonWave && typeData.arenaIntro > arena) continue;
         }
         
         availableTypes.push({ name: typeName, data: typeData });
         totalWeight += typeData.spawnWeight;
     }
     
-    // Fallback to grunt if no enemies available (shouldn't happen)
+    // Fallback to grunt if no enemies available
     if (availableTypes.length === 0) {
         return { name: 'grunt', data: ENEMY_TYPES.grunt };
     }
@@ -166,7 +274,7 @@ export function getWeightedEnemyType() {
     
     for (const type of availableTypes) {
         let weight = type.data.spawnWeight;
-        if (type.data.spawnWeight < 10) weight += waveBonus * 10;
+        if (type.data.spawnWeight < 20) weight += waveBonus * 10;
         random -= weight;
         if (random <= 0) return type;
     }
@@ -174,22 +282,207 @@ export function getWeightedEnemyType() {
     return availableTypes[0];
 }
 
-export function spawnWaveEnemy() {
-    const distance = 28 + Math.random() * 12;
-    const angle = Math.random() * Math.PI * 2;
-    let x = Math.max(-42, Math.min(42, player.position.x + Math.cos(angle) * distance));
-    let z = Math.max(-42, Math.min(42, player.position.z + Math.sin(angle) * distance));
+// Get safe spawn angle avoiding directly behind player's movement direction
+function getSafeSpawnAngle(playerVelocity) {
+    // Check horizontal velocity magnitude (player.velocity is primarily vertical for jumping)
+    // If player has no meaningful horizontal velocity, use random angle
+    if (!playerVelocity) {
+        return Math.random() * Math.PI * 2;
+    }
     
-    const enemyType = getWeightedEnemyType();
+    const horizontalSpeed = Math.sqrt(playerVelocity.x * playerVelocity.x + playerVelocity.z * playerVelocity.z);
+    if (horizontalSpeed < 0.01) {
+        return Math.random() * Math.PI * 2;
+    }
+    
+    const moveAngle = Math.atan2(playerVelocity.z, playerVelocity.x);
+    const safeArc = Math.PI * 0.3;  // 54 degree safe zone behind player
+    
+    // Spawn in front 270 degree arc, avoiding back 90 degrees
+    // Add PI to flip direction (spawn ahead of player movement)
+    const spawnAngle = moveAngle + Math.PI + (Math.random() - 0.5) * (Math.PI * 2 - safeArc * 2);
+    return spawnAngle;
+}
+
+// Check if two points are in the same corridor segment (Arena 5)
+// Corridors are the outer perimeter areas beyond the tunnel walls
+function isInSameCorridor(x1, z1, x2, z2) {
+    // Corridor boundaries based on tunnel wall positions (walls at ±22 to ±34)
+    const corridorThreshold = 22;
+    
+    // West corridor: both in x < -22
+    const inWestCorridor = (x1 < -corridorThreshold && x2 < -corridorThreshold);
+    // East corridor: both in x > 22
+    const inEastCorridor = (x1 > corridorThreshold && x2 > corridorThreshold);
+    // North corridor: both in z < -22
+    const inNorthCorridor = (z1 < -corridorThreshold && z2 < -corridorThreshold);
+    // South corridor: both in z > 22
+    const inSouthCorridor = (z1 > corridorThreshold && z2 > corridorThreshold);
+    
+    return inWestCorridor || inEastCorridor || inNorthCorridor || inSouthCorridor;
+}
+
+// Get spawn position with arena-specific rules
+function getArenaSpawnPosition(playerPos, playerVelocity) {
+    const arena = gameState.currentArena;
+    const arenaData = ARENA_CONFIG.arenas[Math.min(arena, 6)];
+    const spawnConfig = arenaData?.spawnConfig;
+    
+    // Default spawn: random distance and angle
+    let distance = 28 + Math.random() * 12;
+    let angle = Math.random() * Math.PI * 2;
+    
+    // Apply anti-edge bias for Arena 1 (and any arena with this config)
+    if (spawnConfig?.antiEdgeBias) {
+        const distFromCenter = Math.sqrt(playerPos.x * playerPos.x + playerPos.z * playerPos.z);
+        const edgeThreshold = 30;
+        
+        if (distFromCenter > edgeThreshold) {
+            // Player is near edge - spawn enemies between player and center
+            // This discourages edge-kiting by forcing engagement away from walls
+            const toCenterX = -playerPos.x;
+            const toCenterZ = -playerPos.z;
+            const toCenterAngle = Math.atan2(toCenterZ, toCenterX);
+            
+            // Bias spawn angle toward center with some randomness (±72 degrees)
+            angle = toCenterAngle + (Math.random() - 0.5) * Math.PI * 0.8;
+            distance = 20 + Math.random() * 10;  // Closer spawns when edge-kiting
+        } else {
+            // Player is in center area - use safe arc spawning
+            angle = getSafeSpawnAngle(playerVelocity);
+        }
+    } else {
+        // No special config - just use safe arc spawning
+        angle = getSafeSpawnAngle(playerVelocity);
+    }
+    
+    // Calculate position
+    let x = playerPos.x + Math.cos(angle) * distance;
+    let z = playerPos.z + Math.sin(angle) * distance;
+    
+    // Arena 5+ corridor validation: don't spawn in same corridor as player
+    // This prevents ambush spawns where enemies appear behind player in tight corridors
+    if (arena >= 5) {
+        let attempts = 0;
+        while (isInSameCorridor(x, z, playerPos.x, playerPos.z) && attempts < 10) {
+            // Retry with different angle
+            angle = Math.random() * Math.PI * 2;
+            x = playerPos.x + Math.cos(angle) * distance;
+            z = playerPos.z + Math.sin(angle) * distance;
+            x = Math.max(-42, Math.min(42, x));
+            z = Math.max(-42, Math.min(42, z));
+            attempts++;
+        }
+    }
+    
+    // Enforce corner distance if configured
+    if (spawnConfig?.minDistFromCorner) {
+        const minDist = spawnConfig.minDistFromCorner;
+        const corners = [[-42, -42], [42, -42], [-42, 42], [42, 42]];
+        
+        for (const [cx, cz] of corners) {
+            const dx = x - cx;
+            const dz = z - cz;
+            const distToCorner = Math.sqrt(dx * dx + dz * dz);
+            
+            if (distToCorner < minDist) {
+                // Push spawn away from corner
+                const pushAngle = Math.atan2(dz, dx);
+                x = cx + Math.cos(pushAngle) * minDist;
+                z = cz + Math.sin(pushAngle) * minDist;
+            }
+        }
+    }
+    
+    // Clamp to arena bounds
+    x = Math.max(-42, Math.min(42, x));
+    z = Math.max(-42, Math.min(42, z));
+    
+    // Arena 6: Validate spawn position is not inside hazard zones
+    if (arena === 6 && hazardZones.length > 0) {
+        let spawnAttempts = 0;
+        while (!isValidEnemyPosition(x, z, 0.5) && spawnAttempts < 5) {
+            // Retry with different angle, biased toward center
+            const newAngle = Math.atan2(-z, -x) + (Math.random() - 0.5) * Math.PI;
+            const newDist = 20 + Math.random() * 15;
+            x = playerPos.x + Math.cos(newAngle) * newDist;
+            z = playerPos.z + Math.sin(newAngle) * newDist;
+            x = Math.max(-42, Math.min(42, x));
+            z = Math.max(-42, Math.min(42, z));
+            spawnAttempts++;
+        }
+        
+        // Fallback to center-biased spawn if still invalid
+        if (!isValidEnemyPosition(x, z, 0.5)) {
+            const fallbackAngle = Math.random() * Math.PI * 2;
+            x = Math.cos(fallbackAngle) * 15;  // Near center
+            z = Math.sin(fallbackAngle) * 15;
+        }
+    }
+    
+    return { x, z };
+}
+
+export function spawnWaveEnemy() {
+    // Get arena-aware spawn position
+    const spawnPos = getArenaSpawnPosition(player.position, player.velocity);
+    let x = spawnPos.x;
+    let z = spawnPos.z;
+    
+    // Use budget-aware enemy selection if pool exists
+    const enemyType = selectEnemyByBudget();
+    if (!enemyType) return null; // No affordable enemy
+    
     const typeData = enemyType.data;
+    
+    // Bouncer spawn validation - prevent spawning into immediate collision
+    if (typeData.behavior === 'bouncer') {
+        let spawnAttempts = 0;
+        let validSpawn = false;
+        
+        while (!validSpawn && spawnAttempts < 5) {
+            // Check if spawn position has immediate obstacle collision
+            let immediateCollision = false;
+            for (const obs of obstacles) {
+                const c = obs.collisionData;
+                if (!c) continue;
+                if (x > c.minX - 2 && x < c.maxX + 2 &&
+                    z > c.minZ - 2 && z < c.maxZ + 2) {
+                    immediateCollision = true;
+                    break;
+                }
+            }
+            
+            if (!immediateCollision) {
+                validSpawn = true;
+            } else {
+                // Retry with new position
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 28 + Math.random() * 12;
+                x = Math.max(-42, Math.min(42, player.position.x + Math.cos(angle) * dist));
+                z = Math.max(-42, Math.min(42, player.position.z + Math.sin(angle) * dist));
+                spawnAttempts++;
+            }
+        }
+    }
+    
     const arenaScale = 1 + (gameState.currentArena - 1) * 0.15;
     const waveScale = 1 + (gameState.currentWave - 1) * 0.05;
+    
+    // Apply wave modifier health multiplier
+    let healthMult = 1.0;
+    let xpMult = 1.0;
+    if (gameState.waveModifier) {
+        const mod = WAVE_MODIFIERS[gameState.waveModifier];
+        healthMult = mod.healthMult || 1.0;
+        xpMult = mod.xpMult || 1.0;
+    }
     
     // Build enemy with visual profile
     const enemy = buildEnemyMesh(typeData);
     
     enemy.position.set(x, typeData.size, z);
-    enemy.health = Math.floor(typeData.health * arenaScale * waveScale);
+    enemy.health = Math.floor(typeData.health * arenaScale * waveScale * healthMult);
     enemy.maxHealth = enemy.health;
     enemy.speed = typeData.speed * (1 + gameState.currentArena * 0.02);
     enemy.damage = Math.floor(typeData.damage * arenaScale);
@@ -197,7 +490,7 @@ export function spawnWaveEnemy() {
     enemy.baseSize = typeData.size;
     enemy.isBoss = false;
     enemy.isElite = typeData.spawnWeight < 10;
-    enemy.xpValue = typeData.xpValue;
+    enemy.xpValue = Math.floor(typeData.xpValue * xpMult);
     enemy.baseColor = typeData.color;
     enemy.velocityY = 0;
     enemy.velocity = new THREE.Vector3();
@@ -206,6 +499,20 @@ export function spawnWaveEnemy() {
     enemy.damageReduction = typeData.damageReduction || 0;
     enemy.onDeath = typeData.onDeath || null;
     enemy.splitCount = typeData.splitCount || 0;
+    
+    // Shield properties (for shielded enemies)
+    if (typeData.shieldHP) {
+        enemy.shieldHP = typeData.shieldHP;
+        enemy.maxShieldHP = typeData.shieldHP;
+        enemy.shieldBroken = false;
+        enemy.shieldMesh = createShieldBubble(enemy, enemy.size, 0x4488ff);
+    } else {
+        enemy.shieldHP = 0;
+    }
+    
+    // Stun properties
+    enemy.stunned = false;
+    enemy.stunTimer = 0;
     
     // Visual and movement properties
     enemy.movementSignature = typeData.movementSignature || null;
@@ -218,8 +525,9 @@ export function spawnWaveEnemy() {
     // Behavior-specific properties
     if (typeData.behavior === 'shooter') {
         enemy.shootRange = typeData.shootRange;
-        enemy.shootCooldown = typeData.shootCooldown;
-        enemy.lastShot = 0;
+        // Convert ms cooldown to frames (60fps = 16.67ms per frame)
+        enemy.shootCooldownFrames = Math.floor(typeData.shootCooldown / 16.67);
+        enemy.shootTimer = 0; // Frame counter
     }
     if (typeData.behavior === 'bouncer') {
         enemy.velocity.set(
@@ -227,6 +535,7 @@ export function spawnWaveEnemy() {
             0,
             (Math.random() - 0.5) * enemy.speed * 2
         );
+        enemy.homingStrength = typeData.homingStrength || 0.001;
     }
     if (typeData.behavior === 'shieldBreaker') {
         enemy.rushRange = typeData.rushRange;
@@ -240,9 +549,10 @@ export function spawnWaveEnemy() {
         enemy.explosionRadius = typeData.explosionRadius;
     }
     if (typeData.behavior === 'teleporter') {
-        enemy.teleportCooldown = typeData.teleportCooldown;
+        // Convert ms cooldown to frames (60fps = 16.67ms per frame)
+        enemy.teleportCooldownFrames = Math.floor(typeData.teleportCooldown / 16.67);
         enemy.teleportRange = typeData.teleportRange;
-        enemy.lastTeleport = 0;
+        enemy.teleportTimer = 0; // Frame counter since last teleport
         enemy.teleportWindup = 0;
     }
     if (typeData.behavior === 'pillarHopper') {
@@ -262,11 +572,102 @@ export function spawnWaveEnemy() {
     // Mark enemy as encountered for roster
     markEnemyEncountered(enemyType.name);
     
+    // Show tutorial callout for special enemies
+    if (enemyType.name === 'pillarPolice') {
+        showTutorialCallout('pillarPolice', 'Climb to reach them!', 2000);
+    }
+    if (enemyType.name === 'teleporter') {
+        showTutorialCallout('teleporter', 'Watch for the destination marker!', 2000);
+    }
+    
     scene.add(enemy);
     enemies.push(enemy);
+    
+    return enemy; // Return for budget tracking
 }
 
-export function spawnSplitEnemy(position, parentSize) {
+// Budget-aware enemy selection using wave pool and cognitive caps
+function selectEnemyByBudget() {
+    const arena = gameState.currentArena;
+    const wave = gameState.currentWave;
+    const pool = gameState.waveEnemyPool || null;
+    const budgetRemaining = gameState.waveBudgetRemaining || 999;
+    const cognitiveMax = gameState.waveCognitiveMax || 99;
+    const cognitiveUsed = gameState.waveCognitiveUsed || 0;
+    
+    // Filter available types by pool and budget
+    const availableTypes = [];
+    let totalWeight = 0;
+    
+    for (const [typeName, typeData] of Object.entries(ENEMY_TYPES)) {
+        // Skip enemies with spawnWeight 0
+        if (typeData.spawnWeight === 0) continue;
+        
+        // Skip boss-only minions
+        if (typeData.isBossMinion) continue;
+        
+        // Skip enemies gated by maxArena
+        if (typeData.maxArena && arena > typeData.maxArena) continue;
+        
+        // Skip if not in wave pool (cognitive caps)
+        if (pool && pool.length > 0 && !pool.includes(typeName)) continue;
+        
+        // Skip if at cap
+        const cap = getCapForEnemy(typeName, arena);
+        const currentCount = countEnemiesOfType(typeName);
+        if (currentCount >= cap) continue;
+        
+        // Skip if too expensive for remaining budget
+        const costs = THREAT_BUDGET.costs[typeName] || { durability: 20, damage: 10, cognitive: 2 };
+        const totalCost = costs.durability + costs.damage;
+        if (totalCost > budgetRemaining) continue;
+        
+        // Skip if would exceed cognitive cap
+        if (cognitiveUsed + costs.cognitive > cognitiveMax) continue;
+        
+        // Progressive introduction using arenaIntro
+        if (typeData.arenaIntro && typeData.arenaIntro > arena) continue;
+        
+        availableTypes.push({ name: typeName, data: typeData, cost: totalCost });
+        
+        // Featured enemy bonus
+        const arenaConfigRef = ARENA_CONFIG.arenas[arena];
+        const featured = arenaConfigRef?.lessonEnemy;
+        let weight = typeData.spawnWeight;
+        if (typeName === featured) {
+            weight *= COGNITIVE_LIMITS.featuredTypeBonus;
+        }
+        totalWeight += weight;
+    }
+    
+    // Fallback to grunt if no enemies available
+    if (availableTypes.length === 0) {
+        // Check if grunt is affordable
+        const gruntCost = (THREAT_BUDGET.costs.grunt?.durability || 12) + (THREAT_BUDGET.costs.grunt?.damage || 10);
+        if (gruntCost <= budgetRemaining) {
+            return { name: 'grunt', data: ENEMY_TYPES.grunt, cost: gruntCost };
+        }
+        return null; // Budget exhausted
+    }
+    
+    // Weighted random selection
+    let random = Math.random() * totalWeight;
+    const arenaConfigRef = ARENA_CONFIG.arenas[arena];
+    const featured = arenaConfigRef?.lessonEnemy;
+    
+    for (const type of availableTypes) {
+        let weight = type.data.spawnWeight;
+        if (type.name === featured) {
+            weight *= COGNITIVE_LIMITS.featuredTypeBonus;
+        }
+        random -= weight;
+        if (random <= 0) return type;
+    }
+    
+    return availableTypes[0];
+}
+
+export function spawnSplitEnemy(position, parentSize, index = 0, totalCount = 3) {
     const size = parentSize * 0.4;
     
     // Splitlings are simple smooth spheres with bright glow
@@ -275,20 +676,65 @@ export function spawnSplitEnemy(position, parentSize) {
         emissive: 0xff44ff,
         emissiveIntensity: 0.5
     });
-    const enemy = new THREE.Mesh(
-        new THREE.SphereGeometry(size, 10, 10),
-        material
-    );
+    const geometry = getCachedSphereGeometry(size, 10);
+    const enemy = new THREE.Mesh(geometry, material);
     enemy.castShadow = true;
     enemy.baseMaterial = material;
     
-    const offset = new THREE.Vector3(
-        (Math.random() - 0.5) * 2,
-        0,
-        (Math.random() - 0.5) * 2
-    );
-    enemy.position.copy(position).add(offset);
-    enemy.position.y = size;
+    // Spread splitlings outward in a ring pattern for better corridor handling
+    const spreadDist = 3;  // Increased from ±1 to 3 units
+    const angle = (index / totalCount) * Math.PI * 2 + Math.random() * 0.5;
+    
+    let spawnX = position.x + Math.cos(angle) * spreadDist;
+    let spawnZ = position.z + Math.sin(angle) * spreadDist;
+    
+    // Push out of obstacles to prevent wall spawns
+    for (const obs of obstacles) {
+        const c = obs.collisionData;
+        if (!c) continue;
+        
+        if (spawnX > c.minX - size && spawnX < c.maxX + size &&
+            spawnZ > c.minZ - size && spawnZ < c.maxZ + size) {
+            // Push away from obstacle center
+            const obsX = (c.minX + c.maxX) / 2;
+            const obsZ = (c.minZ + c.maxZ) / 2;
+            const pushDir = new THREE.Vector3(spawnX - obsX, 0, spawnZ - obsZ);
+            if (pushDir.length() > 0.01) {
+                pushDir.normalize();
+                spawnX += pushDir.x * 2;
+                spawnZ += pushDir.z * 2;
+            }
+        }
+    }
+    
+    // Push away from hazard zones to prevent hazard spawns
+    for (const hz of hazardZones) {
+        const dist = Math.sqrt(
+            (spawnX - hz.position.x) ** 2 + 
+            (spawnZ - hz.position.z) ** 2
+        );
+        
+        if (dist < hz.radius + size + 2) {
+            // Push outward from hazard center
+            const pushDir = new THREE.Vector3(
+                spawnX - hz.position.x,
+                0,
+                spawnZ - hz.position.z
+            );
+            if (pushDir.length() > 0.01) {
+                pushDir.normalize();
+                const pushDist = hz.radius + size + 2 - dist;
+                spawnX += pushDir.x * pushDist;
+                spawnZ += pushDir.z * pushDist;
+            }
+        }
+    }
+    
+    // Clamp to arena bounds
+    spawnX = Math.max(-42, Math.min(42, spawnX));
+    spawnZ = Math.max(-42, Math.min(42, spawnZ));
+    
+    enemy.position.set(spawnX, size, spawnZ);
     
     enemy.health = 5;
     enemy.maxHealth = 5;
@@ -308,6 +754,10 @@ export function spawnSplitEnemy(position, parentSize) {
     enemy.movementSignature = 'sway';
     enemy.movementTimer = Math.random() * 100;
     enemy.deathVfx = { color: 0xff66ff, count: 6, type: 'burst' };
+    
+    // Brief spawn stun gives player reaction time (0.5s at 60fps)
+    enemy.stunned = true;
+    enemy.stunTimer = 30;
     
     scene.add(enemy);
     enemies.push(enemy);
@@ -356,11 +806,13 @@ export function spawnSpecificEnemy(typeName, nearPosition) {
             0,
             (Math.random() - 0.5) * enemy.speed * 2
         );
+        enemy.homingStrength = typeData.homingStrength || 0.001;
     }
     if (typeData.behavior === 'teleporter') {
-        enemy.teleportCooldown = typeData.teleportCooldown;
+        // Convert ms cooldown to frames (60fps = 16.67ms per frame)
+        enemy.teleportCooldownFrames = Math.floor(typeData.teleportCooldown / 16.67);
         enemy.teleportRange = typeData.teleportRange;
-        enemy.lastTeleport = Date.now();
+        enemy.teleportTimer = enemy.teleportCooldownFrames; // Start ready to teleport
         enemy.teleportWindup = 0;
     }
     if (typeData.behavior === 'waterBalloon') {
@@ -469,22 +921,70 @@ export function updateEnemies(delta) {
         if (!enemy.movementTimer) enemy.movementTimer = 0;
         enemy.movementTimer++;
         
+        // Update shield visual
+        if (enemy.shieldMesh && !enemy.shieldBroken) {
+            const shieldPercent = enemy.shieldHP / enemy.maxShieldHP;
+            updateShieldVisual(enemy.shieldMesh, shieldPercent);
+        }
+        
+        // Handle stun
+        if (enemy.stunned) {
+            enemy.stunTimer--;
+            if (enemy.stunTimer <= 0) {
+                enemy.stunned = false;
+            }
+            // Skip movement/behavior while stunned
+            continue;
+        }
+        
         switch (enemy.behavior) {
             case 'chase': updateChaseEnemy(enemy); break;
-            case 'shooter': updateShooterEnemy(enemy, now); break;
+            case 'shooter': updateShooterEnemy(enemy); break;
             case 'bouncer': updateBouncerEnemy(enemy); break;
-            case 'shieldBreaker': updateShieldBreakerEnemy(enemy, now); break;
+            case 'shieldBreaker': updateShieldBreakerEnemy(enemy); break;
             case 'waterBalloon': updateWaterBalloonEnemy(enemy); break;
-            case 'teleporter': updateTeleporterEnemy(enemy, now); break;
+            case 'teleporter': updateTeleporterEnemy(enemy); break;
             case 'pillarHopper': updatePillarHopperEnemy(enemy); break;
             default: updateChaseEnemy(enemy);
+        }
+        
+        // Shielded enemy "enrage" anti-camping mechanic
+        // If stuck for too long, speed up to prevent players from camping behind cover
+        if (enemy.enemyType === 'shielded' && !enemy.enraged) {
+            // Initialize tracking
+            if (!enemy.lastPosition) {
+                enemy.lastPosition = enemy.position.clone();
+                enemy.stuckTimer = 0;
+            }
+            
+            // Check if enemy has barely moved
+            const moved = enemy.position.distanceTo(enemy.lastPosition);
+            if (moved < 0.01) {
+                enemy.stuckTimer++;
+            } else {
+                enemy.stuckTimer = Math.max(0, enemy.stuckTimer - 2);  // Cool down faster than heat up
+            }
+            enemy.lastPosition.copy(enemy.position);
+            
+            // After ~2 seconds stuck (120 frames at 60fps), trigger enrage
+            if (enemy.stuckTimer > 120) {
+                enemy.enraged = true;
+                enemy.speed *= 1.5;  // 50% speed boost
+                enemy.stuckTimer = 0;
+                
+                // Visual feedback - increase emissive glow
+                if (enemy.baseMaterial) {
+                    enemy.baseMaterial.emissiveIntensity = 0.8;
+                    enemy.baseMaterial.emissive.setHex(0xff4444);  // Red tint when enraged
+                }
+            }
         }
         
         // Apply movement signatures
         applyMovementSignature(enemy);
         
         // Update telegraph state
-        updateTelegraph(enemy, now);
+        updateTelegraph(enemy);
         
         // Gravity
         enemy.velocityY -= 0.012;
@@ -516,7 +1016,8 @@ export function updateEnemies(delta) {
         const scaledSize = enemy.baseSize * enemy.scale.x;
         if (enemy.position.distanceTo(player.position) < scaledSize + 0.5) {
             if (now - lastDamageTime > DAMAGE_COOLDOWN) {
-                takeDamage(enemy.damage);
+                const typeName = ENEMY_TYPES[enemy.enemyType]?.name || enemy.enemyType || 'Enemy';
+                takeDamage(enemy.damage, typeName, 'enemy');
                 setLastDamageTime(now);
             }
             tempVec3.subVectors(enemy.position, player.position).normalize();
@@ -645,7 +1146,7 @@ function applyMovementSignature(enemy) {
 }
 
 // Update telegraph visual state
-function updateTelegraph(enemy, now) {
+function updateTelegraph(enemy) {
     if (!enemy.telegraph) return;
     
     // Check if telegraph should be active based on enemy behavior
@@ -655,8 +1156,10 @@ function updateTelegraph(enemy, now) {
         shouldTelegraph = true;
     } else if (enemy.behavior === 'shooter') {
         const dist = enemy.position.distanceTo(player.position);
-        const timeSinceShot = now - (enemy.lastShot || 0);
-        if (dist < enemy.shootRange && timeSinceShot > enemy.shootCooldown - enemy.telegraph.duration) {
+        // Check if nearing shoot time (within 30 frames of shooting)
+        const framesUntilShoot = enemy.shootCooldownFrames - (enemy.shootTimer || 0);
+        const telegraphFrames = enemy.telegraph.duration ? Math.floor(enemy.telegraph.duration / 16.67) : 30;
+        if (dist < enemy.shootRange && framesUntilShoot < telegraphFrames) {
             shouldTelegraph = true;
         }
     } else if (enemy.behavior === 'teleporter' && enemy.teleportWindup > 0) {
@@ -665,14 +1168,52 @@ function updateTelegraph(enemy, now) {
         shouldTelegraph = true;
     }
     
-    // Apply telegraph visual - simple emissive glow change
+    // Apply telegraph visual - simple emissive glow change (use frame counter for animation)
     const mat = enemy.baseMaterial || enemy.material;
     if (shouldTelegraph && mat && mat.emissive) {
-        mat.emissiveIntensity = 0.7 + Math.sin(now * 0.02) * 0.3;
+        mat.emissiveIntensity = 0.7 + Math.sin(enemy.movementTimer * 0.12) * 0.3;
     } else if (mat && mat.emissive) {
         const profile = enemy.visualProfile;
         mat.emissiveIntensity = profile?.glowIntensity || 0.3;
     }
+}
+
+// Calculate steering force to avoid obstacles (pillars, cover blocks)
+// Uses look-ahead collision detection to steer around obstacles
+function calculateSteeringForce(enemy, desiredDir) {
+    const steer = new THREE.Vector3();
+    const lookAhead = 3;  // Look 3 units ahead
+    const futurePos = enemy.position.clone().add(desiredDir.clone().multiplyScalar(lookAhead));
+    
+    for (const obs of obstacles) {
+        const c = obs.collisionData;
+        if (!c) continue;
+        
+        // Check if future position would collide with obstacle
+        const buffer = enemy.size + 0.5;  // Add buffer around enemy
+        if (futurePos.x > c.minX - buffer &&
+            futurePos.x < c.maxX + buffer &&
+            futurePos.z > c.minZ - buffer &&
+            futurePos.z < c.maxZ + buffer) {
+            
+            // Calculate push-away direction from obstacle center
+            const obsCenter = new THREE.Vector3(
+                (c.minX + c.maxX) / 2,
+                0,
+                (c.minZ + c.maxZ) / 2
+            );
+            const awayDir = enemy.position.clone().sub(obsCenter);
+            awayDir.y = 0;
+            awayDir.normalize();
+            
+            // Stronger steering when closer to obstacle
+            const distToObs = enemy.position.distanceTo(obsCenter);
+            const steerStrength = Math.max(0.3, 1.0 - distToObs / 10);
+            steer.add(awayDir.multiplyScalar(steerStrength));
+        }
+    }
+    
+    return steer;
 }
 
 function updateChaseEnemy(enemy) {
@@ -683,9 +1224,16 @@ function updateChaseEnemy(enemy) {
     if (dist < 10) speedMultiplier = 1.5;       // 50% faster when very close
     else if (dist < 20) speedMultiplier = 1.2;  // 20% faster when medium range
     
+    // Calculate desired direction toward player
     tempVec3.subVectors(player.position, enemy.position);
     tempVec3.y = 0;
     tempVec3.normalize();
+    
+    // Apply obstacle steering to avoid getting stuck on pillars
+    const steerForce = calculateSteeringForce(enemy, tempVec3);
+    tempVec3.add(steerForce);
+    tempVec3.normalize();
+    
     enemy.position.x += tempVec3.x * enemy.speed * speedMultiplier;
     enemy.position.z += tempVec3.z * enemy.speed * speedMultiplier;
     
@@ -705,8 +1253,11 @@ function updateChaseEnemy(enemy) {
     }
 }
 
-function updateShooterEnemy(enemy, now) {
+function updateShooterEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
+    
+    // Increment shoot timer
+    enemy.shootTimer = (enemy.shootTimer || 0) + 1;
     
     if (dist > enemy.shootRange) {
         tempVec3.subVectors(player.position, enemy.position);
@@ -722,9 +1273,10 @@ function updateShooterEnemy(enemy, now) {
         enemy.position.z += tempVec3.z * enemy.speed * 0.5;
     }
     
-    if (dist < enemy.shootRange && now - (enemy.lastShot || 0) > enemy.shootCooldown) {
+    // Frame-based shooting cooldown
+    if (dist < enemy.shootRange && enemy.shootTimer >= enemy.shootCooldownFrames) {
         spawnEnemyProjectile(enemy, player.position.clone());
-        enemy.lastShot = now;
+        enemy.shootTimer = 0;
     }
 }
 
@@ -742,24 +1294,55 @@ function updateBouncerEnemy(enemy) {
         enemy.position.z = Math.max(-42, Math.min(42, enemy.position.z));
     }
     
-    // Obstacle bouncing
+    // Obstacle bouncing (proper reflection - only invert perpendicular axis)
     for (const obs of obstacles) {
         const c = obs.collisionData;
-        if (enemy.position.x + enemy.size > c.minX && 
-            enemy.position.x - enemy.size < c.maxX && 
-            enemy.position.z + enemy.size > c.minZ && 
-            enemy.position.z - enemy.size < c.maxZ) {
-            enemy.velocity.x *= -1;
-            enemy.velocity.z *= -1;
-            enemy.position.x += enemy.velocity.x * 2;
-            enemy.position.z += enemy.velocity.z * 2;
+        if (!c) continue;
+        
+        const inX = enemy.position.x + enemy.size > c.minX && 
+                    enemy.position.x - enemy.size < c.maxX;
+        const inZ = enemy.position.z + enemy.size > c.minZ && 
+                    enemy.position.z - enemy.size < c.maxZ;
+        
+        if (inX && inZ && enemy.position.y < c.topY + enemy.size) {
+            // Determine which face was hit based on overlap
+            const overlapX = Math.min(
+                enemy.position.x + enemy.size - c.minX,
+                c.maxX - enemy.position.x + enemy.size
+            );
+            const overlapZ = Math.min(
+                enemy.position.z + enemy.size - c.minZ,
+                c.maxZ - enemy.position.z + enemy.size
+            );
+            
+            if (overlapX < overlapZ) {
+                // Hit X face - invert X velocity only
+                enemy.velocity.x *= -1;
+                if (enemy.position.x < (c.minX + c.maxX) / 2) {
+                    enemy.position.x = c.minX - enemy.size;
+                } else {
+                    enemy.position.x = c.maxX + enemy.size;
+                }
+            } else {
+                // Hit Z face - invert Z velocity only
+                enemy.velocity.z *= -1;
+                if (enemy.position.z < (c.minZ + c.maxZ) / 2) {
+                    enemy.position.z = c.minZ - enemy.size;
+                } else {
+                    enemy.position.z = c.maxZ + enemy.size;
+                }
+            }
+            
+            // Prevent multiple bounces in same frame
+            break;
         }
     }
     
-    // Slight homing
+    // Slight homing (configurable strength)
+    const homingStrength = enemy.homingStrength || 0.001;
     tempVec3.subVectors(player.position, enemy.position).normalize();
-    enemy.velocity.x += tempVec3.x * 0.001;
-    enemy.velocity.z += tempVec3.z * 0.001;
+    enemy.velocity.x += tempVec3.x * homingStrength;
+    enemy.velocity.z += tempVec3.z * homingStrength;
     
     // Speed cap
     const speed = Math.sqrt(enemy.velocity.x * enemy.velocity.x + enemy.velocity.z * enemy.velocity.z);
@@ -767,16 +1350,23 @@ function updateBouncerEnemy(enemy) {
         enemy.velocity.x = enemy.velocity.x / speed * enemy.speed;
         enemy.velocity.z = enemy.velocity.z / speed * enemy.speed;
     }
+    
+    // Trail particles for enhanced visibility
+    if (enemy.visualProfile?.trailEnabled && Math.random() < 0.3) {
+        spawnParticle(enemy.position.clone(), enemy.baseColor, 2);
+    }
 }
 
-function updateShieldBreakerEnemy(enemy, now) {
+function updateShieldBreakerEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
     
     // Windup phase before rush (telegraph)
     if (dist < enemy.rushRange && !enemy.isRushing && !enemy.rushWindup) {
-        enemy.rushWindup = 20;  // ~0.33 second windup
+        enemy.rushWindup = 20;  // ~0.33 second windup (20 frames)
         enemy.rushDirection = tempVec3.subVectors(player.position, enemy.position).normalize().clone();
         enemy.rushDirection.y = 0;
+        // Create rush telegraph visual
+        enemy.rushTelegraph = createRushTelegraph(enemy, player.position);
     }
     
     if (enemy.rushWindup > 0) {
@@ -785,9 +1375,19 @@ function updateShieldBreakerEnemy(enemy, now) {
         enemy.scale.z = 0.8 + (enemy.rushWindup / 20) * 0.2;
         enemy.scale.x = 1.1 - (enemy.rushWindup / 20) * 0.1;
         
+        // Update telegraph visual
+        if (enemy.rushTelegraph) {
+            updateRushTelegraph(enemy.rushTelegraph);
+        }
+        
         if (enemy.rushWindup <= 0) {
             enemy.isRushing = true;
             enemy.scale.set(1, 1, 1);
+            // Cleanup telegraph
+            if (enemy.rushTelegraph) {
+                cleanupVFX(enemy.rushTelegraph);
+                enemy.rushTelegraph = null;
+            }
         }
         return;
     }
@@ -822,14 +1422,17 @@ function updateWaterBalloonEnemy(enemy) {
 export function explodeWaterBalloon(enemy) {
     createHazardZone(enemy.position.x, enemy.position.z, enemy.explosionRadius, 400);
     if (player.position.distanceTo(enemy.position) < enemy.explosionRadius) {
-        takeDamage(enemy.damage * 2);
+        takeDamage(enemy.damage * 2, 'Water Balloon Explosion', 'hazard');
     }
     spawnParticle(enemy.position, 0x44ffff, 20);
     enemy.health = 0;
 }
 
-function updateTeleporterEnemy(enemy, now) {
+function updateTeleporterEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
+    
+    // Increment teleport timer
+    enemy.teleportTimer = (enemy.teleportTimer || 0) + 1;
     
     // Windup phase before teleport (telegraph)
     if (enemy.teleportWindup > 0) {
@@ -838,22 +1441,27 @@ function updateTeleporterEnemy(enemy, now) {
         enemy.scale.setScalar(0.8 + Math.sin(enemy.teleportWindup * 0.5) * 0.2);
         
         if (enemy.teleportWindup <= 0) {
-            // Execute teleport
-            const angle = Math.random() * Math.PI * 2;
-            const d = 3 + Math.random() * 3;
+            // Execute teleport with validated destination
             spawnParticle(enemy.position, 0xaa44ff, 8);
-            enemy.position.x = Math.max(-42, Math.min(42, player.position.x + Math.cos(angle) * d));
-            enemy.position.z = Math.max(-42, Math.min(42, player.position.z + Math.sin(angle) * d));
+            PulseMusic.onTeleport(false); // Vanishing sound
+            
+            // Find valid destination (not in hazards/obstacles)
+            const destination = findValidTeleportDestination(enemy, player.position);
+            enemy.position.x = destination.x;
+            enemy.position.z = destination.z;
+            
             spawnParticle(enemy.position, 0xaa44ff, 8);
-            enemy.lastTeleport = now;
+            PulseMusic.onTeleport(true); // Appearing sound
+            enemy.teleportTimer = 0; // Reset cooldown
             enemy.scale.setScalar(1);
         }
         return;
     }
     
-    if (now - (enemy.lastTeleport || 0) > enemy.teleportCooldown && dist < 20) {
+    // Frame-based teleport cooldown
+    if (enemy.teleportTimer >= enemy.teleportCooldownFrames && dist < 20) {
         // Start teleport windup
-        enemy.teleportWindup = 15;  // ~0.25 second windup
+        enemy.teleportWindup = 15;  // ~0.25 second windup (15 frames)
     } else {
         tempVec3.subVectors(player.position, enemy.position);
         tempVec3.y = 0;
@@ -885,15 +1493,31 @@ function updatePillarHopperEnemy(enemy) {
     // Check if player is on a pillar every frame
     const playerPillar = getPlayerPillar();
     
+    // Track grace period for pillar landing
+    if (playerPillar) {
+        if (!player.pillarLandTime) {
+            player.pillarLandTime = Date.now();
+        }
+    } else {
+        player.pillarLandTime = null;
+    }
+    
     switch (enemy.hopState) {
         case 'idle':
-            // PRIORITY: If player is on a pillar (not ours), immediately hunt them!
+            // PRIORITY: If player is on a pillar (not ours), hunt them after grace period
             if (playerPillar && playerPillar !== enemy.currentPillar) {
-                enemy.targetPillar = playerPillar;
-                enemy.isHunting = true;
-                enemy.hopState = 'windup';
-                enemy.hopTimer = 0;
-                break;
+                const gracePeriod = 1500;  // 1.5 seconds grace after landing
+                const timeSinceLanding = player.pillarLandTime ? Date.now() - player.pillarLandTime : 0;
+                
+                // Only hunt if grace period has passed
+                if (timeSinceLanding >= gracePeriod) {
+                    enemy.targetPillar = playerPillar;
+                    enemy.isHunting = true;
+                    enemy.hopState = 'windup';
+                    enemy.hopTimer = 0;
+                    break;
+                }
+                // During grace period, don't start hunting - patrol normally
             }
             
             // Otherwise, wait for pause duration then pick random pillar
@@ -1014,10 +1638,23 @@ function updatePillarHopperEnemy(enemy) {
 
 // Check if player is standing on a pillar
 function getPlayerPillar() {
+    // Must be grounded or nearly grounded (not jumping/falling)
+    if (!player.isGrounded && Math.abs(player.velocity.y) > 0.05) {
+        return null;
+    }
+    
+    const playerFeetY = player.position.y - 1;  // Player center is at y=1 above ground
+    const playerRadius = 0.5;
+    
     for (const pillar of cachedPillarTops) {
-        const onPillarXZ = Math.abs(player.position.x - pillar.x) < pillar.width / 2 + 0.5 &&
-                          Math.abs(player.position.z - pillar.z) < pillar.depth / 2 + 0.5;
-        const onPillarY = Math.abs(player.position.y - pillar.y) < 2;
+        // XZ check: player radius within pillar bounds (no ghost margin)
+        const dx = Math.abs(player.position.x - pillar.x);
+        const dz = Math.abs(player.position.z - pillar.z);
+        const onPillarXZ = dx <= (pillar.width / 2 + playerRadius) &&
+                          dz <= (pillar.depth / 2 + playerRadius);
+        
+        // Y check: feet must be within 0.3 units of pillar top surface (tightened to reduce false positives during climbing)
+        const onPillarY = Math.abs(playerFeetY - pillar.topY) < 0.3;
         
         if (onPillarXZ && onPillarY) {
             return pillar;
@@ -1026,28 +1663,19 @@ function getPlayerPillar() {
     return null;
 }
 
-// Enemy projectile spawning (moved here to avoid circular dependency with projectiles.js)
+// Enemy projectile spawning using pooled projectiles
 export function spawnEnemyProjectile(enemy, targetPos) {
-    const projectile = new THREE.Mesh(
-        new THREE.SphereGeometry(0.12, 6, 6),
-        new THREE.MeshBasicMaterial({
-            color: 0xff6644,
-            transparent: true,
-            opacity: 0.9
-        })
-    );
-    
-    projectile.position.copy(enemy.position);
-    projectile.velocity = tempVec3.subVectors(targetPos, enemy.position).normalize().clone().multiplyScalar(0.3);
-    projectile.damage = enemy.damage * 0.5;
-    projectile.life = 150;
-    
-    scene.add(projectile);
-    enemyProjectiles.push(projectile);
+    spawnEnemyProjectileFromPool(enemy.position, targetPos, enemy.damage * 0.5);
 }
 
 // Handle enemy death effects (called from projectiles.js)
 export function handleEnemyDeath(enemy) {
+    // Track kill for combat stats
+    if (gameState.combatStats) {
+        const type = enemy.enemyType || 'unknown';
+        gameState.combatStats.kills[type] = (gameState.combatStats.kills[type] || 0) + 1;
+    }
+    
     // Spawn enemy-specific death VFX
     if (enemy.deathVfx) {
         spawnEnemyDeathVfx(enemy.position, enemy.deathVfx);
@@ -1058,7 +1686,7 @@ export function handleEnemyDeath(enemy) {
     
     if (enemy.onDeath === 'split') {
         for (let s = 0; s < enemy.splitCount; s++) {
-            spawnSplitEnemy(enemy.position, enemy.baseSize);
+            spawnSplitEnemy(enemy.position, enemy.baseSize, s, enemy.splitCount);
         }
     }
     if (enemy.behavior === 'waterBalloon') {
