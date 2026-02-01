@@ -1,10 +1,11 @@
 import { gameState } from '../core/gameState.js';
 import { enemies, getCurrentBoss } from '../core/entities.js';
 import { player } from '../entities/player.js';
-import { spawnWaveEnemy, spawnPillarPoliceOnAllPillars } from '../entities/enemies.js';
+import { spawnWaveEnemy } from '../entities/enemies.js';
 import { spawnBoss } from '../entities/boss.js';
-import { WAVE_STATE } from '../config/constants.js';
+import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
+import { ENEMY_TYPES } from '../config/enemies.js';
 import { generateArena } from '../arena/generator.js';
 import { awardArenaBadge } from './badges.js';
 import { PulseMusic } from './pulseMusic.js';
@@ -15,8 +16,17 @@ import {
     hideBossAnnouncement,
     showUnlockNotification,
     showBadgeUnlock,
+    showModifierAnnouncement,
     updateUI 
 } from '../ui/hud.js';
+import { startCinematic, triggerSlowMo, endCinematic } from './visualFeedback.js';
+
+// Timing constants (in frames at 60fps)
+const WAVE_INTRO_FRAMES = 120;       // 2 seconds
+const WAVE_CLEAR_FRAMES = 90;        // 1.5 seconds
+const BOSS_INTRO_FRAMES = 180;       // 3 seconds
+const BOSS_DEFEATED_FRAMES = 180;    // 3 seconds
+const ARENA_TRANSITION_FRAMES = 60;  // 1 second
 
 export function updateWaveSystem() {
     switch (gameState.waveState) {
@@ -42,40 +52,277 @@ function handleWaveIntro() {
     }
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > 120) {
+    if (gameState.waveTimer > WAVE_INTRO_FRAMES) {
         gameState.waveState = WAVE_STATE.WAVE_ACTIVE;
         gameState.waveTimer = 0;
         
-        const base = 6 + gameState.currentArena * 3;  // More enemies per wave
-        const scaling = 1 + (gameState.currentWave - 1) * 0.25;
-        gameState.enemiesToSpawn = Math.floor(base * scaling);
-        gameState.waveEnemiesRemaining = gameState.enemiesToSpawn;
+        const maxWaves = getMaxWaves();
+        const isLessonWave = (gameState.currentWave === 1);
+        const isExamWave = (gameState.currentWave === maxWaves);
+        
+        // Determine wave type and base budget
+        let waveType = 'integration';
+        if (isLessonWave) waveType = 'lesson';
+        else if (isExamWave) waveType = 'exam';
+        
+        const baseBudget = THREAT_BUDGET.waveBudgets[waveType];
+        const arenaScale = THREAT_BUDGET.arenaScaling[gameState.currentArena] || 1.0;
+        
+        // Select wave modifier (if any)
+        gameState.waveModifier = selectWaveModifier(gameState.currentArena, gameState.currentWave, maxWaves, isLessonWave);
+        const modifierMult = gameState.waveModifier ? (WAVE_MODIFIERS[gameState.waveModifier].budgetMult || 1.0) : 1.0;
+        
+        // Announce modifier to player
+        if (gameState.waveModifier && WAVE_MODIFIERS[gameState.waveModifier]) {
+            const modifier = WAVE_MODIFIERS[gameState.waveModifier];
+            const announcement = modifier.announcement || modifier.name;
+            showModifierAnnouncement(announcement);
+            
+            // Trigger breather music mode for breather waves
+            if (gameState.waveModifier === 'breather') {
+                PulseMusic.onBreatherStart();
+            }
+        }
+        
+        // Initialize threat budget
+        gameState.waveBudgetRemaining = Math.floor(baseBudget.total * arenaScale * modifierMult);
+        
+        // Apply cognitive cap from modifier if specified (breather waves have lower cognitive load)
+        const modifierConfig = gameState.waveModifier ? WAVE_MODIFIERS[gameState.waveModifier] : null;
+        gameState.waveCognitiveMax = modifierConfig?.cognitiveMax || baseBudget.maxCognitive;
+        gameState.waveCognitiveUsed = 0;
+        gameState.waveSpawnCount = 0;
         gameState.lastWaveSpawn = 0;
         
-        // Spawn Pillar Police on all pillars in Arena 2-3
-        if (gameState.currentArena >= 2 && gameState.currentArena <= 3) {
-            spawnPillarPoliceOnAllPillars();
-        }
+        // Micro-breather tracking
+        gameState.microBreatherActive = false;
+        gameState.microBreatherTimer = 0;
+        gameState.stressPauseActive = false;
+        gameState.waveSpawnWarned = false; // Reset spawn warning flag
+        
+        // Initialize enemy pool for cognitive caps
+        initializeWaveEnemyPool();
+        
+        // Legacy compatibility - estimate enemy count for UI
+        const avgCost = 20;
+        gameState.enemiesToSpawn = Math.ceil(gameState.waveBudgetRemaining / avgCost);
+        gameState.waveEnemiesRemaining = gameState.enemiesToSpawn;
         
         hideWaveAnnouncement();
     }
 }
 
-function handleWaveActive() {
-    const now = Date.now();
-    const spawnInterval = Math.max(250, 900 - gameState.currentArena * 60 - gameState.currentWave * 30);  // Faster spawning
+// Select wave modifier based on arena and wave
+function selectWaveModifier(arena, wave, maxWaves, isLessonWave) {
+    // No modifiers on lesson waves
+    if (isLessonWave) return null;
     
-    if (gameState.enemiesToSpawn > 0 && now - gameState.lastWaveSpawn > spawnInterval) {
-        // 20% chance for burst spawn (2-3 enemies at once)
-        const burstCount = Math.random() < 0.2 ? (2 + Math.floor(Math.random() * 2)) : 1;
-        for (let i = 0; i < burstCount && gameState.enemiesToSpawn > 0; i++) {
-            spawnWaveEnemy();
-            gameState.enemiesToSpawn--;
+    // Check for breather waves from arena config (takes priority)
+    const arenaConfig = ARENA_CONFIG.arenas[arena];
+    if (arenaConfig?.breatherWaves?.includes(wave)) {
+        return 'breather';
+    }
+    
+    // Final wave before boss always gets harbingers (if unlocked enemies exist)
+    if (wave === maxWaves && arena >= 3) {
+        return 'harbingers';
+    }
+    
+    // Chance of modifier increases with arena
+    const modifierChance = 0.10 + arena * 0.05;
+    if (Math.random() > modifierChance) return null;
+    
+    // Select random modifier
+    const options = ['elite', 'rush', 'swarm'];
+    return options[Math.floor(Math.random() * options.length)];
+}
+
+// Initialize the enemy pool for this wave (cognitive caps)
+function initializeWaveEnemyPool() {
+    const arena = gameState.currentArena;
+    const maxTypes = COGNITIVE_LIMITS.maxTypesPerWave[arena] || 4;
+    const arenaConfig = ARENA_CONFIG.arenas[arena];
+    const lessonEnemy = arenaConfig?.lessonEnemy || 'grunt';
+    
+    // Check if modifier forces specific types
+    if (gameState.waveModifier && WAVE_MODIFIERS[gameState.waveModifier].forceTypes) {
+        gameState.waveEnemyPool = WAVE_MODIFIERS[gameState.waveModifier].forceTypes;
+        return;
+    }
+    
+    // Always include the arena's featured enemy
+    const pool = [lessonEnemy];
+    
+    // Get all available enemy types for this arena
+    const available = getAvailableEnemyTypesForArena(arena);
+    const others = available.filter(t => t !== lessonEnemy);
+    
+    // Shuffle and fill remaining slots
+    shuffleArray(others);
+    while (pool.length < maxTypes && others.length > 0) {
+        pool.push(others.pop());
+    }
+    
+    gameState.waveEnemyPool = pool;
+}
+
+// Get enemy types available in this arena
+function getAvailableEnemyTypesForArena(arena) {
+    const types = [];
+    
+    for (const [name, data] of Object.entries(ENEMY_TYPES)) {
+        if (data.spawnWeight <= 0) continue;
+        if (data.arenaIntro && data.arenaIntro > arena) continue;
+        if (data.maxArena && data.maxArena < arena) continue;
+        types.push(name);
+    }
+    
+    return types;
+}
+
+// Fisher-Yates shuffle
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+}
+
+function handleWaveActive() {
+    // Skip enemy spawning if debug mode is enabled with noEnemies flag
+    if (gameState.debug && gameState.debug.noEnemies) {
+        return;
+    }
+    
+    const now = Date.now();
+    const maxWaves = getMaxWaves();
+    const isLessonWave = (gameState.currentWave === 1);
+    const isExamWave = (gameState.currentWave === maxWaves);
+    
+    // Check for stress pause (too many enemies alive)
+    if (enemies.length >= PACING_CONFIG.stressPauseThreshold) {
+        if (!gameState.stressPauseActive) {
+            gameState.stressPauseActive = true;
+            // Optional: signal music to dip
+        }
+        // Don't spawn more until player clears some
+        checkWaveComplete();
+        return;
+    }
+    gameState.stressPauseActive = false;
+    
+    // Check for micro-breather
+    if (gameState.waveSpawnCount > 0 && 
+        gameState.waveSpawnCount % PACING_CONFIG.microBreatherInterval === 0 && 
+        !gameState.microBreatherActive &&
+        gameState.waveBudgetRemaining > 0) {
+        
+        gameState.microBreatherActive = true;
+        gameState.microBreatherTimer = 0;
+        PulseMusic.onBreatherStart();
+    }
+    
+    // Handle micro-breather duration
+    if (gameState.microBreatherActive) {
+        gameState.microBreatherTimer++;
+        if (gameState.microBreatherTimer < PACING_CONFIG.microBreatherDuration) {
+            checkWaveComplete();
+            return; // Pause spawning
+        }
+        // Breather complete
+        gameState.microBreatherActive = false;
+        gameState.microBreatherTimer = 0;
+        PulseMusic.onBreatherEnd();
+    }
+    
+    // Determine spawn interval based on wave type
+    let spawnInterval;
+    let burstChance;
+    
+    if (isLessonWave) {
+        spawnInterval = WAVE_CONFIG.lessonWave.interval;
+        burstChance = WAVE_CONFIG.lessonWave.burstChance;
+    } else if (isExamWave) {
+        spawnInterval = WAVE_CONFIG.examWave.interval;
+        burstChance = WAVE_CONFIG.examWave.burstChance;
+    } else {
+        // Integration wave
+        spawnInterval = Math.max(
+            WAVE_CONFIG.integrationWave.intervalMin,
+            WAVE_CONFIG.integrationWave.intervalBase - gameState.currentWave * 30
+        );
+        burstChance = Math.min(
+            WAVE_CONFIG.integrationWave.burstChanceMax,
+            WAVE_CONFIG.integrationWave.burstChanceBase + gameState.currentWave * 0.02
+        );
+    }
+    
+    // Apply modifier effects
+    if (gameState.waveModifier && WAVE_MODIFIERS[gameState.waveModifier]) {
+        const modifier = WAVE_MODIFIERS[gameState.waveModifier];
+        if (modifier.intervalMult) {
+            spawnInterval *= modifier.intervalMult;
+        }
+        // Breather waves have no burst spawns
+        if (gameState.waveModifier === 'breather') {
+            burstChance = 0;
+        }
+    }
+    
+    // Arena 5 special: reduce burst chance (tunnels amplify unfairness)
+    if (gameState.currentArena === 5) {
+        burstChance *= 0.5;
+    }
+    
+    // Budget-based spawning
+    if (gameState.waveBudgetRemaining > 0 && now - gameState.lastWaveSpawn > spawnInterval) {
+        // Burst spawns
+        const shouldBurst = Math.random() < burstChance;
+        const burstCount = shouldBurst ? (2 + Math.floor(Math.random() * 2)) : 1;
+        
+        for (let i = 0; i < burstCount && gameState.waveBudgetRemaining > 0; i++) {
+            const spawned = spawnWaveEnemy();
+            if (!spawned) {
+                // No affordable enemy available - exhaust budget to prevent infinite loop
+                // Rate-limit warning to avoid console spam (only warn once per wave)
+                if (gameState.waveBudgetRemaining > 0 && !gameState.waveSpawnWarned) {
+                    console.warn('[WaveSystem] No affordable enemy found, budget:', gameState.waveBudgetRemaining, 'cognitive:', gameState.waveCognitiveUsed, '/', gameState.waveCognitiveMax);
+                    gameState.waveSpawnWarned = true;
+                }
+                gameState.waveBudgetRemaining = 0;
+                break;
+            }
+            
+            // Deduct cost from budget
+            const cost = getEnemyThreatCost(spawned.enemyType);
+            gameState.waveBudgetRemaining -= cost;
+            gameState.waveCognitiveUsed += THREAT_BUDGET.costs[spawned.enemyType]?.cognitive || 1;
+            gameState.waveSpawnCount++;
+            
+            // Update legacy counter for UI
+            if (gameState.enemiesToSpawn > 0) {
+                gameState.enemiesToSpawn--;
+            }
         }
         gameState.lastWaveSpawn = now;
     }
     
-    if (enemies.length === 0 && gameState.enemiesToSpawn === 0 && !getCurrentBoss()) {
+    checkWaveComplete();
+}
+
+// Calculate threat cost for an enemy type
+function getEnemyThreatCost(enemyType) {
+    const costs = THREAT_BUDGET.costs[enemyType];
+    if (!costs) return 20; // Default cost
+    return costs.durability + costs.damage;
+}
+
+// Check if wave is complete
+function checkWaveComplete() {
+    const budgetExhausted = gameState.waveBudgetRemaining <= 0;
+    const allEnemiesDead = enemies.length === 0;
+    
+    if (budgetExhausted && allEnemiesDead && !getCurrentBoss()) {
         gameState.waveState = WAVE_STATE.WAVE_CLEAR;
         gameState.waveTimer = 0;
     }
@@ -84,10 +331,24 @@ function handleWaveActive() {
 function handleWaveClear() {
     if (gameState.waveTimer === 0) {
         PulseMusic.onWaveClear();
+        
+        // End breather music mode if this was a breather wave
+        if (gameState.waveModifier === 'breather') {
+            PulseMusic.onBreatherEnd();
+        }
+        
+        // Track perfect wave (no damage taken)
+        if (gameState.combatStats && gameState.combatStats.waveDamageTaken === 0) {
+            gameState.combatStats.perfectWaves++;
+        }
+        // Reset wave damage tracker for next wave
+        if (gameState.combatStats) {
+            gameState.combatStats.waveDamageTaken = 0;
+        }
     }
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > 90) {
+    if (gameState.waveTimer > WAVE_CLEAR_FRAMES) {
         const maxWaves = getMaxWaves();
         if (gameState.currentWave >= maxWaves) {
             gameState.waveState = WAVE_STATE.BOSS_INTRO;
@@ -107,12 +368,18 @@ function handleBossIntro() {
     }
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > 180) {
-        spawnBoss(gameState.currentArena);
+    if (gameState.waveTimer > BOSS_INTRO_FRAMES) {
+        const boss = spawnBoss(gameState.currentArena);
         gameState.bossActive = true;
         gameState.waveState = WAVE_STATE.BOSS_ACTIVE;
         gameState.waveTimer = 0;
         hideBossAnnouncement();
+        
+        // Trigger cinematic camera focus on boss with slow-mo
+        if (boss) {
+            startCinematic(boss, BOSS_INTRO_CINEMATIC_DURATION, true);
+            triggerSlowMo(BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE);
+        }
     }
 }
 
@@ -136,7 +403,7 @@ function handleBossDefeated() {
     }
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > 180) {
+    if (gameState.waveTimer > BOSS_DEFEATED_FRAMES) {
         gameState.waveState = WAVE_STATE.ARENA_TRANSITION;
         gameState.waveTimer = 0;
     }
@@ -145,7 +412,7 @@ function handleBossDefeated() {
 function handleArenaTransition() {
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > 60) {
+    if (gameState.waveTimer > ARENA_TRANSITION_FRAMES) {
         gameState.currentArena++;
         gameState.currentWave = 1;
         generateArena(gameState.currentArena);
