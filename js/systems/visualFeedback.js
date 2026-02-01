@@ -1,5 +1,5 @@
 import { scene } from '../core/scene.js';
-import { SLOW_MO_LERP_SPEED } from '../config/constants.js';
+import { SLOW_MO_LERP_SPEED, SCREEN_FLASH_DEFAULT_DURATION } from '../config/constants.js';
 
 // Visual Feedback System - Centralized telegraph and success feedback
 // Implements consistent visual language across all game mechanics
@@ -51,41 +51,6 @@ function getBoxGeometry(width, height, depth) {
     const key = `box_${width.toFixed(2)}_${height.toFixed(2)}_${depth.toFixed(2)}`;
     return getCachedGeometry(key, () => new THREE.BoxGeometry(width, height, depth));
 }
-
-// ==================== TELEGRAPH TIER SYSTEM ====================
-// NOTE: Reserved for future use - defines standardized telegraph intensity levels
-// to be used for consistent visual feedback across different attack types.
-// Not currently wired into the VFX functions but retained for planned tier selection feature.
-
-export const TELEGRAPH_TIERS = {
-    TIER1: {
-        name: 'Nudge',
-        lineThickness: 0.05,
-        color: 0xffaa44,
-        windupMin: 24,      // frames (0.4s at 60fps)
-        windupMax: 36,      // frames (0.6s at 60fps)
-        glowIntensity: 0.3,
-        screenEffect: null
-    },
-    TIER2: {
-        name: 'Danger',
-        lineThickness: 0.1,
-        color: 0xff4444,
-        windupMin: 48,      // frames (0.8s at 60fps)
-        windupMax: 72,      // frames (1.2s at 60fps)
-        glowIntensity: 0.6,
-        screenEffect: 'vignette'
-    },
-    TIER3: {
-        name: 'Critical',
-        lineThickness: 0.15,
-        color: 0xff0000,
-        windupMin: 60,      // frames (1.0s at 60fps)
-        windupMax: 90,      // frames (1.5s at 60fps)
-        glowIntensity: 1.0,
-        screenEffect: 'shake'
-    }
-};
 
 // ==================== COLOR CONVENTIONS ====================
 
@@ -924,6 +889,130 @@ export function endIntroCinematic() {
     introTimer = 0;
 }
 
+// ==================== ENERGY TRANSFER VFX ====================
+// Visual effect showing energy flowing from minions to boss (Phase 2 transition)
+
+let energyTransferActive = false;
+let energyTransferTimer = 0;
+let energyTransferDuration = 90;  // 1.5 seconds
+let energyTransferLines = [];
+let energyTransferTarget = null;
+let energyTransferSources = [];
+
+export function createEnergyTransferVFX(sources, target, duration = 90) {
+    if (!sources || !target || sources.length === 0) return;
+    
+    energyTransferActive = true;
+    energyTransferTimer = 0;
+    energyTransferDuration = duration;
+    energyTransferTarget = target;
+    energyTransferSources = sources;
+    energyTransferLines = [];
+    
+    // Create beam/line for each source
+    sources.forEach((source, i) => {
+        // Create glowing line geometry
+        const points = [
+            source.position.clone(),
+            target.position.clone()
+        ];
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({
+            color: 0x44aaff,
+            transparent: true,
+            opacity: 0
+        });
+        const line = new THREE.Line(geometry, material);
+        line.userData = { sourceIndex: i };
+        scene.add(line);
+        energyTransferLines.push(line);
+        
+        // Create particle trail along line
+        const particleGroup = new THREE.Group();
+        for (let j = 0; j < 5; j++) {
+            const particleMat = new THREE.MeshBasicMaterial({
+                color: 0x88ddff,
+                transparent: true,
+                opacity: 0.8
+            });
+            const particle = new THREE.Mesh(getSphereGeometry(0.15, 8), particleMat);
+            particle.userData = { t: j / 5, speed: 0.02 + Math.random() * 0.01 };
+            particleGroup.add(particle);
+        }
+        scene.add(particleGroup);
+        line.userData.particles = particleGroup;
+    });
+}
+
+export function updateEnergyTransferVFX() {
+    if (!energyTransferActive) return false;
+    
+    energyTransferTimer++;
+    const progress = energyTransferTimer / energyTransferDuration;
+    
+    // Update each line and its particles
+    energyTransferLines.forEach((line, i) => {
+        const source = energyTransferSources[i];
+        if (!source || !energyTransferTarget) return;
+        
+        // Fade in line
+        line.material.opacity = Math.min(progress * 2, 0.6);
+        
+        // Update line endpoints
+        const positions = line.geometry.attributes.position;
+        positions.setXYZ(0, source.position.x, source.position.y + 1, source.position.z);
+        positions.setXYZ(1, energyTransferTarget.position.x, energyTransferTarget.position.y + 2, energyTransferTarget.position.z);
+        positions.needsUpdate = true;
+        
+        // Update particles along line
+        const particles = line.userData.particles;
+        if (particles) {
+            particles.children.forEach(particle => {
+                particle.userData.t += particle.userData.speed;
+                if (particle.userData.t > 1) particle.userData.t = 0;
+                
+                const t = particle.userData.t;
+                particle.position.lerpVectors(
+                    source.position.clone().add(new THREE.Vector3(0, 1, 0)),
+                    energyTransferTarget.position.clone().add(new THREE.Vector3(0, 2, 0)),
+                    t
+                );
+                particle.material.opacity = Math.sin(t * Math.PI) * 0.8 * (1 - progress * 0.5);
+            });
+        }
+    });
+    
+    // End effect
+    if (progress >= 1) {
+        cleanupEnergyTransferVFX();
+        return false;
+    }
+    
+    return true;
+}
+
+function cleanupEnergyTransferVFX() {
+    energyTransferLines.forEach(line => {
+        if (line.userData.particles) {
+            line.userData.particles.children.forEach(p => {
+                if (p.material) p.material.dispose();
+            });
+            scene.remove(line.userData.particles);
+        }
+        if (line.material) line.material.dispose();
+        if (line.geometry) line.geometry.dispose();
+        scene.remove(line);
+    });
+    energyTransferLines = [];
+    energyTransferActive = false;
+    energyTransferTarget = null;
+    energyTransferSources = [];
+}
+
+export function isEnergyTransferActive() {
+    return energyTransferActive;
+}
+
 // Screen flash effect
 let screenFlashActive = false;
 let screenFlashTimer = 0;
@@ -937,7 +1026,7 @@ export function triggerScreenFlash(color = 0xffffff, duration = 6) {
 
 export function getScreenFlashOpacity() {
     if (!screenFlashActive) return 0;
-    return (screenFlashTimer / 6) * 0.3; // Max 30% opacity
+    return (screenFlashTimer / SCREEN_FLASH_DEFAULT_DURATION) * 0.3; // Max 30% opacity
 }
 
 export function updateScreenFlash() {
@@ -983,62 +1072,6 @@ export function updateExposedVFX(shimmer, timer) {
     
     // Rotate
     shimmer.rotation.y += 0.05;
-}
-
-// ==================== WARNING INDICATORS ====================
-// NOTE: Reserved for future use - generic warning icon system for telegraphing
-// non-positional hazards (e.g., incoming projectiles, environmental dangers).
-// Currently unused but retained for planned warning indicator feature.
-
-export function createWarningIcon(position) {
-    const group = new THREE.Group();
-    
-    // Warning triangle - this shape is unique, cache it
-    const triangleGeom = getCachedGeometry('warningTriangle', () => {
-        const shape = new THREE.Shape();
-        shape.moveTo(0, 0.5);
-        shape.lineTo(-0.4, -0.5);
-        shape.lineTo(0.4, -0.5);
-        shape.lineTo(0, 0.5);
-        return new THREE.ShapeGeometry(shape);
-    });
-    
-    const mat = new THREE.MeshBasicMaterial({
-        color: VISUAL_COLORS.WARNING_ORANGE,
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide
-    });
-    
-    const triangle = new THREE.Mesh(triangleGeom, mat);
-    triangle.rotation.x = -Math.PI / 2;
-    group.add(triangle);
-    
-    // Exclamation mark - use cached geometry
-    const markGeom = getPlaneGeometry(0.1, 0.3);
-    const mark = new THREE.Mesh(markGeom, mat.clone());
-    mark.rotation.x = -Math.PI / 2;
-    mark.position.y = 0.1;
-    group.add(mark);
-    
-    group.position.copy(position);
-    group.position.y = 2;
-    group.createdTime = Date.now();
-    scene.add(group);
-    
-    return group;
-}
-
-export function updateWarningIcon(icon) {
-    if (!icon) return;
-    
-    const elapsed = (Date.now() - icon.createdTime) / 1000;
-    
-    // Bob up and down
-    icon.position.y = 2 + Math.sin(elapsed * 5) * 0.2;
-    
-    // Rotate
-    icon.rotation.y += 0.05;
 }
 
 // ==================== CHARGE PATH TELEGRAPH ====================
@@ -2534,7 +2567,7 @@ export function updateVineZone(zone) {
 // ==================== CHARGE TRAIL VFX ====================
 
 /**
- * Creates a temporary damage trail segment during boss charge (Gatekeeper P2+)
+ * Creates a temporary damage trail segment during boss charge (Red Puffer King P2+)
  * @param {THREE.Vector3} position - The position of the trail segment
  * @param {number} color - The trail color
  * @param {number} duration - How long the trail lasts in seconds

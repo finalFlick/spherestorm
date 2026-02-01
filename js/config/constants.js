@@ -1,9 +1,10 @@
 // Game Identity
 export const GAME_TITLE = 'Manta Sphere';
+export const VERSION = '0.1.0';  // Increment when deploying changes
 export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_';
 
 // Game constants
-export const DEBUG = false;  // Set to true for debug logging
+export const DEBUG = true;  // Set to true for debug logging
 export const DAMAGE_COOLDOWN = 500;
 export const PLAYER_JUMP_VELOCITY = 0.4;
 export const PLAYER_GRAVITY = 0.018;
@@ -178,5 +179,67 @@ export const BOSS_INTRO_CINEMATIC_DURATION = 120;  // 2 seconds at 60fps
 export const BOSS_INTRO_SLOWMO_DURATION = 90;      // 1.5 seconds at 60fps
 export const BOSS_INTRO_SLOWMO_SCALE = 0.4;        // 40% speed
 
+// Boss intro cutscene timing (frames at 60fps)
+export const BOSS_INTRO_MINION_COUNT = 3;          // Number of minions to spawn during intro
+export const BOSS_INTRO_TOTAL_DURATION = 420;      // 7 seconds total intro demo (after spawn)
+
+// Boss 1 intro demo sequence timing (frames after boss spawn)
+export const BOSS1_INTRO_DEMO = {
+    MINION_SPAWN_DELAY: 60,      // 1 second after spawn - spawn demo minions
+    MINION_DESPAWN_DELAY: 180,   // 3 seconds after spawn - despawn demo minions
+    CHARGE_DEMO_DELAY: 240,      // 4 seconds after spawn - start demo charge
+    SEQUENCE_END: 420            // 7 seconds after spawn - end demo, start combat
+};
+
+// Phase transition demo timing
+export const PHASE_DEMO_DURATION = 90;             // 1.5 seconds for ability demo
+export const ENERGY_TRANSFER_DURATION = 90;        // 1.5 seconds for energy transfer VFX
+export const PHASE_DEMO_DELAY = 500;               // 0.5 second delay before demo starts (ms)
+
 // Visual feedback constants
 export const SLOW_MO_LERP_SPEED = 0.1;  // Interpolation speed for slow-mo transitions
+export const SCREEN_FLASH_DEFAULT_DURATION = 6;  // Default frames for screen flash effect
+export const SPLITLING_SPAWN_STUN_FRAMES = 30;  // Stun frames for newly spawned splitlings
+
+// Underwater ambience configuration
+export const AMBIENCE_CONFIG = {
+    enabled: true,  // Master toggle (default ON)
+    
+    // Bubbles - occasional ambient bubbles across arena edges
+    bubbles: {
+        maxCount: 40,
+        spawnRate: 0.3,                        // Spawns per frame (0.3 = ~18/sec)
+        lifetime: { min: 120, max: 240 },      // 2-4 seconds at 60fps
+        size: { min: 0.08, max: 0.2 },
+        opacity: { min: 0.2, max: 0.5 },
+        riseSpeed: { min: 0.02, max: 0.05 },
+        wobbleIntensity: 0.01,
+        spawnRadius: { min: 35, max: 48 },     // Near walls, not center
+        color: 0x88ddff,                       // Soft cyan
+    },
+    
+    // Kelp - decorative plants near perimeter
+    kelp: {
+        countPerArena: 12,
+        placementRadius: { min: 38, max: 47 }, // Near perimeter
+        height: { min: 4, max: 8 },
+        swaySpeed: 0.02,
+        swayIntensity: 0.15,
+        color: 0x225533,                       // Dark teal-green
+        opacity: 0.4,
+    },
+    
+    // Distant Fish - background silhouettes for depth
+    fish: {
+        maxCount: 8,
+        distanceRadius: { min: 55, max: 70 },  // Beyond arena walls
+        height: { min: 3, max: 12 },
+        speed: { min: 0.01, max: 0.03 },
+        size: { min: 0.8, max: 1.5 },
+        opacity: 0.25,                         // Faded/distant
+        color: 0x446688,
+    },
+    
+    // Combat safe zone (bubbles/fish avoid this area)
+    safeZoneRadius: 25,                        // Center 25 units is combat area
+};

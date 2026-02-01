@@ -2,6 +2,7 @@ import { gameState } from '../core/gameState.js';
 import { DAMAGE_COOLDOWN, DEATH_TIPS } from '../config/constants.js';
 import { PulseMusic } from './pulseMusic.js';
 import { cameraAngleX } from '../core/input.js';
+import { safeFlashMaterial } from './materialUtils.js';
 
 // Hit recovery constants
 const RECOVERY_DURATION = 90;  // 1.5 seconds at 60fps
@@ -48,6 +49,11 @@ export function getDeathTip(source) {
 export function takeDamage(amount, source = 'Unknown', sourceType = 'enemy', sourcePosition = null) {
     // Skip damage if debug invincibility is enabled
     if (gameState.debug && gameState.debug.invincible) {
+        return;
+    }
+    
+    // Skip damage during cutscenes (boss intro/phase transitions)
+    if (gameState.cutsceneActive || gameState.cutsceneInvincible) {
         return;
     }
     
@@ -114,28 +120,7 @@ export function takeDamage(amount, source = 'Unknown', sourceType = 'enemy', sou
     PulseMusic.onPlayerDamage(gameState.health / gameState.maxHealth);
     
     if (playerRef && playerRef.bodyMaterial) {
-        playerRef.bodyMaterial.emissive.setHex(0xff0000);
-        playerRef.bodyMaterial.emissiveIntensity = 1;
-        
-        // Capture references at callback creation time to avoid stale reference issues
-        const playerRefCapture = playerRef;
-        const materialCapture = playerRef.bodyMaterial;
-        setTimeout(() => {
-            // Guard against null/disposed player after game reset
-            // Check: 1) player still exists, 2) still in scene, 3) material not disposed
-            if (playerRefCapture && 
-                playerRefCapture.parent && 
-                materialCapture && 
-                materialCapture.emissive &&
-                !materialCapture.disposed) {
-                try {
-                    materialCapture.emissive.setHex(0x224488);
-                    materialCapture.emissiveIntensity = 0.3;
-                } catch (e) {
-                    // Player may have been disposed during callback - safely ignore
-                }
-            }
-        }, DAMAGE_COOLDOWN);
+        safeFlashMaterial(playerRef.bodyMaterial, playerRef, 0xff0000, 0x224488, 0.3, DAMAGE_COOLDOWN);
     }
     
     if (gameState.health <= 0) {

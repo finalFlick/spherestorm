@@ -3,12 +3,11 @@ import { gameState } from '../core/gameState.js';
 import { enemies, obstacles, hazardZones, tempVec3 } from '../core/entities.js';
 import { player } from './player.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
-import { DAMAGE_COOLDOWN } from '../config/constants.js';
+import { DAMAGE_COOLDOWN, ENEMY_CAPS, WAVE_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, THREAT_BUDGET, SPLITLING_SPAWN_STUN_FRAMES } from '../config/constants.js';
 import { spawnParticle, spawnEnemyDeathVfx } from '../effects/particles.js';
 import { createHazardZone } from '../arena/generator.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
 import { createShieldBubble, updateShieldVisual, createRushTelegraph, updateRushTelegraph, cleanupVFX } from '../systems/visualFeedback.js';
-import { ENEMY_CAPS, WAVE_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, THREAT_BUDGET } from '../config/constants.js';
 import { showTutorialCallout } from '../ui/hud.js';
 import { PulseMusic } from '../systems/pulseMusic.js';
 import { ARENA_CONFIG } from '../config/arenas.js';
@@ -35,6 +34,13 @@ export function clearEnemyGeometryCache() {
         geometry.dispose();
     }
     geometryCache.clear();
+    // Also clear cone geometry cache used by mini porcupinefish
+    if (typeof coneGeometryCache !== 'undefined') {
+        for (const geometry of coneGeometryCache.values()) {
+            geometry.dispose();
+        }
+        coneGeometryCache.clear();
+    }
 }
 
 // Check if a position is valid for enemy placement (not in hazards or obstacles)
@@ -86,8 +92,122 @@ function findValidTeleportDestination(enemy, playerPos) {
     return new THREE.Vector3(fallbackX, enemy.size, fallbackZ);
 }
 
+// Cone geometry cache for mini porcupinefish parts
+const coneGeometryCache = new Map();
+
+function getCachedConeGeometry(radius, height, segments = 6) {
+    const key = `${radius.toFixed(3)}_${height.toFixed(3)}_${segments}`;
+    if (!coneGeometryCache.has(key)) {
+        coneGeometryCache.set(key, new THREE.ConeGeometry(radius, height, segments));
+    }
+    return coneGeometryCache.get(key);
+}
+
+// Create mini porcupinefish mesh for Red Puffer enemies (simplified version of Boss 1)
+function createMiniPorcupinefishMesh(size, color) {
+    const group = new THREE.Group();
+    
+    // Main body - sphere
+    const bodyGeom = getCachedSphereGeometry(size, 12);
+    const bodyMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.4
+    });
+    const body = new THREE.Mesh(bodyGeom, bodyMat);
+    body.castShadow = true;
+    group.add(body);
+    
+    // Glow effect
+    const glowGeom = getCachedSphereGeometry(size * 1.15, 8);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.2
+    });
+    const glow = new THREE.Mesh(glowGeom, glowMat);
+    group.add(glow);
+    
+    // Eyes - simple white spheres with black pupils
+    const eyeGeom = getCachedSphereGeometry(size * 0.12, 6);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilGeom = getCachedSphereGeometry(size * 0.06, 4);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    
+    // Left eye
+    const leftEye = new THREE.Mesh(eyeGeom, eyeMat);
+    leftEye.position.set(-size * 0.35, size * 0.25, size * 0.7);
+    group.add(leftEye);
+    const leftPupil = new THREE.Mesh(pupilGeom, pupilMat);
+    leftPupil.position.set(-size * 0.35, size * 0.25, size * 0.82);
+    group.add(leftPupil);
+    
+    // Right eye
+    const rightEye = new THREE.Mesh(eyeGeom, eyeMat);
+    rightEye.position.set(size * 0.35, size * 0.25, size * 0.7);
+    group.add(rightEye);
+    const rightPupil = new THREE.Mesh(pupilGeom, pupilMat);
+    rightPupil.position.set(size * 0.35, size * 0.25, size * 0.82);
+    group.add(rightPupil);
+    
+    // Tail fin - small cone at the back
+    const tailGeom = getCachedConeGeometry(size * 0.2, size * 0.4, 4);
+    const tailMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.3
+    });
+    const tail = new THREE.Mesh(tailGeom, tailMat);
+    tail.rotation.x = Math.PI / 2;
+    tail.position.set(0, 0, -size * 0.9);
+    group.add(tail);
+    
+    // Side fins - small cones
+    const finGeom = getCachedConeGeometry(size * 0.15, size * 0.3, 3);
+    const finMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.3,
+        side: THREE.DoubleSide
+    });
+    
+    const leftFin = new THREE.Mesh(finGeom, finMat);
+    leftFin.rotation.z = Math.PI / 2;
+    leftFin.rotation.y = -0.3;
+    leftFin.position.set(-size * 0.75, 0, size * 0.15);
+    group.add(leftFin);
+    
+    const rightFin = new THREE.Mesh(finGeom, finMat.clone());
+    rightFin.rotation.z = -Math.PI / 2;
+    rightFin.rotation.y = 0.3;
+    rightFin.position.set(size * 0.75, 0, size * 0.15);
+    group.add(rightFin);
+    
+    // Single dorsal fin on top
+    const dorsalGeom = getCachedConeGeometry(size * 0.1, size * 0.25, 3);
+    const dorsalMat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.4
+    });
+    const dorsal = new THREE.Mesh(dorsalGeom, dorsalMat);
+    dorsal.position.set(0, size * 0.7, -size * 0.1);
+    group.add(dorsal);
+    
+    // Store material reference for hit flash
+    group.baseMaterial = bodyMat;
+    group.isMiniPorcupinefish = true;
+    
+    return group;
+}
+
 // Build enemy mesh - simple smooth sphere with glow/pulse/orbit effects
 function buildEnemyMesh(typeData) {
+    // Special case: Red Puffer uses mini porcupinefish mesh (like Boss 1)
+    if (typeData.usePorcupinefishMesh) {
+        return createMiniPorcupinefishMesh(typeData.size, typeData.color);
+    }
+    
     const profile = typeData.visualProfile;
     const isTransparent = profile?.type === 'transparent';
     
@@ -541,7 +661,7 @@ export function spawnWaveEnemy() {
         enemy.rushRange = typeData.rushRange;
         enemy.rushSpeed = typeData.rushSpeed;
         enemy.isRushing = false;
-        enemy.rushWindup = 0;
+        enemy.rushWindupTimer = 0;
     }
     if (typeData.behavior === 'waterBalloon') {
         enemy.growRate = typeData.growRate;
@@ -553,7 +673,7 @@ export function spawnWaveEnemy() {
         enemy.teleportCooldownFrames = Math.floor(typeData.teleportCooldown / 16.67);
         enemy.teleportRange = typeData.teleportRange;
         enemy.teleportTimer = 0; // Frame counter since last teleport
-        enemy.teleportWindup = 0;
+        enemy.teleportWindupTimer = 0;
     }
     if (typeData.behavior === 'pillarHopper') {
         enemy.hopSpeed = typeData.hopSpeed || 0.4;
@@ -757,7 +877,7 @@ export function spawnSplitEnemy(position, parentSize, index = 0, totalCount = 3)
     
     // Brief spawn stun gives player reaction time (0.5s at 60fps)
     enemy.stunned = true;
-    enemy.stunTimer = 30;
+    enemy.stunTimer = SPLITLING_SPAWN_STUN_FRAMES;
     
     scene.add(enemy);
     enemies.push(enemy);
@@ -813,7 +933,7 @@ export function spawnSpecificEnemy(typeName, nearPosition) {
         enemy.teleportCooldownFrames = Math.floor(typeData.teleportCooldown / 16.67);
         enemy.teleportRange = typeData.teleportRange;
         enemy.teleportTimer = enemy.teleportCooldownFrames; // Start ready to teleport
-        enemy.teleportWindup = 0;
+        enemy.teleportWindupTimer = 0;
     }
     if (typeData.behavior === 'waterBalloon') {
         enemy.growRate = typeData.growRate;
@@ -824,7 +944,7 @@ export function spawnSpecificEnemy(typeName, nearPosition) {
         enemy.rushRange = typeData.rushRange;
         enemy.rushSpeed = typeData.rushSpeed;
         enemy.isRushing = false;
-        enemy.rushWindup = 0;
+        enemy.rushWindupTimer = 0;
     }
     if (typeData.behavior === 'pillarHopper') {
         enemy.hopSpeed = typeData.hopSpeed;
@@ -921,8 +1041,8 @@ export function updateEnemies(delta) {
         if (!enemy.movementTimer) enemy.movementTimer = 0;
         enemy.movementTimer++;
         
-        // Update shield visual
-        if (enemy.shieldMesh && !enemy.shieldBroken) {
+        // Update shield visual (shieldMesh is null when broken)
+        if (enemy.shieldMesh) {
             const shieldPercent = enemy.shieldHP / enemy.maxShieldHP;
             updateShieldVisual(enemy.shieldMesh, shieldPercent);
         }
@@ -1070,7 +1190,7 @@ function applyMovementSignature(enemy) {
             
         case 'jitter':
             // Micro-jitters, especially before rush
-            if (enemy.isRushing || enemy.rushWindup > 0) {
+            if (enemy.isRushing || enemy.rushWindupTimer > 0) {
                 enemy.position.x += (Math.random() - 0.5) * 0.05;
                 enemy.position.z += (Math.random() - 0.5) * 0.05;
             } else {
@@ -1152,7 +1272,7 @@ function updateTelegraph(enemy) {
     // Check if telegraph should be active based on enemy behavior
     let shouldTelegraph = false;
     
-    if (enemy.behavior === 'shieldBreaker' && enemy.rushWindup > 0) {
+    if (enemy.behavior === 'shieldBreaker' && enemy.rushWindupTimer > 0) {
         shouldTelegraph = true;
     } else if (enemy.behavior === 'shooter') {
         const dist = enemy.position.distanceTo(player.position);
@@ -1162,7 +1282,7 @@ function updateTelegraph(enemy) {
         if (dist < enemy.shootRange && framesUntilShoot < telegraphFrames) {
             shouldTelegraph = true;
         }
-    } else if (enemy.behavior === 'teleporter' && enemy.teleportWindup > 0) {
+    } else if (enemy.behavior === 'teleporter' && enemy.teleportWindupTimer > 0) {
         shouldTelegraph = true;
     } else if (enemy.behavior === 'waterBalloon' && enemy.size >= enemy.maxSize * 0.9) {
         shouldTelegraph = true;
@@ -1361,26 +1481,26 @@ function updateShieldBreakerEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
     
     // Windup phase before rush (telegraph)
-    if (dist < enemy.rushRange && !enemy.isRushing && !enemy.rushWindup) {
-        enemy.rushWindup = 20;  // ~0.33 second windup (20 frames)
+    if (dist < enemy.rushRange && !enemy.isRushing && !enemy.rushWindupTimer) {
+        enemy.rushWindupTimer = 20;  // ~0.33 second windup (20 frames)
         enemy.rushDirection = tempVec3.subVectors(player.position, enemy.position).normalize().clone();
         enemy.rushDirection.y = 0;
         // Create rush telegraph visual
         enemy.rushTelegraph = createRushTelegraph(enemy, player.position);
     }
     
-    if (enemy.rushWindup > 0) {
-        enemy.rushWindup--;
+    if (enemy.rushWindupTimer > 0) {
+        enemy.rushWindupTimer--;
         // Compress visual during windup
-        enemy.scale.z = 0.8 + (enemy.rushWindup / 20) * 0.2;
-        enemy.scale.x = 1.1 - (enemy.rushWindup / 20) * 0.1;
+        enemy.scale.z = 0.8 + (enemy.rushWindupTimer / 20) * 0.2;
+        enemy.scale.x = 1.1 - (enemy.rushWindupTimer / 20) * 0.1;
         
         // Update telegraph visual
         if (enemy.rushTelegraph) {
             updateRushTelegraph(enemy.rushTelegraph);
         }
         
-        if (enemy.rushWindup <= 0) {
+        if (enemy.rushWindupTimer <= 0) {
             enemy.isRushing = true;
             enemy.scale.set(1, 1, 1);
             // Cleanup telegraph
@@ -1435,12 +1555,12 @@ function updateTeleporterEnemy(enemy) {
     enemy.teleportTimer = (enemy.teleportTimer || 0) + 1;
     
     // Windup phase before teleport (telegraph)
-    if (enemy.teleportWindup > 0) {
-        enemy.teleportWindup--;
+    if (enemy.teleportWindupTimer > 0) {
+        enemy.teleportWindupTimer--;
         // Flicker effect during windup
-        enemy.scale.setScalar(0.8 + Math.sin(enemy.teleportWindup * 0.5) * 0.2);
+        enemy.scale.setScalar(0.8 + Math.sin(enemy.teleportWindupTimer * 0.5) * 0.2);
         
-        if (enemy.teleportWindup <= 0) {
+        if (enemy.teleportWindupTimer <= 0) {
             // Execute teleport with validated destination
             spawnParticle(enemy.position, 0xaa44ff, 8);
             PulseMusic.onTeleport(false); // Vanishing sound
@@ -1461,7 +1581,7 @@ function updateTeleporterEnemy(enemy) {
     // Frame-based teleport cooldown
     if (enemy.teleportTimer >= enemy.teleportCooldownFrames && dist < 20) {
         // Start teleport windup
-        enemy.teleportWindup = 15;  // ~0.25 second windup (15 frames)
+        enemy.teleportWindupTimer = 15;  // ~0.25 second windup (15 frames)
     } else {
         tempVec3.subVectors(player.position, enemy.position);
         tempVec3.y = 0;

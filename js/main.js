@@ -3,7 +3,7 @@ import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer, camera } from './core/scene.js';
 import { initInput, resetInput } from './core/input.js';
 import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
-import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE } from './config/constants.js';
+import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE, VERSION } from './config/constants.js';
 
 import { createPlayer, updatePlayer, resetPlayer, player } from './entities/player.js';
 import { updateEnemies, clearEnemyGeometryCache } from './entities/enemies.js';
@@ -23,7 +23,8 @@ import { generateArena, updateHazardZones } from './arena/generator.js';
 
 import { initTrailPool, updateTrail, resetTrail } from './effects/trail.js';
 import { initParticlePool, updateParticles, resetParticles } from './effects/particles.js';
-import { updateSlowMo, updateScreenFlash, getTimeScale, updateCinematic, isCinematicActive, endCinematic, clearGeometryCache, startIntroCinematic, updateIntroCinematic, isIntroActive } from './systems/visualFeedback.js';
+import { updateSlowMo, updateScreenFlash, getTimeScale, updateCinematic, isCinematicActive, endCinematic, clearGeometryCache, startIntroCinematic, updateIntroCinematic, isIntroActive, startCinematic, triggerSlowMo } from './systems/visualFeedback.js';
+import { updateAmbience } from './systems/ambience.js';
 
 import { 
     updateUI, 
@@ -41,7 +42,9 @@ import {
     showDebugMenu,
     hideDebugMenu,
     initAnnouncementSkip,
-    showStartBanner
+    showStartBanner,
+    showBossAnnouncement,
+    hideBossAnnouncement
 } from './ui/hud.js';
 
 import {
@@ -59,11 +62,59 @@ import { MenuScene } from './ui/menuScene.js';
 let lastUIUpdate = 0;
 let lastFrameTime = 0;
 
+// Helper: Clean up all game state and entities (reduces code duplication)
+function cleanupGameState() {
+    resetGameState();
+    clearDamageLog();
+    resetAllEntities(scene);
+    resetTrail();
+    resetParticles();
+    resetPlayer();
+    resetInput();
+    resetLastShot();
+    resetDamageTime();
+    resetActiveBadges();
+    clearEnemyGeometryCache();
+    clearGeometryCache();
+    lastFrameTime = 0;
+}
+
+// Helper: Unlock all mechanics up to and including the specified arena
+function unlockMechanicsForArena(arenaNumber) {
+    if (arenaNumber >= 2) {
+        gameState.unlockedMechanics.pillars = true;
+    }
+    if (arenaNumber >= 3) {
+        gameState.unlockedMechanics.ramps = true;
+        gameState.unlockedEnemyBehaviors.jumping = true;
+    }
+    if (arenaNumber >= 4) {
+        gameState.unlockedMechanics.platforms = true;
+        gameState.unlockedEnemyBehaviors.multiLevel = true;
+    }
+    if (arenaNumber >= 5) {
+        gameState.unlockedMechanics.tunnels = true;
+        gameState.unlockedEnemyBehaviors.ambush = true;
+    }
+    if (arenaNumber >= 6) {
+        gameState.unlockedMechanics.hybridChaos = true;
+    }
+}
+
 function init() {
     // Set document title from config
     document.title = GAME_TITLE.toUpperCase();
     const titleEl = document.querySelector('#start-screen h1');
     if (titleEl) titleEl.textContent = GAME_TITLE.toUpperCase();
+    
+    // Show version display in debug mode
+    if (DEBUG) {
+        const versionEl = document.getElementById('version-display');
+        if (versionEl) {
+            versionEl.textContent = `v${VERSION}`;
+            versionEl.style.display = 'block';
+        }
+    }
     
     initScene();
     createGround();
@@ -141,6 +192,18 @@ function init() {
             e.stopPropagation(); // Prevent resume trigger
             returnToMainMenu();
         });
+    }
+    
+    // Pause menu debug button - only visible when DEBUG is enabled
+    const pauseDebugBtn = document.getElementById('pause-debug-btn');
+    if (pauseDebugBtn) {
+        if (DEBUG) {
+            pauseDebugBtn.style.display = 'inline-block';
+            pauseDebugBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent resume trigger
+                showDebugMenu();
+            });
+        }
     }
     
     // Arena select button
@@ -237,24 +300,7 @@ function startGame() {
 }
 
 function restartGame() {
-    resetGameState();
-    clearDamageLog();
-    resetAllEntities(scene);
-    resetTrail();
-    resetParticles();
-    resetPlayer();
-    resetInput();
-    resetLastShot();
-    resetDamageTime();
-    resetActiveBadges();
-    
-    // Reset delta time tracking for clean frame timing
-    lastFrameTime = 0;
-    
-    // Clear geometry caches to prevent unbounded memory growth
-    clearEnemyGeometryCache();
-    clearGeometryCache();
-
+    cleanupGameState();
     generateArena(1);
     
     hideGameOver();
@@ -274,21 +320,7 @@ function restartGame() {
 }
 
 function returnToMainMenu() {
-    // Reset all game state and entities
-    resetGameState();
-    clearDamageLog();
-    resetAllEntities(scene);
-    resetTrail();
-    resetParticles();
-    resetPlayer();
-    resetInput();
-    resetLastShot();
-    resetDamageTime();
-    resetActiveBadges();
-    
-    // Clear geometry caches to prevent unbounded memory growth
-    clearEnemyGeometryCache();
-    clearGeometryCache();
+    cleanupGameState();
     
     // Stop the game and exit pointer lock
     gameState.running = false;
@@ -313,23 +345,7 @@ function startAtArena(arenaNumber) {
     // Pause menu scene animation
     MenuScene.pause();
     
-    // Reset game state first
-    resetGameState();
-    resetAllEntities(scene);
-    resetTrail();
-    resetParticles();
-    resetPlayer();
-    resetInput();
-    resetLastShot();
-    resetDamageTime();
-    resetActiveBadges();
-    
-    // Reset delta time tracking for clean frame timing
-    lastFrameTime = 0;
-    
-    // Clear geometry caches to prevent unbounded memory growth
-    clearEnemyGeometryCache();
-    clearGeometryCache();
+    cleanupGameState();
     
     // Arena level scaling configuration
     const arenaScaling = {
@@ -359,26 +375,7 @@ function startAtArena(arenaNumber) {
     
     // Set arena and unlock mechanics
     gameState.currentArena = arenaNumber;
-    
-    // Unlock all mechanics up to this arena
-    if (arenaNumber >= 2) {
-        gameState.unlockedMechanics.pillars = true;
-    }
-    if (arenaNumber >= 3) {
-        gameState.unlockedMechanics.ramps = true;
-        gameState.unlockedEnemyBehaviors.jumping = true;
-    }
-    if (arenaNumber >= 4) {
-        gameState.unlockedMechanics.platforms = true;
-        gameState.unlockedEnemyBehaviors.multiLevel = true;
-    }
-    if (arenaNumber >= 5) {
-        gameState.unlockedMechanics.tunnels = true;
-        gameState.unlockedEnemyBehaviors.ambush = true;
-    }
-    if (arenaNumber >= 6) {
-        gameState.unlockedMechanics.hybridChaos = true;
-    }
+    unlockMechanicsForArena(arenaNumber);
     
     // Generate the arena and start the game
     hideStartScreen();
@@ -457,6 +454,7 @@ function animate(currentTime) {
             // Always update visual effect timers (even during slow-mo)
             updateSlowMo();
             updateScreenFlash();
+            updateAmbience();  // Underwater atmosphere: bubbles, kelp, fish
             
             // Handle cinematic camera mode (boss intros)
             const cinematicActive = isCinematicActive();
@@ -588,30 +586,14 @@ function setupDebugControls() {
 }
 
 function startEmptyArena() {
-    // Reset and start game with no enemy spawning
-    resetGameState();
-    resetAllEntities(scene);
-    resetTrail();
-    resetParticles();
-    resetPlayer();
-    resetInput();
-    resetLastShot();
-    resetDamageTime();
-    resetActiveBadges();
+    cleanupGameState();
     
     // Enable debug mode
     gameState.debug.enabled = true;
     gameState.debug.noEnemies = true;
     
     // Unlock all mechanics for testing
-    gameState.unlockedMechanics.pillars = true;
-    gameState.unlockedMechanics.ramps = true;
-    gameState.unlockedMechanics.platforms = true;
-    gameState.unlockedMechanics.tunnels = true;
-    gameState.unlockedMechanics.hybridChaos = true;
-    gameState.unlockedEnemyBehaviors.jumping = true;
-    gameState.unlockedEnemyBehaviors.ambush = true;
-    gameState.unlockedEnemyBehaviors.multiLevel = true;
+    unlockMechanicsForArena(6);
     
     // Start at arena 1
     hideStartScreen();
@@ -668,22 +650,7 @@ function debugWarpToArenaWave(arena, wave) {
     gameState.bossActive = false;
     
     // Unlock appropriate mechanics
-    if (arena >= 2) gameState.unlockedMechanics.pillars = true;
-    if (arena >= 3) {
-        gameState.unlockedMechanics.ramps = true;
-        gameState.unlockedEnemyBehaviors.jumping = true;
-    }
-    if (arena >= 4) {
-        gameState.unlockedMechanics.platforms = true;
-        gameState.unlockedEnemyBehaviors.multiLevel = true;
-    }
-    if (arena >= 5) {
-        gameState.unlockedMechanics.tunnels = true;
-        gameState.unlockedEnemyBehaviors.ambush = true;
-    }
-    if (arena >= 6) {
-        gameState.unlockedMechanics.hybridChaos = true;
-    }
+    unlockMechanicsForArena(arena);
     
     // Regenerate arena
     generateArena(arena);
@@ -698,19 +665,65 @@ function debugWarpToArenaWave(arena, wave) {
     if (DEBUG) console.log(`[DEBUG] Warped to Arena ${arena}, Wave ${wave}`);
 }
 
-function debugSpawnBoss(bossNum) {
-    if (!gameState.running) {
-        if (DEBUG) console.log('[DEBUG] Cannot spawn boss - game not running');
-        return;
-    }
-    
+function startBossBattle(bossNum) {
     bossNum = Math.max(1, Math.min(6, bossNum));
     
-    // Spawn boss at center
-    spawnBoss(bossNum);
-    gameState.bossActive = true;
+    // Close menus and unpause
+    hideDebugMenu();
+    hidePauseIndicator();
+    gameState.paused = false;
     
-    if (DEBUG) console.log(`[DEBUG] Spawned Boss ${bossNum}`);
+    // If game not running, start it first
+    if (!gameState.running) {
+        // Initialize game state for boss battle
+        resetGameState();
+        resetPlayer(player);
+        resetAllEntities();
+        resetParticles();
+        gameState.running = true;
+        hideStartScreen();
+    }
+    
+    // Clear existing enemies
+    while (enemies.length > 0) {
+        const enemy = enemies.pop();
+        if (enemy && enemy.parent) {
+            scene.remove(enemy);
+        }
+    }
+    
+    // Transition to the correct arena
+    gameState.currentArena = bossNum;
+    generateArena(bossNum);
+    // Reset player to arena center
+    player.position.set(0, 1, 0);
+    player.velocity.set(0, 0, 0);
+    
+    // Update music for the arena
+    PulseMusic.onArenaChange(bossNum);
+    
+    // Initialize boss battle state
+    gameState.bossActive = false;  // Will be true after intro
+    gameState.waveState = WAVE_STATE.BOSS_INTRO;
+    gameState.waveTimer = 0;
+    gameState.announcementPaused = true;
+    
+    // Show boss announcement
+    showBossAnnouncement();
+    
+    // Safety: avoid giant dt on resume
+    lastFrameTime = performance.now();
+    
+    // Start the animation loop (was missing - caused freeze when using debug menu)
+    updateUI();
+    animate();
+    
+    if (DEBUG) console.log(`[DEBUG] Starting Boss ${bossNum} Battle`);
+}
+
+// Legacy alias for compatibility
+function debugSpawnBoss(bossNum) {
+    startBossBattle(bossNum);
 }
 
 function debugGiveLevels(count) {

@@ -19,6 +19,7 @@ import { DAMAGE_COOLDOWN, HEART_DROP_CHANCE, HEART_HEAL } from '../config/consta
 import { triggerSlowMo, triggerScreenFlash, createExposedVFX, createTetherSnapVFX, cleanupVFX } from './visualFeedback.js';
 import { showTutorialCallout } from '../ui/hud.js';
 import { PulseMusic } from './pulseMusic.js';
+import { safeFlashMaterial } from './materialUtils.js';
 
 let lastShot = 0;
 
@@ -273,27 +274,7 @@ export function updateProjectiles(delta) {
                 // Hit flash - handle both Mesh and Group enemies
                 const enemyMat = enemy.baseMaterial || enemy.material;
                 if (enemyMat && enemyMat.emissive) {
-                    enemyMat.emissive.setHex(0xffffff);
-                    enemyMat.emissiveIntensity = 1;
-                    // Capture references to avoid stale closure issues
-                    const matCapture = enemyMat;
-                    const colorCapture = enemy.baseColor;
-                    const enemyCapture = enemy;
-                    setTimeout(() => {
-                        // Guard: enemy may have been killed/removed during flash
-                        if (enemyCapture && 
-                            enemyCapture.parent && 
-                            matCapture && 
-                            matCapture.emissive &&
-                            !matCapture.disposed) {
-                            try {
-                                matCapture.emissive.setHex(colorCapture);
-                                matCapture.emissiveIntensity = 0.3;
-                            } catch (e) {
-                                // Enemy disposed during callback - safely ignore
-                            }
-                        }
-                    }, 50);
+                    safeFlashMaterial(enemyMat, enemy, 0xffffff, enemy.baseColor, 0.3, 50);
                 }
                 
                 // Check death
@@ -325,13 +306,16 @@ export function updateProjectiles(delta) {
                             enemy.tether = null;
                         }
                         
-                        // Check if all minions dead - trigger exposed state
+                        // Check if all minions dead - trigger exposed state (full reward)
                         if (boss.summonedMinions.length === 0 && boss.shieldActive) {
                             boss.shieldActive = false;
                             boss.isExposed = true;
-                            // Phase-scaled vulnerability window: 6s/5s/4s (360/300/240 frames)
-                            const phaseVulnerability = { 1: 360, 2: 300, 3: 240 };
-                            boss.exposedTimer = phaseVulnerability[boss.phase] || 300;
+                            
+                            // Use phase-scaled duration from config (rewarding kill-based break)
+                            const exposedConfig = boss.exposedConfig;
+                            const phaseDuration = exposedConfig?.durationByPhase?.[boss.phase] || exposedConfig?.duration || 300;
+                            boss.exposedTimer = phaseDuration;
+                            boss.exposedDamageMultiplier = exposedConfig?.damageMultiplier || 1.25;
                             
                             // Shield shatter VFX and audio
                             if (boss.shieldMesh) {
@@ -418,25 +402,7 @@ export function updateProjectiles(delta) {
             currentBoss.scale.setScalar(0.75 + 0.25 * Math.max(0, currentBoss.health / currentBoss.maxHealth));
             
             if (currentBoss.bodyMaterial) {
-                currentBoss.bodyMaterial.emissive.setHex(0xffffff);
-                // Capture references to avoid stale closure issues
-                const bossRef = currentBoss;
-                const matCapture = currentBoss.bodyMaterial;
-                const colorCapture = currentBoss.baseColor;
-                setTimeout(() => {
-                    // Guard: boss may have been killed during flash
-                    if (bossRef && 
-                        bossRef.parent && 
-                        matCapture && 
-                        matCapture.emissive &&
-                        !matCapture.disposed) {
-                        try {
-                            matCapture.emissive.setHex(colorCapture);
-                        } catch (e) {
-                            // Boss disposed during callback - safely ignore
-                        }
-                    }
-                }, 50);
+                safeFlashMaterial(currentBoss.bodyMaterial, currentBoss, 0xffffff, currentBoss.baseColor, 0.3, 50);
             }
             
             if (currentBoss.health <= 0 && !currentBoss.isDying) {

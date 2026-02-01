@@ -283,37 +283,6 @@ export const MenuScene = {
         }
     },
     
-    createCentralSphere() {
-        // Inner glowing sphere
-        const sphereGeometry = new THREE.SphereGeometry(0.8, 32, 32);
-        const sphereMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.6
-        });
-        this.sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-        this.sphere.position.set(0, 0.5, 0);
-        this.scene.add(this.sphere);
-        
-        // Outer glow sphere
-        const glowGeometry = new THREE.SphereGeometry(1.2, 32, 32);
-        const glowMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.15,
-            side: THREE.BackSide
-        });
-        this.sphereGlow = new THREE.Mesh(glowGeometry, glowMaterial);
-        this.sphereGlow.position.copy(this.sphere.position);
-        this.scene.add(this.sphereGlow);
-        
-        // Add point light at sphere position
-        const light = new THREE.PointLight(0x00ffff, 2, 10);
-        light.position.copy(this.sphere.position);
-        this.scene.add(light);
-        this.sphereLight = light;
-    },
-    
     createBlackHoleVortex() {
         const vortexGroup = new THREE.Group();
         this.vortexPlanes = [];
@@ -548,7 +517,7 @@ export const MenuScene = {
             this.scene.add(enemy);
         }
         
-        // Create Boss 1 - THE GATEKEEPER
+        // Create Boss 1 - RED PUFFER KING
         this.createBoss1();
     },
     
@@ -998,10 +967,12 @@ export const MenuScene = {
             segment.material.dispose();
         }
         
-        // Clean up menu enemies
+        // Clean up menu enemies (these are Groups, not single meshes)
         for (const enemy of this.menuEnemies) {
-            enemy.geometry.dispose();
-            enemy.material.dispose();
+            enemy.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
         }
         
         if (this.renderer) {

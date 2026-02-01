@@ -49,6 +49,9 @@ export const gameState = {
         noEnemies: false,
         invincible: false
     },
+    // Cutscene state - prevents damage and boss AI during transitions
+    cutsceneActive: false,
+    cutsceneInvincible: false,
     combatStats: {
         damageDealt: 0,
         damageTaken: 0,
@@ -57,7 +60,15 @@ export const gameState = {
         waveDamageTaken: 0,
         bossesDefeated: 0
     },
-    shownModifiers: {}  // Track which modifiers shown per arena { arenaNum: Set(['elite', 'swarm', ...]) }
+    shownModifiers: {},
+    
+    // Visual settings
+    settings: {
+        ambienceEnabled: true,      // Master toggle for underwater ambience
+        ambienceBubbles: true,      // Sub-toggle: bubble particles
+        ambienceKelp: true,         // Sub-toggle: decorative kelp
+        ambienceFish: true,         // Sub-toggle: distant fish silhouettes
+    }
 };
 
 export function resetGameState() {
@@ -72,6 +83,8 @@ export function resetGameState() {
         paused: false,
         announcementPaused: false,
         introCinematicActive: false,
+        cutsceneActive: false,
+        cutsceneInvincible: false,
         currentArena: 1,
         currentWave: 1,
         waveState: WAVE_STATE.WAVE_INTRO,
