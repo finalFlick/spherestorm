@@ -4,14 +4,39 @@ A 3D arcade-style arena survival game built with Three.js. Survive waves of enem
 
 ## Quick Start
 
-1. Start a local server (ES modules require HTTP):
+### Option 1: Docker (Recommended)
+
 ```bash
-python -m http.server 8000
-# or: npx serve .
+docker-compose up
 ```
-2. Open `http://localhost:8000`
-3. Click "START GAME"
-4. Click to lock cursor, then survive!
+Then open http://localhost:8080
+
+Or manually:
+```bash
+docker build -t spherestorm .
+docker run -p 8080:80 spherestorm
+```
+
+### Option 2: Local Development
+
+ES modules require an HTTP server. Choose one:
+
+```bash
+# Python
+python -m http.server 8000
+
+# Node.js
+npx serve .
+
+# Or use VS Code "Live Server" extension
+```
+Then open http://localhost:8000
+
+### Play
+
+1. Click "START GAME"
+2. Click to lock cursor
+3. Survive!
 
 ## Controls
 
@@ -162,6 +187,24 @@ In `js/config/`:
 - **ES Modules** - Native JavaScript modules
 - **LocalStorage** - Score/badge persistence
 - **No build step** - Runs directly in browser
+- **Docker** - Optional containerized deployment
+
+## Deployment
+
+### Docker
+```bash
+docker-compose up -d
+```
+
+### Static Hosting
+No backend required. Deploy to any static host:
+- **GitHub Pages** - Push to `gh-pages` branch
+- **Netlify** - Connect repo, deploy automatically
+- **Vercel** - Import project, zero config
+
+### Notes
+- Game data (scores, badges) uses LocalStorage (client-side only)
+- No server-side persistence required
 
 ## Browser Support
 
