@@ -5,11 +5,26 @@
 export const BOSS_CONFIG = {
     1: { 
         name: 'THE GATEKEEPER', 
-        health: 350, 
+        health: 500,  // Increased from 350
         damage: 25, 
         size: 2.5, 
         color: 0xff2222, 
         speed: 0.06,
+        
+        // NEW: Shield configuration
+        shieldConfig: {
+            enabled: true,
+            activateOnSummon: true,
+            damageReduction: 0.95,
+            color: 0x4488ff
+        },
+        
+        // NEW: Exposed state configuration
+        exposedConfig: {
+            duration: 300,
+            damageMultiplier: 1.25,
+            flashRate: 15
+        },
         // Roster display fields
         tagline: 'Guardian of the First Gate',
         description: 'The first true test of a recruit\'s training. The Gatekeeper embodies pressure itself - relentless charges and summoned minions force you to prove you\'ve learned the basics of movement and timing.',
@@ -43,6 +58,17 @@ export const BOSS_CONFIG = {
         size: 2.8, 
         color: 0x44ff88, 
         speed: 0.035,
+        
+        // NEW: Pillar perch configuration
+        // Extended timing: marker at 20, tracks until 65, locks 65-105 (40 frames = 0.67s warning)
+        pillarPerchConfig: {
+            enabled: true,
+            perchDuration: 105,     // 1.75 seconds total on pillar (extended for accessibility)
+            slamChargeTime: 45,     // 0.75 seconds charge
+            slamRadius: 6,
+            slamDamage: 30,
+            cooldown: 360           // 6 seconds between perches
+        },
         // Roster display fields
         tagline: 'Master of Terrain',
         description: 'Cover isn\'t safety - it\'s geometry. The Monolith teaches that obstacles are not just shields but potential traps. Its devastating jump slams create hazard zones that punish static positioning.',
@@ -77,6 +103,13 @@ export const BOSS_CONFIG = {
         size: 3.0, 
         color: 0xaa44ff, 
         speed: 0.04,
+        
+        // ENHANCED: Teleport to platforms
+        teleportConfig: {
+            preferElevated: true,
+            elevatedChance: 0.7,
+            vulnerabilityWindow: 60  // Extended from 45 (1 second for player to react)
+        },
         // Roster display fields
         tagline: 'Beyond Space and Time',
         description: 'Distance is a lie. The Ascendant warps reality itself, appearing anywhere in the arena without warning. This boss demands constant spatial awareness - you can never predict where the next attack originates.',
@@ -103,6 +136,11 @@ export const BOSS_CONFIG = {
         phaseCombos: {
             2: [['teleport', 'charge']],
             3: [['teleport', 'charge'], ['teleport', 'jumpSlam']]
+        },
+        // Combo delays for fair reaction time after teleport
+        comboDelays: {
+            'teleport_charge': 25,     // 0.4s gap after teleport before charge tell
+            'teleport_jumpSlam': 20    // 0.33s gap after teleport before jump slam tell
         }
     },
     4: { 
@@ -112,6 +150,17 @@ export const BOSS_CONFIG = {
         size: 3.2, 
         color: 0x44ffff, 
         speed: 0.03,
+        
+        // NEW: Temporary lane walls (tunnel foreshadow)
+        laneWallsConfig: {
+            enabled: true,
+            wallCount: 2,
+            wallDuration: 180,
+            wallHeight: 4,
+            wallLength: 20,
+            warningTime: 45,
+            cooldown: 300
+        },
         // Roster display fields
         tagline: 'Endless Multiplication',
         description: 'Space control through multiplicity. The Overgrowth swells larger with each passing moment and spawns Water Balloon minions. At critical health, it fractures into three dangerous mini-bosses - retreat often means survival.',
@@ -149,6 +198,17 @@ export const BOSS_CONFIG = {
         size: 3.5, 
         color: 0xff44ff, 
         speed: 0.035,
+        
+        // ENHANCED: Burrow telegraphs and hazard preview
+        burrowConfig: {
+            emergeWarningTime: 45,
+            emergeDamageRadius: 5,
+            emergeHazard: {
+                enabled: true,
+                radius: 3,
+                duration: 180
+            }
+        },
         // Roster display fields
         tagline: 'Terror From Below',
         description: 'You don\'t see the threat until it\'s behind you. The Burrower disappears into the ground and erupts beneath your feet, dealing massive damage to those caught off guard. Corridor navigation becomes a deadly guessing game.',
@@ -178,6 +238,12 @@ export const BOSS_CONFIG = {
         phaseCombos: {
             2: [['burrow', 'charge']],
             3: [['burrow', 'charge'], ['burrow', 'jumpSlam'], ['teleport', 'burrow']]
+        },
+        // Combo delays for fair reaction time after burrow emerge
+        comboDelays: {
+            'burrow_charge': 40,      // 0.67s gap after emerge before charge tell
+            'burrow_jumpSlam': 35,    // 0.58s gap after emerge before jump slam tell
+            'teleport_burrow': 20     // Teleport into burrow is fine (short gap)
         }
     },
     6: { 
@@ -189,8 +255,8 @@ export const BOSS_CONFIG = {
         speed: 0.05,
         // Roster display fields
         tagline: 'The Final Examination',
-        description: 'The program stops teaching. It measures. Chaos Incarnate wields every ability you\'ve faced, cycling through all boss patterns unpredictably. This is the ultimate test - adapt or perish.',
-        behaviorText: 'Cycles through ALL boss abilities; the ultimate challenge',
+        description: 'The program stops teaching. It measures. Chaos Incarnate wields every ability you\'ve faced, cycling through predictable phases: Movement, Area Control, and Summons. Learn the rhythm or perish.',
+        behaviorText: 'Cycles through ALL boss abilities in learnable patterns',
         // Has ALL abilities - "The program stops teaching. It measures."
         abilities: {
             charge: true,
@@ -212,9 +278,24 @@ export const BOSS_CONFIG = {
             split: [0.3, 0.5, 0.8],
             burrow: [1.0, 1.2, 1.5]
         },
+        // Reduced Phase 3 combos to 2 abilities for fair reaction windows
         phaseCombos: {
             2: [['teleport', 'charge'], ['burrow', 'jumpSlam']],
-            3: [['teleport', 'charge', 'summon'], ['burrow', 'jumpSlam', 'hazards']]
+            3: [['teleport', 'charge'], ['burrow', 'jumpSlam'], 
+                ['growth', 'summon'], ['jumpSlam', 'hazards']]
+        },
+        // Combo delays for fair reaction time between chained abilities
+        comboDelays: {
+            'teleport_charge': 30,      // 0.5s gap after teleport before charge
+            'burrow_jumpSlam': 35,      // 0.58s gap after burrow before jump slam
+            'growth_summon': 25,        // 0.42s gap after growth before summon
+            'jumpSlam_hazards': 20      // 0.33s gap after jump slam before hazards
+        },
+        // Cycle colors for dynamic boss color shifting
+        cycleColors: {
+            movement: 0xff4444,     // Red
+            areaControl: 0x44ff44,  // Green
+            summons: 0x4444ff       // Blue
         }
     }
 };

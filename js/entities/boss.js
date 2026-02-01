@@ -1,20 +1,20 @@
 import { scene } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
-import { enemies, obstacles, tempVec3, getCurrentBoss, setCurrentBoss } from '../core/entities.js';
+import { enemies, obstacles, hazardZones, tempVec3, getCurrentBoss, setCurrentBoss } from '../core/entities.js';
 import { player } from './player.js';
 import { spawnSpecificEnemy, spawnSplitEnemy } from './enemies.js';
 import { BOSS_CONFIG, ABILITY_COOLDOWNS, ABILITY_TELLS } from '../config/bosses.js';
-import { DAMAGE_COOLDOWN, HEART_HEAL } from '../config/constants.js';
-import { spawnParticle } from '../effects/particles.js';
+import { DAMAGE_COOLDOWN, HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES } from '../config/constants.js';
+import { spawnParticle, spawnShieldBreakVFX } from '../effects/particles.js';
 import { spawnXpGem, spawnHeart } from '../systems/pickups.js';
 import { createHazardZone } from '../arena/generator.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
-import { showBossHealthBar, updateBossHealthBar, hideBossHealthBar } from '../ui/hud.js';
+import { showBossHealthBar, updateBossHealthBar, hideBossHealthBar, showExposedBanner, showPhaseAnnouncement, showBoss6CycleAnnouncement, updateBoss6CycleIndicator, hideBoss6CycleIndicator, showTutorialCallout } from '../ui/hud.js';
 import { markBossEncountered } from '../ui/rosterUI.js';
+import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX } from '../systems/visualFeedback.js';
+import { PulseMusic } from '../systems/pulseMusic.js';
 
-// Anti-stuck detection - more aggressive settings
-const STUCK_THRESHOLD = 0.02;  // Minimum movement per frame
-const STUCK_FRAMES = 20;       // Frames before considered stuck (faster detection)
+// Anti-stuck detection uses BOSS_STUCK_THRESHOLD and BOSS_STUCK_FRAMES from constants.js
 
 export function spawnBoss(arenaNumber) {
     const config = BOSS_CONFIG[Math.min(arenaNumber, 6)];
@@ -77,9 +77,12 @@ export function spawnBoss(arenaNumber) {
     boss.abilities = { ...config.abilities };
     boss.abilityWeights = config.abilityWeights;
     boss.phaseCombos = config.phaseCombos || {};
+    boss.comboDelays = config.comboDelays || {};
     boss.abilityCooldowns = {};
     boss.currentCombo = null;
     boss.comboIndex = 0;
+    boss.comboDelayTimer = 0;
+    boss.lastComboAbility = null;
     
     // Initialize cooldowns
     for (const ability in ABILITY_COOLDOWNS) {
@@ -97,10 +100,69 @@ export function spawnBoss(arenaNumber) {
     
     // Burrow state
     boss.burrowTarget = new THREE.Vector3();
+    boss.emergeWarningVFX = null;
+    
+    // Burrow config (Boss 5)
+    if (config.burrowConfig) {
+        boss.burrowConfig = config.burrowConfig;
+    }
+    
+    // Pillar perch state (Boss 2)
+    if (config.pillarPerchConfig && config.pillarPerchConfig.enabled) {
+        boss.pillarPerchConfig = config.pillarPerchConfig;
+        boss.pillarTarget = null;
+        boss.perchTimer = 0;
+        boss.slamMarker = null;
+        boss.slamTargetPos = new THREE.Vector3();
+        boss.abilityCooldowns.pillarPerch = 0;
+    }
+    
+    // Teleport config (Boss 3+)
+    if (config.teleportConfig) {
+        boss.teleportConfig = config.teleportConfig;
+        boss.teleportOriginVFX = null;
+        boss.teleportDestVFX = null;
+        boss.vulnerableTimer = 0;
+    }
+    
+    // Lane walls config (Boss 4)
+    if (config.laneWallsConfig && config.laneWallsConfig.enabled) {
+        boss.laneWallsConfig = config.laneWallsConfig;
+        boss.temporaryWalls = [];
+        boss.abilityCooldowns.laneWalls = 0;
+    }
     
     // Growth tracking
     boss.growthScale = 1.0;
     boss.hasSplit = false;
+    
+    // Shield and exposed state (Boss 1)
+    if (config.shieldConfig && config.shieldConfig.enabled) {
+        boss.shieldConfig = config.shieldConfig;
+        boss.shieldActive = false;
+        boss.shieldMesh = createShieldBubble(boss, config.size * 1.2, config.shieldConfig.color);
+        boss.shieldMesh.visible = false;
+        boss.summonedMinions = [];
+    }
+    
+    if (config.exposedConfig) {
+        boss.exposedConfig = config.exposedConfig;
+        boss.isExposed = false;
+        boss.exposedTimer = 0;
+        boss.exposedVFX = null;
+    }
+    
+    // Movement patterns (Boss 1)
+    boss.orbitTimer = 0;
+    boss.orbitDirection = 1;
+    boss.retreatState = null;
+    boss.retreatTimer = 0;
+    boss.chargeDirection = new THREE.Vector3();
+    
+    // Boss 6 ability cycling system
+    if (arenaNumber === 6) {
+        initializeBoss6AbilityCycle(boss);
+    }
     
     boss.position.set(0, config.size, -35);
     scene.add(boss);
@@ -120,6 +182,32 @@ export function updateBoss() {
     const boss = currentBoss;
     boss.aiTimer++;
     
+    // Update temporary walls
+    if (boss.temporaryWalls) {
+        for (let i = boss.temporaryWalls.length - 1; i >= 0; i--) {
+            const wall = boss.temporaryWalls[i];
+            if (wall.isTemporary) {
+                wall.remainingDuration--;
+                
+                // Fade out
+                if (wall.remainingDuration < 60) {
+                    wall.material.opacity = 0.8 * (wall.remainingDuration / 60);
+                }
+                
+                // Remove when expired
+                if (wall.remainingDuration <= 0) {
+                    const obsIndex = obstacles.indexOf(wall);
+                    if (obsIndex > -1) obstacles.splice(obsIndex, 1);
+                    
+                    wall.geometry.dispose();
+                    wall.material.dispose();
+                    scene.remove(wall);
+                    boss.temporaryWalls.splice(i, 1);
+                }
+            }
+        }
+    }
+    
     // Update cooldowns
     for (const ability in boss.abilityCooldowns) {
         if (boss.abilityCooldowns[ability] > 0) {
@@ -127,21 +215,52 @@ export function updateBoss() {
         }
     }
     
-    // Phase transitions
+    // Phase transitions (dramatic)
     const healthPercent = boss.health / boss.maxHealth;
     if (healthPercent < 0.33 && boss.phase < 3) {
-        boss.phase = 3;
-        boss.speed *= 1.3;
-        // Reset combo to potentially trigger phase 3 combos
-        boss.currentCombo = null;
+        triggerPhaseTransition(boss, 3);
     } else if (healthPercent < 0.66 && boss.phase < 2) {
-        boss.phase = 2;
-        boss.speed *= 1.15;
-        boss.currentCombo = null;
+        triggerPhaseTransition(boss, 2);
+    }
+    
+    // Update phase transition timer (frame-based delay)
+    if (boss.phaseTransitioning && boss.phaseTransitionTimer > 0) {
+        boss.phaseTransitionTimer--;
+        if (boss.phaseTransitionTimer <= 0) {
+            completePhaseTransition(boss);
+        }
     }
     
     // Anti-stuck detection
     updateAntiStuck(boss);
+    
+    // Handle exposed state
+    if (boss.isExposed) {
+        boss.exposedTimer--;
+        if (boss.exposedVFX) {
+            updateExposedVFX(boss.exposedVFX, boss.exposedTimer);
+        }
+        
+        // Flash body material
+        if (boss.bodyMaterial) {
+            if (boss.exposedTimer % boss.exposedConfig.flashRate < boss.exposedConfig.flashRate / 2) {
+                boss.bodyMaterial.emissiveIntensity = 0.8;
+            } else {
+                boss.bodyMaterial.emissiveIntensity = 0.4;
+            }
+        }
+        
+        if (boss.exposedTimer <= 0) {
+            boss.isExposed = false;
+            if (boss.exposedVFX) {
+                cleanupVFX(boss.exposedVFX);
+                boss.exposedVFX = null;
+            }
+            if (boss.bodyMaterial) {
+                boss.bodyMaterial.emissiveIntensity = 0.5;
+            }
+        }
+    }
     
     // Unified AI loop
     updateBossAI(boss);
@@ -160,12 +279,19 @@ export function updateBoss() {
     if (distToPlayer < effectiveSize + 0.5) {
         const now = Date.now();
         if (now - lastDamageTime > DAMAGE_COOLDOWN) {
-            takeDamage(boss.damage);
+            const config = BOSS_CONFIG[gameState.currentArena];
+            takeDamage(boss.damage, config?.name || 'Boss', 'boss');
             setLastDamageTime(now);
         }
     }
     
     updateBossHealthBar();
+    
+    // Update Boss 6 cycle indicator and dynamic color
+    if (gameState.currentArena === 6 && boss.cyclePhase) {
+        updateBoss6CycleIndicator(boss.cyclePhase);
+        updateBoss6Color(boss);
+    }
 }
 
 // ==================== ANTI-STUCK SYSTEM ====================
@@ -178,7 +304,7 @@ function updateAntiStuck(boss) {
     const isGroundState = groundStates.includes(boss.aiState);
     
     if (isGroundState) {
-        if (moved < STUCK_THRESHOLD) {
+        if (moved < BOSS_STUCK_THRESHOLD) {
             boss.stuckFrames++;
         } else {
             boss.stuckFrames = Math.max(0, boss.stuckFrames - 2); // Decay faster when moving
@@ -190,7 +316,7 @@ function updateAntiStuck(boss) {
     boss.lastPosition.copy(boss.position);
     
     // If stuck, trigger recovery behavior
-    if (boss.stuckFrames > STUCK_FRAMES) {
+    if (boss.stuckFrames > BOSS_STUCK_FRAMES) {
         triggerStuckRecovery(boss);
     }
     
@@ -283,13 +409,43 @@ function updateBossAI(boss) {
         return;
     }
     
-    // Idle state - pick next ability
+    // Idle state - pick next ability or movement pattern
+    // Boss 1 movement patterns
+    if (gameState.currentArena === 1 && Math.random() < 0.3 && boss.aiTimer > 30) {
+        // 30% chance to use special movement
+        if (Math.random() < 0.5) {
+            boss.aiState = 'orbit';
+            boss.orbitTimer = 0;
+            boss.orbitDirection = Math.random() < 0.5 ? 1 : -1;
+            return;
+        } else {
+            boss.aiState = 'retreat_charge';
+            boss.retreatState = 'retreating';
+            boss.retreatTimer = 0;
+            return;
+        }
+    }
+    
     moveTowardPlayer(boss, 1.0);
     
     // Check if we should execute a combo
     if (boss.currentCombo && boss.comboIndex < boss.currentCombo.length) {
         const nextAbility = boss.currentCombo[boss.comboIndex];
+        
+        // Check for combo delay between abilities (e.g., teleport → charge needs gap)
+        if (boss.comboIndex > 0 && boss.lastComboAbility) {
+            const delayKey = `${boss.lastComboAbility}_${nextAbility}`;
+            const requiredDelay = boss.comboDelays[delayKey] || 0;
+            
+            if (boss.comboDelayTimer < requiredDelay) {
+                boss.comboDelayTimer++;
+                return;  // Wait for delay before next combo ability
+            }
+        }
+        
         if (boss.abilityCooldowns[nextAbility] <= 0) {
+            boss.lastComboAbility = nextAbility;
+            boss.comboDelayTimer = 0;  // Reset for next combo step
             startAbility(boss, nextAbility);
             boss.comboIndex++;
             return;
@@ -297,6 +453,8 @@ function updateBossAI(boss) {
     } else {
         boss.currentCombo = null;
         boss.comboIndex = 0;
+        boss.lastComboAbility = null;
+        boss.comboDelayTimer = 0;
     }
     
     // Wait minimum time before next ability
@@ -321,8 +479,27 @@ function updateBossAI(boss) {
 }
 
 function pickAbility(boss) {
+    // Boss 6 uses deterministic ability cycling instead of random selection
+    if (gameState.currentArena === 6 && boss.abilityCycle) {
+        return pickBoss6Ability(boss);
+    }
+    
     const available = [];
     let totalWeight = 0;
+    
+    // Boss 2 special: favor pillar perch ability
+    if (gameState.currentArena === 2 && boss.pillarPerchConfig && boss.abilityCooldowns.pillarPerch <= 0) {
+        if (Math.random() < 0.4) {
+            return 'pillarPerch';
+        }
+    }
+    
+    // Boss 4 special: favor lane walls ability
+    if (gameState.currentArena === 4 && boss.laneWallsConfig && boss.abilityCooldowns.laneWalls <= 0) {
+        if (Math.random() < 0.3) {
+            return 'laneWalls';
+        }
+    }
     
     for (const [ability, enabled] of Object.entries(boss.abilities)) {
         if (!enabled) continue;
@@ -348,6 +525,143 @@ function pickAbility(boss) {
     return available[0].ability;
 }
 
+// ==================== BOSS 6 ABILITY CYCLING SYSTEM ====================
+
+// Cycle names for UI display
+const BOSS6_CYCLE_NAMES = ['MOVEMENT', 'AREA CONTROL', 'SUMMONS'];
+const BOSS6_CYCLE_COLORS = [0xff4444, 0x44ff44, 0x4444ff];  // Red, Green, Blue
+
+function initializeBoss6AbilityCycle(boss) {
+    // Define ability "phases" that cycle predictably
+    boss.abilityCycle = [
+        // Cycle 0: Movement abilities (Red)
+        ['charge', 'teleport', 'burrow'],
+        // Cycle 1: Area control (Green)
+        ['jumpSlam', 'hazards', 'growth'],
+        // Cycle 2: Summons (Blue)
+        ['summon', 'split']
+    ];
+    
+    boss.currentCycleIndex = 0;
+    boss.currentAbilityInCycle = 0;
+    boss.cyclePhase = BOSS6_CYCLE_NAMES[0];
+    boss.targetCycleColor = BOSS6_CYCLE_COLORS[0];
+}
+
+function pickBoss6Ability(boss) {
+    const cycle = boss.abilityCycle[boss.currentCycleIndex];
+    let ability = cycle[boss.currentAbilityInCycle];
+    
+    // Handle split special case (only once per fight, only below 50% health)
+    if (ability === 'split') {
+        if (boss.hasSplit || boss.health >= boss.maxHealth * 0.5) {
+            // Skip split, move to next ability in cycle
+            boss.currentAbilityInCycle++;
+            if (boss.currentAbilityInCycle >= cycle.length) {
+                advanceBoss6Cycle(boss);
+            }
+            return pickBoss6Ability(boss);  // Recurse to get valid ability
+        }
+    }
+    
+    // Check if ability is on cooldown
+    if (boss.abilityCooldowns[ability] > 0) {
+        // Try next ability in current cycle
+        const originalIndex = boss.currentAbilityInCycle;
+        for (let i = 0; i < cycle.length; i++) {
+            const checkIndex = (originalIndex + i) % cycle.length;
+            const checkAbility = cycle[checkIndex];
+            
+            // Skip split if conditions not met
+            if (checkAbility === 'split' && (boss.hasSplit || boss.health >= boss.maxHealth * 0.5)) {
+                continue;
+            }
+            
+            if (boss.abilityCooldowns[checkAbility] <= 0) {
+                ability = checkAbility;
+                boss.currentAbilityInCycle = checkIndex;
+                break;
+            }
+        }
+        
+        // If all abilities in cycle are on cooldown, return null (wait)
+        if (boss.abilityCooldowns[ability] > 0) {
+            return null;
+        }
+    }
+    
+    // Advance to next ability in cycle
+    boss.currentAbilityInCycle++;
+    if (boss.currentAbilityInCycle >= cycle.length) {
+        advanceBoss6Cycle(boss);
+    }
+    
+    // Apply phase difficulty variance (small chance to skip for unpredictability)
+    const weights = boss.abilityWeights[ability];
+    if (weights) {
+        const weight = weights[boss.phase - 1] || weights[0];
+        // Higher phases have less variance (more consistent attacks)
+        if (Math.random() > weight * (0.3 + boss.phase * 0.1)) {
+            // Skip this ability occasionally for slight variance
+            return pickBoss6Ability(boss);
+        }
+    }
+    
+    return ability;
+}
+
+function advanceBoss6Cycle(boss) {
+    boss.currentAbilityInCycle = 0;
+    boss.currentCycleIndex = (boss.currentCycleIndex + 1) % boss.abilityCycle.length;
+    
+    // Update cycle info for UI and color
+    boss.cyclePhase = BOSS6_CYCLE_NAMES[boss.currentCycleIndex];
+    boss.targetCycleColor = BOSS6_CYCLE_COLORS[boss.currentCycleIndex];
+    
+    // Announce cycle change via HUD
+    showBoss6CycleAnnouncement(BOSS6_CYCLE_NAMES[boss.currentCycleIndex]);
+}
+
+// Update Boss 6 color based on current cycle (lerps toward target color)
+function updateBoss6Color(boss) {
+    if (!boss.bodyMaterial || !boss.targetCycleColor) return;
+    
+    const currentColor = boss.bodyMaterial.color.getHex();
+    const targetColor = boss.targetCycleColor;
+    
+    // Skip if colors are already close enough
+    if (currentColor === targetColor) return;
+    
+    const lerpedColor = lerpColor(currentColor, targetColor, 0.05);
+    boss.bodyMaterial.color.setHex(lerpedColor);
+    boss.bodyMaterial.emissive.setHex(lerpedColor);
+    
+    // Update glow mesh color too (child index 1)
+    if (boss.children[1] && boss.children[1].material) {
+        boss.children[1].material.color.setHex(lerpedColor);
+    }
+}
+
+// Linear interpolation between two hex colors
+function lerpColor(c1, c2, t) {
+    const r1 = (c1 >> 16) & 0xff;
+    const g1 = (c1 >> 8) & 0xff;
+    const b1 = c1 & 0xff;
+    
+    const r2 = (c2 >> 16) & 0xff;
+    const g2 = (c2 >> 8) & 0xff;
+    const b2 = c2 & 0xff;
+    
+    const r = Math.round(r1 + (r2 - r1) * t);
+    const g = Math.round(g1 + (g2 - g1) * t);
+    const b = Math.round(b1 + (b2 - b1) * t);
+    
+    return (r << 16) | (g << 8) | b;
+}
+
+// Export cycle constants for HUD
+export { BOSS6_CYCLE_NAMES, BOSS6_CYCLE_COLORS };
+
 function startAbility(boss, ability) {
     boss.aiTimer = 0;
     boss.abilityCooldowns[ability] = ABILITY_COOLDOWNS[ability];
@@ -356,6 +670,7 @@ function startAbility(boss, ability) {
         case 'charge':
             boss.aiState = 'wind_up';
             boss.bodyMaterial.emissiveIntensity = 1;
+            boss.chargeMarker = null;  // Will be created on first frame
             break;
         case 'summon':
             boss.aiState = 'summon';
@@ -383,6 +698,19 @@ function startAbility(boss, ability) {
         case 'burrow':
             boss.aiState = 'burrowing';
             break;
+        case 'pillarPerch':
+            if (boss.pillarPerchConfig && boss.abilityCooldowns.pillarPerch <= 0) {
+                boss.aiState = 'pillar_leap';
+                boss.aiTimer = 0;
+            } else {
+                boss.aiState = 'idle';
+            }
+            break;
+        case 'laneWalls':
+            boss.aiState = 'lane_walls_preview';
+            boss.aiTimer = 0;
+            boss.wallPreviews = [];
+            break;
     }
 }
 
@@ -392,11 +720,45 @@ function continueCurrentAbility(boss) {
     switch (boss.aiState) {
         // CHARGE ABILITY
         case 'wind_up':
+            // Create telegraph marker on first frame
+            if (boss.aiTimer === 0) {
+                const dir = tempVec3.subVectors(player.position, boss.position).normalize();
+                dir.y = 0;
+                boss.chargeMarker = createChargePathMarker(boss.position, dir, 15);
+                
+                // Audio cue for charge wind-up
+                PulseMusic.onBossChargeWindup();
+            }
+            
+            // Update marker
+            if (boss.chargeMarker) {
+                updateChargePathMarker(boss.chargeMarker, boss.aiTimer / tellDuration.charge);
+            }
+            
             if (boss.aiTimer > tellDuration.charge) {
                 boss.aiState = 'charging';
                 boss.chargeDirection = tempVec3.subVectors(player.position, boss.position).normalize().clone();
                 boss.chargeDirection.y = 0;
+                
+                // Corner trap protection: If player is near a corner, bias charge toward center
+                // This gives player an escape route instead of pinning them
+                const cornerDist = Math.min(
+                    45 - Math.abs(player.position.x),
+                    45 - Math.abs(player.position.z)
+                );
+                if (cornerDist < 8) {
+                    const centerBias = new THREE.Vector3(-player.position.x, 0, -player.position.z)
+                        .normalize().multiplyScalar(0.3);
+                    boss.chargeDirection.add(centerBias).normalize();
+                }
+                
                 boss.aiTimer = 0;
+                
+                // Cleanup marker
+                if (boss.chargeMarker) {
+                    cleanupVFX(boss.chargeMarker);
+                    boss.chargeMarker = null;
+                }
             }
             break;
         case 'charging':
@@ -413,6 +775,25 @@ function continueCurrentAbility(boss) {
         case 'summon':
             if (boss.aiTimer === Math.floor(tellDuration.summon)) {
                 const summonCount = boss.phase + 1;
+                
+                // Activate shield if configured
+                if (boss.shieldConfig && boss.shieldConfig.activateOnSummon) {
+                    boss.shieldActive = true;
+                    if (boss.shieldMesh) {
+                        boss.shieldMesh.visible = true;
+                    }
+                    // Clear previous minions array
+                    boss.summonedMinions = [];
+                    
+                    // Tutorial callout for Arena 1 - explain shield mechanic to new players
+                    if (gameState.currentArena === 1) {
+                        showTutorialCallout('bossShield', 'SHIELD ACTIVE - Kill minions to break it!', 3000);
+                    }
+                    
+                    // Audio cue for shield activation
+                    PulseMusic.onBossShieldActivate();
+                }
+                
                 for (let i = 0; i < summonCount; i++) {
                     // Arena-aware minion spawning - spawn what player has learned
                     let enemyType;
@@ -426,7 +807,23 @@ function continueCurrentAbility(boss) {
                         // Default: fastBouncers
                         enemyType = 'fastBouncer';
                     }
-                    spawnSpecificEnemy(enemyType, boss.position);
+                    
+                    // Spread minions in arc around boss instead of clustering at boss position
+                    const spawnAngle = (i / summonCount) * Math.PI * 2;
+                    const spawnDist = 4 + Math.random() * 2;
+                    const spawnPos = new THREE.Vector3(
+                        boss.position.x + Math.cos(spawnAngle) * spawnDist,
+                        boss.position.y,
+                        boss.position.z + Math.sin(spawnAngle) * spawnDist
+                    );
+                    const minion = spawnSpecificEnemy(enemyType, spawnPos);
+                    
+                    // Track minion for shield system
+                    if (boss.shieldConfig && boss.shieldConfig.activateOnSummon) {
+                        minion.isBossMinion = true;
+                        minion.parentBoss = boss;
+                        boss.summonedMinions.push(minion);
+                    }
                 }
                 spawnParticle(boss.position, boss.baseColor, 10);
             }
@@ -457,10 +854,11 @@ function continueCurrentAbility(boss) {
                 boss.bodyMaterial.emissiveIntensity = 0.5;
                 // Damage nearby player
                 if (player.position.distanceTo(boss.position) < 6) {
-                    takeDamage(boss.damage * 0.6);
+                    const config = BOSS_CONFIG[gameState.currentArena];
+                    takeDamage(boss.damage * 0.6, `${config?.name || 'Boss'} - Jump Slam`, 'boss');
                 }
-                // Create hazard if boss has hazards ability
-                if (boss.abilities.hazards) {
+                // Create hazard if boss has hazards ability (respects hazard budget)
+                if (boss.abilities.hazards && canCreateMoreHazards(4)) {
                     createHazardZone(boss.position.x, boss.position.z, 4, 400);
                 }
                 spawnParticle(boss.position, boss.baseColor, 25);
@@ -475,20 +873,71 @@ function continueCurrentAbility(boss) {
             
         // HAZARDS ABILITY
         case 'hazards':
-            if (boss.aiTimer === Math.floor(tellDuration.hazards)) {
+            // Create preview markers on first frame
+            if (boss.aiTimer === 0) {
+                boss.hazardPreviews = [];
                 const hazardCount = boss.phase + 1;
+                const placedPositions = [];
+                const radius = 2 + boss.phase * 0.5;
+                
                 for (let i = 0; i < hazardCount; i++) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const dist = 5 + Math.random() * 10;
-                    createHazardZone(
-                        boss.position.x + Math.cos(angle) * dist,
-                        boss.position.z + Math.sin(angle) * dist,
-                        2 + boss.phase * 0.5,
-                        300
-                    );
+                    let hazardPos = null;
+                    let attempts = 0;
+                    
+                    // Try to find a valid position that doesn't overlap and doesn't block all routes
+                    while (!hazardPos && attempts < 10) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = 5 + Math.random() * 10;
+                        const testPos = new THREE.Vector3(
+                            boss.position.x + Math.cos(angle) * dist,
+                            0,
+                            boss.position.z + Math.sin(angle) * dist
+                        );
+                        
+                        // Validate position
+                        const overlapping = isPositionOverlappingHazards(testPos, placedPositions, radius * 2 + 2);
+                        const blocking = isBlockingAllRoutes(testPos, radius);
+                        
+                        if (!overlapping && !blocking) {
+                            hazardPos = testPos;
+                            placedPositions.push(testPos);
+                        }
+                        attempts++;
+                    }
+                    
+                    // If we found a valid position, create preview
+                    if (hazardPos) {
+                        const preview = createHazardPreviewCircle(hazardPos, radius);
+                        boss.hazardPreviews.push({ preview, pos: hazardPos, radius });
+                    }
                 }
             }
+            
+            // Update preview markers
+            if (boss.hazardPreviews) {
+                boss.hazardPreviews.forEach(hp => updateHazardPreviewCircle(hp.preview));
+            }
+            
+            // Spawn actual hazards (respects hazard budget)
+            if (boss.aiTimer === Math.floor(tellDuration.hazards)) {
+                if (boss.hazardPreviews) {
+                    boss.hazardPreviews.forEach(hp => {
+                        // Only create hazard if within budget
+                        if (canCreateMoreHazards(hp.radius)) {
+                            createHazardZone(hp.pos.x, hp.pos.z, hp.radius, 300);
+                        }
+                        cleanupVFX(hp.preview);
+                    });
+                    boss.hazardPreviews = null;
+                }
+            }
+            
             if (boss.aiTimer > tellDuration.hazards + 30) {
+                // Cleanup any remaining previews
+                if (boss.hazardPreviews) {
+                    boss.hazardPreviews.forEach(hp => cleanupVFX(hp.preview));
+                    boss.hazardPreviews = null;
+                }
                 boss.aiState = 'idle';
                 boss.aiTimer = 0;
             }
@@ -496,25 +945,115 @@ function continueCurrentAbility(boss) {
             
         // TELEPORT ABILITY
         case 'teleport_out':
+            // Origin shimmer effect
+            if (boss.aiTimer === 0) {
+                boss.teleportOriginVFX = createTeleportOriginVFX(boss.position);
+                PulseMusic.onTeleport(false);
+            }
+            
             boss.scale.setScalar(Math.max(0.01, 1 - boss.aiTimer / tellDuration.teleport));
+            
             if (boss.aiTimer > tellDuration.teleport) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 12 + Math.random() * 12;
-                boss.position.x = Math.max(-40, Math.min(40, player.position.x + Math.cos(angle) * dist));
-                boss.position.z = Math.max(-40, Math.min(40, player.position.z + Math.sin(angle) * dist));
+                // Determine destination using validated platform selection
+                const destPos = getValidTeleportDestination(boss);
+                
+                // Show destination marker
+                boss.teleportDestVFX = createTeleportDestinationVFX(destPos);
+                
+                // Cleanup origin VFX
+                if (boss.teleportOriginVFX) {
+                    cleanupVFX(boss.teleportOriginVFX);
+                    boss.teleportOriginVFX = null;
+                }
+                
+                // Move boss
+                boss.position.copy(destPos);
                 boss.aiState = 'teleport_in';
                 boss.aiTimer = 0;
+                PulseMusic.onTeleport(true);
                 spawnParticle(boss.position, 0xaa44ff, 15);
             }
             break;
         case 'teleport_in':
+            // Update destination VFX
+            if (boss.teleportDestVFX) {
+                updateTeleportDestinationVFX(boss.teleportDestVFX);
+            }
+            
             boss.scale.setScalar(Math.min(1, boss.aiTimer / 20));
+            
             if (boss.aiTimer > 20) {
                 boss.scale.setScalar(1);
-                // Spawn teleporter minion in higher phases
-                if (boss.phase >= 2 && Math.random() < 0.4) {
-                    spawnSpecificEnemy('teleporter', boss.position);
+                
+                // Cleanup destination VFX
+                if (boss.teleportDestVFX) {
+                    cleanupVFX(boss.teleportDestVFX);
+                    boss.teleportDestVFX = null;
                 }
+                
+                // Enter vulnerability window (Boss 3+)
+                if (boss.teleportConfig && boss.teleportConfig.vulnerabilityWindow) {
+                    boss.isVulnerable = true;
+                    boss.vulnerableTimer = boss.teleportConfig.vulnerabilityWindow;
+                    if (!boss.exposedVFX) {
+                        boss.exposedVFX = createExposedVFX(boss);
+                    }
+                }
+                
+                // Spawn teleporter minion in higher phases (capped at 2 max)
+                if (boss.phase >= 2 && Math.random() < 0.4) {
+                    const activeTeleporters = enemies.filter(e => e.enemyType === 'teleporter').length;
+                    const maxTeleporters = 2;
+                    
+                    if (activeTeleporters < maxTeleporters) {
+                        spawnSpecificEnemy('teleporter', boss.position);
+                    }
+                }
+                
+                boss.aiState = boss.teleportConfig?.vulnerabilityWindow ? 'teleport_recovery' : 'idle';
+                boss.aiTimer = 0;
+            }
+            break;
+            
+        case 'teleport_recovery':
+            if (boss.isVulnerable) {
+                // Show "EXPOSED!" banner and audio cue on first frame
+                if (boss.vulnerableTimer === boss.teleportConfig.vulnerabilityWindow) {
+                    showExposedBanner(boss.teleportConfig.vulnerabilityWindow);
+                    PulseMusic.onBossExposed();
+                }
+                
+                boss.vulnerableTimer--;
+                if (boss.exposedVFX) {
+                    updateExposedVFX(boss.exposedVFX, boss.vulnerableTimer);
+                }
+                
+                // Faster, more distinct flash with yellow highlight (attack opportunity)
+                if (boss.bodyMaterial) {
+                    const flashSpeed = 6;  // Faster than previous 10
+                    if (boss.vulnerableTimer % flashSpeed < flashSpeed / 2) {
+                        boss.bodyMaterial.emissive.setHex(0xffff00);  // Yellow = vulnerable
+                        boss.bodyMaterial.emissiveIntensity = 1.0;
+                    } else {
+                        boss.bodyMaterial.emissive.setHex(boss.baseColor);
+                        boss.bodyMaterial.emissiveIntensity = 0.4;
+                    }
+                }
+                
+                if (boss.vulnerableTimer <= 0) {
+                    boss.isVulnerable = false;
+                    if (boss.exposedVFX) {
+                        cleanupVFX(boss.exposedVFX);
+                        boss.exposedVFX = null;
+                    }
+                    if (boss.bodyMaterial) {
+                        boss.bodyMaterial.emissive.setHex(boss.baseColor);
+                        boss.bodyMaterial.emissiveIntensity = 0.5;
+                    }
+                    boss.aiState = 'idle';
+                    boss.aiTimer = 0;
+                }
+            } else {
                 boss.aiState = 'idle';
                 boss.aiTimer = 0;
             }
@@ -522,15 +1061,48 @@ function continueCurrentAbility(boss) {
             
         // GROWTH ABILITY
         case 'growth':
-            if (boss.growthScale < 1.5) {
+            // Create growth indicator on first frame
+            if (boss.aiTimer === 0) {
+                boss.growthIndicator = createGrowthIndicator(boss);
+                PulseMusic.onBossGrowthStart();
+            }
+            
+            // Arena 6: smaller max growth (1.25) to prevent corridor blocking
+            const maxGrowth = gameState.currentArena === 6 ? 1.25 : 1.5;
+            
+            if (boss.growthScale < maxGrowth) {
                 boss.growthScale += 0.003;
                 boss.scale.setScalar(boss.growthScale);
+                
+                // Update growth indicator
+                if (boss.growthIndicator) {
+                    updateGrowthIndicator(boss.growthIndicator, boss.growthScale, boss);
+                }
+                
+                // Pulsing glow during growth
+                if (boss.bodyMaterial) {
+                    boss.bodyMaterial.emissiveIntensity = 0.5 + Math.sin(boss.aiTimer * 0.2) * 0.3;
+                }
             }
-            // Spawn water balloons during growth
+            
+            // Spawn water balloons during growth (with cap)
             if (boss.aiTimer % 60 === 0 && boss.aiTimer > 0) {
-                spawnSpecificEnemy('waterBalloon', boss.position);
+                // Cap water balloons at 2 during growth
+                const activeWaterBalloons = enemies.filter(e => e.enemyType === 'waterBalloon').length;
+                if (activeWaterBalloons < 2) {
+                    spawnSpecificEnemy('waterBalloon', boss.position);
+                }
             }
+            
             if (boss.aiTimer > 120) {
+                // Cleanup growth indicator
+                if (boss.growthIndicator) {
+                    cleanupVFX(boss.growthIndicator);
+                    boss.growthIndicator = null;
+                }
+                if (boss.bodyMaterial) {
+                    boss.bodyMaterial.emissiveIntensity = 0.5;
+                }
                 boss.aiState = 'idle';
                 boss.aiTimer = 0;
             }
@@ -538,13 +1110,70 @@ function continueCurrentAbility(boss) {
             
         // SPLIT ABILITY
         case 'split':
+            // Create split warning VFX on first frame
+            if (boss.aiTimer === 0) {
+                boss.splitWarning = createSplitWarningVFX(boss);
+                boss.originalPosition = boss.position.clone();
+                PulseMusic.onBossSplitWarning();
+            }
+            
+            // Update warning VFX
+            if (boss.splitWarning) {
+                updateSplitWarningVFX(boss.splitWarning, boss.aiTimer, tellDuration.split, boss);
+            }
+            
+            // Boss shakes during split preparation (intensity increases)
+            const shakeProgress = boss.aiTimer / tellDuration.split;
+            const shakeIntensity = 0.05 + shakeProgress * 0.15;
+            if (boss.originalPosition) {
+                boss.position.x = boss.originalPosition.x + (Math.random() - 0.5) * shakeIntensity;
+                boss.position.z = boss.originalPosition.z + (Math.random() - 0.5) * shakeIntensity;
+            }
+            
+            // Flash body material as split approaches
+            if (boss.bodyMaterial) {
+                const flashSpeed = 4 + shakeProgress * 8;
+                if (boss.aiTimer % Math.max(2, Math.floor(6 - shakeProgress * 4)) < Math.floor((6 - shakeProgress * 4) / 2)) {
+                    boss.bodyMaterial.emissiveIntensity = 0.8 + shakeProgress * 0.4;
+                } else {
+                    boss.bodyMaterial.emissiveIntensity = 0.4;
+                }
+            }
+            
             if (boss.aiTimer === Math.floor(tellDuration.split)) {
                 boss.hasSplit = true;
-                for (let i = 0; i < 3; i++) {
-                    spawnMiniBoss(boss.position, i);
+                
+                // Arena 6: spawn fewer, weaker mini-bosses to reduce cognitive load
+                const miniBossCount = gameState.currentArena === 6 ? 2 : 3;
+                const miniBossHealth = gameState.currentArena === 6 ? 100 : 150;
+                const miniBossSimple = gameState.currentArena === 6;  // No special behaviors
+                
+                // Spawn mini-bosses with improved spacing
+                for (let i = 0; i < miniBossCount; i++) {
+                    spawnMiniBoss(boss.position, i, miniBossCount, miniBossHealth, miniBossSimple);
                 }
-                spawnParticle(boss.position, boss.baseColor, 20);
+                
+                // Cleanup warning VFX
+                if (boss.splitWarning) {
+                    cleanupVFX(boss.splitWarning);
+                    boss.splitWarning = null;
+                }
+                
+                // Reset position
+                if (boss.originalPosition) {
+                    boss.position.copy(boss.originalPosition);
+                    boss.originalPosition = null;
+                }
+                
+                // Reset material
+                if (boss.bodyMaterial) {
+                    boss.bodyMaterial.emissiveIntensity = 0.5;
+                }
+                
+                PulseMusic.onBossSplit();
+                spawnParticle(boss.position, boss.baseColor, 25);
             }
+            
             if (boss.aiTimer > tellDuration.split + 30) {
                 boss.aiState = 'idle';
                 boss.aiTimer = 0;
@@ -553,42 +1182,938 @@ function continueCurrentAbility(boss) {
             
         // BURROW ABILITY
         case 'burrowing':
+            // Create burrow start VFX on first frame
+            if (boss.aiTimer === 0) {
+                boss.burrowStartVFX = createBurrowStartVFX(boss);
+                PulseMusic.onBurrowStart();
+            }
+            
             boss.position.y -= 0.1;
+            
+            // Update burrow start VFX
+            if (boss.burrowStartVFX) {
+                updateBurrowStartVFX(boss.burrowStartVFX, boss.position.y);
+            }
+            
             if (boss.position.y < -2) {
-                // Emerge near player
-                boss.burrowTarget.set(
-                    player.position.x + (Math.random() - 0.5) * 8,
-                    boss.size * boss.growthScale,
-                    player.position.z + (Math.random() - 0.5) * 8
-                );
-                boss.position.x = boss.burrowTarget.x;
-                boss.position.z = boss.burrowTarget.z;
-                clampBossPosition(boss);
-                boss.aiState = 'emerging';
+                // Cleanup burrow start VFX
+                if (boss.burrowStartVFX) {
+                    cleanupVFX(boss.burrowStartVFX);
+                    boss.burrowStartVFX = null;
+                }
+                
+                // Calculate emerge position with corridor awareness
+                const emergeTarget = calculateEmergeTarget(boss, player.position);
+                boss.burrowTarget.copy(emergeTarget);
+                boss.burrowTarget.y = boss.size * boss.growthScale;
+                
+                // Start emerge warning
+                boss.aiState = 'emerge_warning';
                 boss.aiTimer = 0;
+                
+                // Create warning VFX at emerge location
+                boss.emergeWarningVFX = createEmergeWarningVFX(boss.burrowTarget);
+                PulseMusic.onBurrowWarning();
             }
             break;
+            
+        case 'emerge_warning':
+            // Update warning VFX
+            if (boss.emergeWarningVFX) {
+                updateEmergeWarningVFX(boss.emergeWarningVFX, boss.aiTimer);
+            }
+            
+            const warningTime = boss.burrowConfig?.emergeWarningTime || 45;
+            if (boss.aiTimer > warningTime) {
+                // Move to emerge position
+                boss.position.x = boss.burrowTarget.x;
+                boss.position.z = boss.burrowTarget.z;
+                boss.aiState = 'emerging';
+                boss.aiTimer = 0;
+                
+                // Cleanup warning VFX
+                if (boss.emergeWarningVFX) {
+                    cleanupVFX(boss.emergeWarningVFX);
+                    boss.emergeWarningVFX = null;
+                }
+            }
+            break;
+            
         case 'emerging':
-            boss.position.y += 0.15;
+            boss.position.y += 0.2;
+            
+            // Dust plume VFX
+            if (boss.aiTimer === 0) {
+                spawnParticle(boss.position, 0x886644, 15);
+            }
+            
             if (boss.position.y >= boss.size * boss.growthScale) {
                 boss.position.y = boss.size * boss.growthScale;
                 boss.aiState = 'idle';
                 boss.aiTimer = 0;
+                
+                PulseMusic.onBurrowEmerge();
+                
                 // Damage player if nearby
-                if (player.position.distanceTo(boss.position) < 5) {
-                    takeDamage(boss.damage * 0.8);
+                const emergeDamageRadius = boss.burrowConfig?.emergeDamageRadius || 5;
+                if (player.position.distanceTo(boss.position) < emergeDamageRadius) {
+                    const config = BOSS_CONFIG[gameState.currentArena];
+                    takeDamage(boss.damage * 0.8, `${config?.name || 'Boss'} - Burrow Emerge`, 'boss');
                 }
-                // Create hazard on emerge
-                if (boss.abilities.hazards) {
-                    createHazardZone(boss.position.x, boss.position.z, 3, 300);
+                
+                // Create temporary hazard on emerge (Boss 5 hazard preview)
+                // Only create if within global hazard budget
+                if (boss.burrowConfig?.emergeHazard?.enabled) {
+                    const hazardRadius = boss.burrowConfig.emergeHazard.radius;
+                    
+                    // Check both local coverage and global budget
+                    const localCoverage = calculateHazardCoverage(
+                        boss.position.x, 
+                        boss.position.z,
+                        10  // Check 10-unit radius for hazard density
+                    );
+                    
+                    // Only create hazard if within both local and global budgets
+                    if (localCoverage < 0.3 && canCreateMoreHazards(hazardRadius)) {
+                        createHazardZone(
+                            boss.position.x, 
+                            boss.position.z,
+                            hazardRadius,
+                            boss.burrowConfig.emergeHazard.duration
+                        );
+                    }
                 }
+                
                 spawnParticle(boss.position, boss.baseColor, 20);
+            }
+            break;
+            
+        // ORBIT STRAFE (Boss 1 movement pattern)
+        case 'orbit':
+            const playerDist = boss.position.distanceTo(player.position);
+            const idealDist = 8;
+            
+            // Calculate perpendicular direction for strafing
+            tempVec3.subVectors(player.position, boss.position);
+            tempVec3.y = 0;
+            tempVec3.normalize();
+            
+            // Perpendicular strafe
+            const strafeX = -tempVec3.z * boss.orbitDirection;
+            const strafeZ = tempVec3.x * boss.orbitDirection;
+            
+            // Distance adjustment (move closer or farther to maintain ideal distance)
+            const distAdjust = (playerDist - idealDist) * 0.02;
+            
+            // Apply movement
+            boss.position.x += strafeX * boss.speed * 1.2 + tempVec3.x * distAdjust;
+            boss.position.z += strafeZ * boss.speed * 1.2 + tempVec3.z * distAdjust;
+            clampBossPosition(boss);
+            
+            boss.orbitTimer++;
+            if (boss.orbitTimer > 120) {
+                boss.aiState = 'idle';
+                boss.aiTimer = 0;
+            }
+            break;
+            
+        // RETREAT CHARGE (Boss 1 movement pattern)
+        case 'retreat_charge':
+            switch (boss.retreatState) {
+                case 'retreating':
+                    // Move away from player
+                    tempVec3.subVectors(boss.position, player.position);
+                    tempVec3.y = 0;
+                    tempVec3.normalize();
+                    boss.position.add(tempVec3.multiplyScalar(boss.speed * 1.5));
+                    clampBossPosition(boss);
+                    
+                    boss.retreatTimer++;
+                    if (boss.retreatTimer > 40) {
+                        boss.retreatState = 'winding';
+                        boss.retreatTimer = 0;
+                    }
+                    break;
+                    
+                case 'winding':
+                    // Wind up (telegraph)
+                    boss.bodyMaterial.emissiveIntensity = 
+                        0.5 + (boss.retreatTimer / 30) * 0.5;
+                    boss.retreatTimer++;
+                    if (boss.retreatTimer > 30) {
+                        boss.retreatState = 'charging';
+                        boss.retreatTimer = 0;
+                        boss.chargeDirection = tempVec3.subVectors(
+                            player.position, 
+                            boss.position
+                        ).normalize().clone();
+                    }
+                    break;
+                    
+                case 'charging':
+                    // Fast charge
+                    boss.position.add(
+                        boss.chargeDirection.clone()
+                            .multiplyScalar(boss.chargeSpeed * 1.2)
+                    );
+                    boss.retreatTimer++;
+                    if (boss.retreatTimer > 50 || isOutOfBounds(boss)) {
+                        boss.aiState = 'cooldown';
+                        boss.aiTimer = 0;
+                        boss.bodyMaterial.emissiveIntensity = 0.5;
+                        clampBossPosition(boss);
+                        boss.retreatState = null;
+                    }
+                    break;
+            }
+            break;
+            
+        // PILLAR PERCH + SLAM (Boss 2)
+        case 'pillar_leap':
+            // Find suitable pillar (tall ones)
+            const targetPillar = findNearestTallPillar(boss, 15);
+            if (!targetPillar) {
+                boss.aiState = 'idle';
+                break;
+            }
+            
+            // Vertical streak trail VFX (simple particle trail)
+            spawnParticle(boss.position, 0xffffff, 5);
+            
+            // Jump to pillar top
+            boss.velocityY = 0.5;
+            boss.pillarTarget = targetPillar;
+            boss.aiState = 'pillar_rising';
+            break;
+            
+        case 'pillar_rising':
+            // Arc toward pillar top
+            if (boss.pillarTarget) {
+                const pillarTop = new THREE.Vector3(
+                    boss.pillarTarget.position.x,
+                    boss.pillarTarget.position.y + boss.pillarTarget.geometry.parameters.height / 2,
+                    boss.pillarTarget.position.z
+                );
+                
+                tempVec3.subVectors(pillarTop, boss.position);
+                tempVec3.y = 0;
+                tempVec3.normalize().multiplyScalar(0.1);
+                boss.position.add(tempVec3);
+                
+                // Check if landed on pillar
+                if (boss.position.y >= pillarTop.y - 0.5 && boss.velocityY < 0) {
+                    boss.position.copy(pillarTop);
+                    boss.position.y += boss.size;
+                    boss.velocityY = 0;
+                    boss.aiState = 'pillar_perched';
+                    boss.perchTimer = 0;
+                }
+            } else {
+                boss.aiState = 'idle';
+            }
+            break;
+            
+        case 'pillar_perched':
+            boss.perchTimer++;
+            
+            // Create perch charge VFX on first frame
+            if (boss.perchTimer === 1) {
+                boss.perchChargeVFX = createPerchChargeVFX(boss);
+                PulseMusic.onPillarPerch();
+            }
+            
+            // Update perch charge VFX
+            if (boss.perchChargeVFX) {
+                const chargeProgress = boss.perchTimer / boss.pillarPerchConfig.perchDuration;
+                updatePerchChargeVFX(boss.perchChargeVFX, chargeProgress, boss);
+            }
+            
+            // Charging slam telegraph - extended timing for accessibility
+            // Now: marker appears at frame 20, tracks until frame 65, locks for 40 frames
+            if (boss.perchTimer > 20) {
+                // Show landing marker at player position
+                if (!boss.slamMarker) {
+                    boss.slamMarker = createSlamMarker(player.position, boss.pillarPerchConfig.slamRadius);
+                    boss.slamTargetPos.copy(player.position);
+                    PulseMusic.onSlamCharge();
+                }
+                
+                // Update marker position (tracks player until frame 65)
+                if (boss.perchTimer < 65) {
+                    boss.slamTargetPos.copy(player.position);
+                    boss.slamMarker.position.x = boss.slamTargetPos.x;
+                    boss.slamMarker.position.z = boss.slamTargetPos.z;
+                }
+                
+                // Pass lock state to marker for visual escalation
+                const isLocked = boss.perchTimer >= 65;
+                updateSlamMarker(boss.slamMarker, isLocked);
+            }
+            
+            // Execute slam (perchDuration = 105 for 40 frames of locked warning)
+            if (boss.perchTimer > boss.pillarPerchConfig.perchDuration) {
+                // Cleanup perch charge VFX
+                if (boss.perchChargeVFX) {
+                    cleanupVFX(boss.perchChargeVFX);
+                    boss.perchChargeVFX = null;
+                }
+                
+                boss.aiState = 'pillar_slam';
+                boss.velocityY = 0.6;
+                boss.slamDestination = boss.slamTargetPos.clone();
+            }
+            break;
+            
+        case 'pillar_slam':
+            // Arc toward slam destination
+            tempVec3.subVectors(boss.slamDestination, boss.position);
+            tempVec3.y = 0;
+            tempVec3.normalize().multiplyScalar(0.25);
+            boss.position.add(tempVec3);
+            
+            // Impact
+            if (boss.position.y <= boss.size + 0.1 && boss.velocityY < 0) {
+                // Slam impact!
+                boss.position.y = boss.size;
+                boss.velocityY = 0;
+                
+                // Audio cue for impact
+                PulseMusic.onSlamImpact();
+                
+                // Damage in radius
+                if (player.position.distanceTo(boss.position) < boss.pillarPerchConfig.slamRadius) {
+                    const config = BOSS_CONFIG[gameState.currentArena];
+                    takeDamage(boss.pillarPerchConfig.slamDamage, `${config?.name || 'Boss'} - Pillar Slam`, 'boss');
+                }
+                
+                // VFX
+                spawnParticle(boss.position, boss.baseColor, 25);
+                
+                // Create hazard zone at impact (respects hazard budget)
+                if (boss.abilities.hazards && canCreateMoreHazards(4)) {
+                    createHazardZone(boss.position.x, boss.position.z, 4, 300);
+                    PulseMusic.onHazardSpawn();
+                }
+                
+                // Cleanup
+                if (boss.slamMarker) {
+                    cleanupVFX(boss.slamMarker);
+                    boss.slamMarker = null;
+                }
+                
+                boss.aiState = 'cooldown';
+                boss.abilityCooldowns.pillarPerch = boss.pillarPerchConfig.cooldown;
+            }
+            break;
+            
+        // LANE WALLS ABILITY (Boss 4) - Preview phase
+        case 'lane_walls_preview':
+            if (boss.aiTimer === 0 && boss.laneWallsConfig) {
+                const config = boss.laneWallsConfig;
+                const playerPos = player.position;
+                boss.validWallPositions = [];  // Store validated positions for spawn phase
+                
+                // Create preview markers with validation
+                for (let i = 0; i < config.wallCount; i++) {
+                    const offset = (i === 0 ? -1 : 1) * 8;
+                    
+                    // Validate wall position against geometry
+                    const validPos = getValidWallPosition(
+                        boss.position, playerPos, offset,
+                        config.wallLength, config.wallHeight
+                    );
+                    
+                    if (validPos) {
+                        const wallPos = new THREE.Vector3(validPos.x, 0, validPos.z);
+                        const preview = createLaneWallPreview(wallPos, validPos.angle, config.wallLength, config.wallHeight);
+                        boss.wallPreviews.push(preview);
+                        boss.validWallPositions.push(validPos);
+                    }
+                }
+                
+                // Play warning audio
+                PulseMusic.onLaneWallWarning();
+            }
+            
+            // Update previews
+            if (boss.wallPreviews) {
+                const progress = boss.aiTimer / 30;
+                boss.wallPreviews.forEach(preview => updateLaneWallPreview(preview, progress));
+            }
+            
+            // Spawn actual walls after telegraph
+            if (boss.aiTimer > 30) {
+                // Cleanup previews
+                if (boss.wallPreviews) {
+                    boss.wallPreviews.forEach(preview => cleanupVFX(preview));
+                    boss.wallPreviews = null;
+                }
+                boss.aiState = 'spawning_lane_walls';
+                boss.aiTimer = 0;
+            }
+            break;
+            
+        case 'spawning_lane_walls':
+            if (boss.aiTimer === 0 && boss.laneWallsConfig) {
+                // Create temporary walls using validated positions
+                const config = boss.laneWallsConfig;
+                const validPositions = boss.validWallPositions || [];
+                
+                for (const validPos of validPositions) {
+                    const wallX = validPos.x;
+                    const wallZ = validPos.z;
+                    const angle = validPos.angle;
+                    
+                    const wallGeom = new THREE.BoxGeometry(config.wallLength, config.wallHeight, 1);
+                    const wallMat = new THREE.MeshStandardMaterial({
+                        color: boss.baseColor,
+                        emissive: boss.baseColor,
+                        emissiveIntensity: 0.3,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    
+                    const wall = new THREE.Mesh(wallGeom, wallMat);
+                    wall.position.set(wallX, config.wallHeight / 2, wallZ);
+                    wall.rotation.y = angle; // Face toward player
+                    
+                    // Collision data
+                    const halfLength = config.wallLength / 2;
+                    wall.collisionData = {
+                        minX: wallX - halfLength * Math.abs(Math.cos(angle)) - 0.5,
+                        maxX: wallX + halfLength * Math.abs(Math.cos(angle)) + 0.5,
+                        minZ: wallZ - halfLength * Math.abs(Math.sin(angle)) - 0.5,
+                        maxZ: wallZ + halfLength * Math.abs(Math.sin(angle)) + 0.5,
+                        topY: config.wallHeight
+                    };
+                    
+                    wall.isTemporary = true;
+                    wall.remainingDuration = config.wallDuration;
+                    
+                    scene.add(wall);
+                    obstacles.push(wall);
+                    boss.temporaryWalls.push(wall);
+                }
+                
+                // Clear validated positions
+                boss.validWallPositions = null;
+                
+                if (validPositions.length > 0) {
+                    PulseMusic.onWallSpawn();
+                    spawnParticle(boss.position, boss.baseColor, 15);
+                }
+            }
+            
+            if (boss.aiTimer > 30) {
+                boss.aiState = 'idle';
+                boss.aiTimer = 0;
+                boss.abilityCooldowns.laneWalls = boss.laneWallsConfig.cooldown;
             }
             break;
     }
 }
 
 // ==================== HELPER FUNCTIONS ====================
+
+function findNearestTallPillar(boss, minDistance) {
+    // Find pillars from obstacles (height > 6 = tall pillar)
+    // Uses collisionData for consistent height detection
+    const tallPillars = obstacles.filter(obs => {
+        // Prefer collisionData, fallback to geometry.parameters
+        let height = 0;
+        if (obs.collisionData && obs.collisionData.topY) {
+            height = obs.collisionData.topY;
+        } else if (obs.geometry && obs.geometry.parameters) {
+            height = obs.geometry.parameters.height || 0;
+        }
+        
+        const dist = boss.position.distanceTo(obs.position);
+        return height > 6 && dist > minDistance;
+    });
+    
+    if (tallPillars.length === 0) return null;
+    
+    // Strategic pillar selection - score by threat value
+    const scored = tallPillars.map(pillar => {
+        const pillarPos = pillar.position;
+        const distToPlayer = pillarPos.distanceTo(player.position);
+        const distToBoss = pillarPos.distanceTo(boss.position);
+        
+        // Ideal distance: close enough to threaten, far enough to give dodge window
+        const idealDist = 15;
+        const distScore = 1 - Math.abs(distToPlayer - idealDist) / 30;
+        
+        // Prefer pillars boss can reach quickly
+        const reachScore = 1 - Math.min(distToBoss / 50, 1);
+        
+        // Slight randomness to prevent predictability
+        const randomFactor = 0.8 + Math.random() * 0.4;
+        
+        return {
+            pillar,
+            score: (distScore * 0.7 + reachScore * 0.3) * randomFactor
+        };
+    });
+    
+    // Sort by score and pick from top 3 (weighted toward best)
+    scored.sort((a, b) => b.score - a.score);
+    const topPillars = scored.slice(0, Math.min(3, scored.length));
+    return topPillars[Math.floor(Math.random() * topPillars.length)].pillar;
+}
+
+// Check if a platform is reachable by the player (has step access or is jumpable from ground)
+function isPlayerReachable(platformCollision) {
+    const platformTop = platformCollision.topY;
+    const maxJumpHeight = 2.5;  // Player can jump about this high
+    
+    // If platform is low enough to jump to from ground, it's reachable
+    if (platformTop <= maxJumpHeight) return true;
+    
+    const platformCenterX = (platformCollision.minX + platformCollision.maxX) / 2;
+    const platformCenterZ = (platformCollision.minZ + platformCollision.maxZ) / 2;
+    
+    // Check for nearby step access (lower platform that provides intermediate step)
+    for (const obs of obstacles) {
+        if (!obs.collisionData) continue;
+        const c = obs.collisionData;
+        
+        // Skip if it's the same platform
+        if (c === platformCollision) continue;
+        
+        const obsCenterX = (c.minX + c.maxX) / 2;
+        const obsCenterZ = (c.minZ + c.maxZ) / 2;
+        
+        // Check horizontal distance
+        const dx = Math.abs(obsCenterX - platformCenterX);
+        const dz = Math.abs(obsCenterZ - platformCenterZ);
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        
+        // Must be close enough to jump between (within 8 units)
+        // AND lower than target platform
+        // AND the height difference must be jumpable
+        if (dist < 8 && c.topY < platformTop && (platformTop - c.topY) <= maxJumpHeight) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Teleport destination selection with platform size validation
+function getValidTeleportDestination(boss) {
+    const goElevated = boss.teleportConfig && boss.teleportConfig.preferElevated && 
+                      Math.random() < boss.teleportConfig.elevatedChance;
+    
+    if (goElevated && gameState.currentArena >= 3) {
+        const bossRadius = boss.size;
+        const minPlatformSize = bossRadius * 2;  // Boss diameter as minimum platform size
+        
+        // Filter for valid elevated platforms (large enough for boss AND reachable by player)
+        const validPlatforms = obstacles.filter(obs => {
+            if (!obs.collisionData) return false;
+            const c = obs.collisionData;
+            
+            // Calculate platform dimensions
+            const width = c.maxX - c.minX;
+            const depth = c.maxZ - c.minZ;
+            
+            // Must be elevated (topY > 2) AND large enough for boss AND reachable by player
+            return c.topY > 2 &&
+                   width >= minPlatformSize &&
+                   depth >= minPlatformSize &&
+                   isPlayerReachable(c);
+        });
+        
+        if (validPlatforms.length > 0) {
+            const platform = validPlatforms[Math.floor(Math.random() * validPlatforms.length)];
+            const c = platform.collisionData;
+            return new THREE.Vector3(
+                (c.minX + c.maxX) / 2,  // Center of platform
+                c.topY + boss.size,
+                (c.minZ + c.maxZ) / 2
+            );
+        }
+    }
+    
+    // Fallback to ground position near player
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 12 + Math.random() * 12;
+    return new THREE.Vector3(
+        Math.max(-40, Math.min(40, player.position.x + Math.cos(angle) * dist)),
+        boss.size,
+        Math.max(-40, Math.min(40, player.position.z + Math.sin(angle) * dist))
+    );
+}
+
+// ==================== CORRIDOR-AWARE BURROW TARGETING ====================
+
+// Calculate best emerge target with corridor awareness and escape route validation
+function calculateEmergeTarget(boss, playerPos) {
+    const attempts = 10;
+    let bestTarget = null;
+    let bestScore = -Infinity;
+    
+    for (let i = 0; i < attempts; i++) {
+        const offset = new THREE.Vector3(
+            (Math.random() - 0.5) * 8,
+            0,
+            (Math.random() - 0.5) * 8
+        );
+        const target = playerPos.clone().add(offset);
+        
+        // Clamp to bounds
+        target.x = Math.max(-40, Math.min(40, target.x));
+        target.z = Math.max(-40, Math.min(40, target.z));
+        
+        // Score this target
+        const score = scoreEmergeTarget(target, playerPos, boss);
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestTarget = target;
+        }
+    }
+    
+    return bestTarget || playerPos.clone();
+}
+
+// Score an emerge target based on fairness criteria
+function scoreEmergeTarget(target, playerPos, boss) {
+    let score = 0;
+    
+    // Prefer targets away from walls (not in corridors)
+    const distFromWalls = getMinDistanceFromWalls(target);
+    score += distFromWalls * 2;  // Weight corridor avoidance
+    
+    // Prefer targets with escape routes for player
+    const playerEscapeRoutes = countEscapeRoutes(playerPos, target);
+    score += playerEscapeRoutes * 5;  // Heavily favor targets with escape routes
+    
+    // Ensure target isn't inside geometry
+    if (isInsideObstacle(target)) {
+        score -= 100;  // Heavy penalty
+    }
+    
+    // Prefer targets not stacking on existing hazards
+    const hazardOverlap = countHazardOverlap(target, boss.burrowConfig?.emergeDamageRadius || 5);
+    score -= hazardOverlap * 3;
+    
+    // Slight preference for targets closer to player (more threatening but fair)
+    const distToPlayer = target.distanceTo(playerPos);
+    if (distToPlayer > 2 && distToPlayer < 6) {
+        score += 2;  // Sweet spot distance
+    }
+    
+    return score;
+}
+
+// Get minimum distance from target to any corridor wall
+function getMinDistanceFromWalls(pos) {
+    let minDist = Infinity;
+    
+    // Check distance from all obstacles (walls)
+    for (const obs of obstacles) {
+        const c = obs.collisionData;
+        if (!c) continue;
+        
+        // Calculate distance to obstacle bounds
+        const distX = Math.max(c.minX - pos.x, 0, pos.x - c.maxX);
+        const distZ = Math.max(c.minZ - pos.z, 0, pos.z - c.maxZ);
+        const dist = Math.sqrt(distX * distX + distZ * distZ);
+        
+        // If inside obstacle horizontally, distance is 0
+        if (pos.x >= c.minX && pos.x <= c.maxX && pos.z >= c.minZ && pos.z <= c.maxZ) {
+            return 0;
+        }
+        
+        minDist = Math.min(minDist, dist);
+    }
+    
+    // Also check arena boundary walls
+    const boundaryDist = Math.min(
+        42 - Math.abs(pos.x),
+        42 - Math.abs(pos.z)
+    );
+    minDist = Math.min(minDist, boundaryDist);
+    
+    return minDist;
+}
+
+// Count how many escape directions player has from emerge point
+function countEscapeRoutes(playerPos, emergeTarget) {
+    const escapeDirections = [
+        { dx: 1, dz: 0 },   // East
+        { dx: -1, dz: 0 },  // West
+        { dx: 0, dz: 1 },   // South
+        { dx: 0, dz: -1 }   // North
+    ];
+    
+    let validRoutes = 0;
+    const emergeDamageRadius = 5;  // Standard emerge damage radius
+    
+    for (const dir of escapeDirections) {
+        const escapePoint = new THREE.Vector3(
+            playerPos.x + dir.dx * 8,
+            0,
+            playerPos.z + dir.dz * 8
+        );
+        
+        // Route is valid if it's away from emerge and not blocked
+        const awayFromEmerge = escapePoint.distanceTo(emergeTarget) > emergeDamageRadius + 1;
+        const notBlocked = !isInsideObstacle(escapePoint) && isInBounds(escapePoint);
+        
+        if (awayFromEmerge && notBlocked) {
+            validRoutes++;
+        }
+    }
+    
+    return validRoutes;
+}
+
+// Check if a position is inside any obstacle
+function isInsideObstacle(pos) {
+    for (const obs of obstacles) {
+        const c = obs.collisionData;
+        if (!c) continue;
+        
+        // Check if position is within obstacle bounds (with small margin)
+        if (pos.x >= c.minX - 1 && pos.x <= c.maxX + 1 &&
+            pos.z >= c.minZ - 1 && pos.z <= c.maxZ + 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Check if position is within arena bounds
+function isInBounds(pos) {
+    return Math.abs(pos.x) < 42 && Math.abs(pos.z) < 42;
+}
+
+// Count how much hazard area overlaps with emerge radius
+function countHazardOverlap(target, checkRadius) {
+    let overlapCount = 0;
+    
+    for (const hz of hazardZones) {
+        if (!hz.position) continue;
+        
+        const dist = Math.sqrt(
+            (hz.position.x - target.x) ** 2 + 
+            (hz.position.z - target.z) ** 2
+        );
+        
+        // If hazard and emerge zones overlap
+        const hazardRadius = hz.radius || 3;
+        if (dist < checkRadius + hazardRadius) {
+            overlapCount++;
+        }
+    }
+    
+    return overlapCount;
+}
+
+// ==================== HAZARD BUDGET SYSTEM ====================
+
+// Maximum arena coverage allowed for hazards (25% to ensure traversability)
+const MAX_HAZARD_COVERAGE = 0.25;
+const ARENA_SIZE = 84;  // -42 to +42
+const ARENA_AREA = ARENA_SIZE * ARENA_SIZE;
+
+// Check if more hazards can be created without exceeding budget
+function canCreateMoreHazards(newRadius) {
+    let currentHazardArea = 0;
+    
+    for (const hz of hazardZones) {
+        if (!hz.position) continue;
+        const hazardRadius = hz.radius || 3;
+        currentHazardArea += Math.PI * hazardRadius * hazardRadius;
+    }
+    
+    const newHazardArea = Math.PI * newRadius * newRadius;
+    const totalCoverage = (currentHazardArea + newHazardArea) / ARENA_AREA;
+    
+    return totalCoverage < MAX_HAZARD_COVERAGE;
+}
+
+// Check if position overlaps with existing hazards
+function isPositionOverlappingHazards(pos, existingPositions, minDist) {
+    // Check against existing hazards in scene
+    for (const hz of hazardZones) {
+        if (!hz.position) continue;
+        const dist = Math.sqrt(
+            (pos.x - hz.position.x) ** 2 + 
+            (pos.z - hz.position.z) ** 2
+        );
+        if (dist < minDist) return true;
+    }
+    
+    // Check against positions being placed in this batch
+    for (const other of existingPositions) {
+        const dist = pos.distanceTo(other);
+        if (dist < minDist) return true;
+    }
+    
+    return false;
+}
+
+// Check if hazard would block all escape routes from player
+function isBlockingAllRoutes(pos, radius) {
+    // Check 4 cardinal escape routes from the hazard position
+    // Each route needs a clear path to arena bounds
+    const routes = [
+        { x: pos.x + radius + 2, z: pos.z },
+        { x: pos.x - radius - 2, z: pos.z },
+        { x: pos.x, z: pos.z + radius + 2 },
+        { x: pos.x, z: pos.z - radius - 2 }
+    ];
+    
+    let clearRoutes = 0;
+    for (const route of routes) {
+        // Check if route point is within arena bounds
+        if (Math.abs(route.x) < 42 && Math.abs(route.z) < 42) {
+            clearRoutes++;
+        }
+    }
+    
+    // Need at least 2 clear routes to be fair
+    return clearRoutes < 2;
+}
+
+// Calculate hazard coverage percentage in an area (for stacking prevention)
+function calculateHazardCoverage(x, z, checkRadius) {
+    let coveredArea = 0;
+    const totalArea = Math.PI * checkRadius * checkRadius;
+    
+    for (const hz of hazardZones) {
+        if (!hz.position) continue;
+        
+        const dist = Math.sqrt(
+            (hz.position.x - x) ** 2 + 
+            (hz.position.z - z) ** 2
+        );
+        
+        const hazardRadius = hz.radius || 3;
+        if (dist < checkRadius + hazardRadius) {
+            // Approximate overlap area using simple circle overlap
+            const overlap = Math.max(0, hazardRadius - Math.max(0, dist - checkRadius));
+            coveredArea += Math.PI * overlap * overlap;
+        }
+    }
+    
+    return Math.min(1, coveredArea / totalArea);
+}
+
+// ==================== LANE WALL VALIDATION ====================
+
+// Validate and adjust lane wall position to avoid geometry conflicts
+function getValidWallPosition(bossPos, playerPos, offset, wallLength, wallHeight) {
+    const angle = Math.atan2(playerPos.z - bossPos.z, playerPos.x - bossPos.x);
+    const perpAngle = angle + Math.PI / 2;
+    
+    let wallX = bossPos.x + Math.cos(perpAngle) * offset;
+    let wallZ = bossPos.z + Math.sin(perpAngle) * offset;
+    
+    // Check for platform collision and adjust position
+    for (const obs of obstacles) {
+        if (obs.isTemporary) continue;  // Skip other temp walls
+        const c = obs.collisionData;
+        if (!c) continue;
+        
+        // Calculate wall bounding box (AABB approximation)
+        const halfLength = wallLength / 2;
+        const wallMinX = wallX - halfLength * Math.abs(Math.cos(angle)) - 1;
+        const wallMaxX = wallX + halfLength * Math.abs(Math.cos(angle)) + 1;
+        const wallMinZ = wallZ - halfLength * Math.abs(Math.sin(angle)) - 1;
+        const wallMaxZ = wallZ + halfLength * Math.abs(Math.sin(angle)) + 1;
+        
+        // Check overlap with platform
+        const overlap = !(wallMaxX < c.minX || wallMinX > c.maxX ||
+                         wallMaxZ < c.minZ || wallMinZ > c.maxZ);
+        
+        if (overlap && c.topY > 1) {
+            // Shift wall position away from platform
+            const shiftDir = offset > 0 ? 1 : -1;
+            wallX += Math.cos(perpAngle) * 4 * shiftDir;
+            wallZ += Math.sin(perpAngle) * 4 * shiftDir;
+        }
+    }
+    
+    // Validate player escape routes
+    const escapeRoutes = countPlayerEscapeRoutes(wallX, wallZ, wallLength, angle, playerPos);
+    if (escapeRoutes < 2) {
+        // Not enough escape routes - skip this wall
+        return null;
+    }
+    
+    // Clamp to arena bounds
+    wallX = Math.max(-38, Math.min(38, wallX));
+    wallZ = Math.max(-38, Math.min(38, wallZ));
+    
+    return { x: wallX, z: wallZ, angle };
+}
+
+// Count how many escape routes the player has from a proposed wall position
+function countPlayerEscapeRoutes(wallX, wallZ, wallLength, wallAngle, playerPos) {
+    // Check 4 cardinal directions from player position
+    const checkDist = 8;
+    const routes = [
+        { dx: checkDist, dz: 0 },
+        { dx: -checkDist, dz: 0 },
+        { dx: 0, dz: checkDist },
+        { dx: 0, dz: -checkDist }
+    ];
+    
+    let clearRoutes = 0;
+    const halfLength = wallLength / 2;
+    
+    for (const route of routes) {
+        const checkX = playerPos.x + route.dx;
+        const checkZ = playerPos.z + route.dz;
+        
+        // Check if this route is blocked by the proposed wall
+        const blocked = isPointNearWall(checkX, checkZ, wallX, wallZ, halfLength, wallAngle);
+        
+        // Also check against existing obstacles
+        let obstacleBlocked = false;
+        for (const obs of obstacles) {
+            const c = obs.collisionData;
+            if (!c) continue;
+            if (checkX > c.minX && checkX < c.maxX && checkZ > c.minZ && checkZ < c.maxZ && c.topY > 1) {
+                obstacleBlocked = true;
+                break;
+            }
+        }
+        
+        if (!blocked && !obstacleBlocked) {
+            clearRoutes++;
+        }
+    }
+    
+    return clearRoutes;
+}
+
+// Check if a point is near a wall line segment
+function isPointNearWall(px, pz, wallX, wallZ, halfLength, wallAngle) {
+    // Wall endpoints
+    const wx1 = wallX - Math.cos(wallAngle) * halfLength;
+    const wz1 = wallZ - Math.sin(wallAngle) * halfLength;
+    const wx2 = wallX + Math.cos(wallAngle) * halfLength;
+    const wz2 = wallZ + Math.sin(wallAngle) * halfLength;
+    
+    // Distance from point to line segment
+    const dx = wx2 - wx1;
+    const dz = wz2 - wz1;
+    const lengthSq = dx * dx + dz * dz;
+    
+    if (lengthSq === 0) return false;
+    
+    let t = Math.max(0, Math.min(1, ((px - wx1) * dx + (pz - wz1) * dz) / lengthSq));
+    const closestX = wx1 + t * dx;
+    const closestZ = wz1 + t * dz;
+    
+    const distSq = (px - closestX) ** 2 + (pz - closestZ) ** 2;
+    return distSq < 4;  // Within 2 units of wall
+}
 
 function getTellDuration(boss) {
     const phaseKey = `phase${boss.phase}`;
@@ -612,42 +2137,151 @@ function clampBossPosition(boss) {
     boss.position.z = Math.max(-42, Math.min(42, boss.position.z));
 }
 
+// Phase transition timing uses PHASE_TRANSITION_DELAY_FRAMES from constants.js
+
+// Dramatic phase transition with VFX
+function triggerPhaseTransition(boss, newPhase) {
+    // Skip if already transitioning or same phase
+    if (boss.phaseTransitioning || boss.phase >= newPhase) return;
+    
+    boss.phaseTransitioning = true;
+    boss.pendingPhase = newPhase;
+    boss.phaseTransitionTimer = PHASE_TRANSITION_DELAY_FRAMES;
+    
+    // Freeze frame effect
+    triggerSlowMo(30, 0.1); // 0.5 second at 10% speed
+    
+    // Screen flash in boss color
+    triggerScreenFlash(boss.baseColor, 20);
+    
+    // Boss visual effect - bright white
+    if (boss.bodyMaterial) {
+        boss.bodyMaterial.emissive.setHex(0xffffff);
+        boss.bodyMaterial.emissiveIntensity = 1.5;
+    }
+    
+    // Particle burst
+    spawnParticle(boss.position, boss.baseColor, 30);
+    
+    // UI announcement
+    const config = BOSS_CONFIG[gameState.currentArena];
+    showPhaseAnnouncement(newPhase, config?.name || 'BOSS');
+    
+    // Audio stinger
+    PulseMusic.onBossPhaseChange(newPhase);
+}
+
+// Complete phase transition after delay (called from updateBoss)
+function completePhaseTransition(boss) {
+    if (!boss.phaseTransitioning || boss.phaseTransitionTimer > 0) return;
+    
+    const newPhase = boss.pendingPhase;
+    boss.phase = newPhase;
+    boss.speed *= newPhase === 2 ? 1.15 : 1.3;
+    boss.currentCombo = null;
+    
+    // Update visual for new phase
+    updateBossPhaseVisuals(boss);
+    
+    boss.phaseTransitioning = false;
+    boss.pendingPhase = null;
+}
+
+// Update boss appearance based on phase
+function updateBossPhaseVisuals(boss) {
+    if (!boss.bodyMaterial) return;
+    
+    switch (boss.phase) {
+        case 1:
+            boss.bodyMaterial.emissive.setHex(boss.baseColor);
+            boss.bodyMaterial.emissiveIntensity = 0.3;
+            break;
+        case 2:
+            boss.bodyMaterial.emissive.setHex(boss.baseColor);
+            boss.bodyMaterial.emissiveIntensity = 0.5;
+            break;
+        case 3:
+            // Red-shifted and intense
+            boss.bodyMaterial.emissive.setHex(0xff4444);
+            boss.bodyMaterial.emissiveIntensity = 0.7;
+            break;
+    }
+}
+
 function isOutOfBounds(boss) {
     return Math.abs(boss.position.x) > 42 || Math.abs(boss.position.z) > 42;
 }
 
-function spawnMiniBoss(position, index) {
-    const angle = (index / 3) * Math.PI * 2;
+function spawnMiniBoss(position, index, totalCount = 3, health = 150, simpleMode = false) {
+    const angle = (index / totalCount) * Math.PI * 2;
+    const baseDistance = 8;  // Increased from 5 for better spacing
+    
+    // Calculate initial spawn position
+    let spawnX = position.x + Math.cos(angle) * baseDistance;
+    let spawnZ = position.z + Math.sin(angle) * baseDistance;
+    let spawnY = 1.5;  // Mini-boss size
+    
+    // Validate spawn position against platform geometry
+    for (const obs of obstacles) {
+        if (obs.isTemporary) continue;
+        const c = obs.collisionData;
+        if (!c) continue;
+        
+        // Check if spawn position is inside a platform
+        if (spawnX > c.minX && spawnX < c.maxX &&
+            spawnZ > c.minZ && spawnZ < c.maxZ) {
+            // On a platform - spawn on top
+            spawnY = c.topY + 1.5;
+            break;
+        }
+        
+        // Check if spawn position is too close to platform edge
+        const margin = 2;
+        if (spawnX > c.minX - margin && spawnX < c.maxX + margin &&
+            spawnZ > c.minZ - margin && spawnZ < c.maxZ + margin &&
+            c.topY > 1) {
+            // Too close to platform - shift spawn position outward
+            const shiftDir = new THREE.Vector3(spawnX - position.x, 0, spawnZ - position.z).normalize();
+            spawnX += shiftDir.x * 3;
+            spawnZ += shiftDir.z * 3;
+        }
+    }
+    
+    // Clamp to arena bounds
+    spawnX = Math.max(-40, Math.min(40, spawnX));
+    spawnZ = Math.max(-40, Math.min(40, spawnZ));
+    
+    // Simple mode (Arena 6): different color to indicate weaker threat
+    const bossColor = simpleMode ? 0x88aaff : 0x66ffff;
+    const emissiveColor = simpleMode ? 0x6688cc : 0x44ffff;
+    
     const miniBoss = new THREE.Mesh(
         new THREE.SphereGeometry(1.5, 12, 12),
         new THREE.MeshStandardMaterial({
-            color: 0x66ffff,
-            emissive: 0x44ffff,
+            color: bossColor,
+            emissive: emissiveColor,
             emissiveIntensity: 0.4
         })
     );
     
-    miniBoss.position.set(
-        position.x + Math.cos(angle) * 5,
-        1.5,
-        position.z + Math.sin(angle) * 5
-    );
+    miniBoss.position.set(spawnX, spawnY, spawnZ);
     miniBoss.castShadow = true;
-    miniBoss.health = 150;
-    miniBoss.maxHealth = 150;
-    miniBoss.speed = 0.04;
-    miniBoss.damage = 15;
+    miniBoss.health = health;
+    miniBoss.maxHealth = health;
+    miniBoss.speed = simpleMode ? 0.035 : 0.04;  // Slightly slower in simple mode
+    miniBoss.damage = simpleMode ? 10 : 15;      // Less damage in simple mode
     miniBoss.size = 1.5;
     miniBoss.baseSize = 1.5;
     miniBoss.isBoss = false;
     miniBoss.isElite = true;
-    miniBoss.xpValue = 20;
-    miniBoss.baseColor = 0x66ffff;
+    miniBoss.xpValue = simpleMode ? 15 : 20;
+    miniBoss.baseColor = bossColor;
     miniBoss.velocityY = 0;
     miniBoss.velocity = new THREE.Vector3();
-    miniBoss.enemyType = 'miniBoss';
-    miniBoss.behavior = 'chase';
-    miniBoss.damageReduction = 0.3;
+    miniBoss.enemyType = simpleMode ? 'miniBossSimple' : 'miniBoss';
+    miniBoss.behavior = 'chase';  // Always chase (simple mode has no special behaviors)
+    miniBoss.damageReduction = simpleMode ? 0.2 : 0.3;  // Less tanky in simple mode
+    miniBoss.simpleMode = simpleMode;  // Track for behavior systems
     
     scene.add(miniBoss);
     enemies.push(miniBoss);
@@ -657,6 +2291,14 @@ export function killBoss() {
     const currentBoss = getCurrentBoss();
     if (!currentBoss || currentBoss.isDying) return;
     currentBoss.isDying = true;
+    
+    // Track boss defeat for combat stats
+    if (gameState.combatStats) {
+        gameState.combatStats.bossesDefeated++;
+    }
+    
+    // Check if this is the final boss (Arena 6)
+    const isFinalBoss = gameState.currentArena === 6;
     
     // Spawn XP gems from boss
     for (let i = 0; i < 12; i++) {
@@ -674,19 +2316,49 @@ export function killBoss() {
     // Particles
     spawnParticle(currentBoss.position, currentBoss.baseColor, 20);
     
+    // Final boss special victory sequence
+    if (isFinalBoss) {
+        // Extended slow-mo for dramatic effect
+        triggerSlowMo(0.1, 3000);
+        
+        // Screen flash
+        triggerScreenFlash(0xffffff, 0.7);
+        
+        // Multiple staggered particle bursts (celebratory fireworks effect)
+        const bossPos = currentBoss.position.clone();
+        const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+        
+        for (let wave = 0; wave < 3; wave++) {
+            setTimeout(() => {
+                for (let i = 0; i < 6; i++) {
+                    const offset = new THREE.Vector3(
+                        (Math.random() - 0.5) * 15,
+                        3 + Math.random() * 5,
+                        (Math.random() - 0.5) * 15
+                    );
+                    spawnParticle(bossPos.clone().add(offset), colors[i], 15);
+                }
+            }, wave * 500);
+        }
+        
+        // Victory fanfare audio
+        PulseMusic.onFinalBossVictory();
+        
+        // Show victory message (triggers game completion UI)
+        showTutorialCallout('victory', 'CONGRATULATIONS! YOU HAVE CONQUERED THE SPHERESTORM!', 5000);
+    }
+    
     // Clear all remaining enemies on boss defeat
     for (const enemy of enemies) {
         // Spawn small particle burst for each cleared enemy
         spawnParticle(enemy.position, enemy.baseColor || 0xffffff, 5);
         
-        // Cleanup enemy resources
+        // Cleanup enemy resources (don't dispose cached geometries)
         if (enemy.isGroup || enemy.type === 'Group') {
             enemy.traverse(child => {
-                if (child.geometry) child.geometry.dispose();
                 if (child.material) child.material.dispose();
             });
         } else {
-            if (enemy.geometry) enemy.geometry.dispose();
             if (enemy.baseMaterial) enemy.baseMaterial.dispose();
             if (enemy.material) enemy.material.dispose();
         }
@@ -704,6 +2376,7 @@ export function killBoss() {
     
     gameState.bossActive = false;
     hideBossHealthBar();
+    hideBoss6CycleIndicator();
     gameState.kills++;
-    gameState.score += 750;
+    gameState.score += isFinalBoss ? 2000 : 750;  // Extra score for final boss
 }
