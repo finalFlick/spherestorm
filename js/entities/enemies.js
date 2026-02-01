@@ -124,19 +124,44 @@ export function cachePillarPositions() {
     }
 }
 
-// Weighted enemy spawning
+// Weighted enemy spawning with progressive arena introduction
+// Wave 1: Only the NEW enemy type for this arena
+// Wave 2+: Add enemies from previous arenas
 export function getWeightedEnemyType() {
     const availableTypes = [];
     let totalWeight = 0;
+    const arena = gameState.currentArena;
+    const wave = gameState.currentWave;
     
     for (const [typeName, typeData] of Object.entries(ENEMY_TYPES)) {
-        if (typeData.minArena && gameState.currentArena < typeData.minArena) continue;
-        if (typeData.maxArena && gameState.currentArena > typeData.maxArena) continue;
+        // Skip enemies with spawnWeight 0 (special spawns like pillarPolice)
+        if (typeData.spawnWeight === 0) continue;
+        
+        // Skip enemies gated by maxArena (pillar-specific enemies)
+        if (typeData.maxArena && arena > typeData.maxArena) continue;
+        
+        // Progressive introduction using arenaIntro
+        if (typeData.arenaIntro) {
+            // Wave 1: Only spawn the NEW enemy type introduced in this arena
+            if (wave === 1 && typeData.arenaIntro !== arena) continue;
+            
+            // Wave 2+: Spawn enemies from this arena and all previous arenas
+            if (wave > 1 && typeData.arenaIntro > arena) continue;
+        } else {
+            // Fallback for enemies without arenaIntro (use minArena)
+            if (typeData.minArena && arena < typeData.minArena) continue;
+        }
+        
         availableTypes.push({ name: typeName, data: typeData });
         totalWeight += typeData.spawnWeight;
     }
     
-    const waveBonus = gameState.currentWave * 0.05;
+    // Fallback to grunt if no enemies available (shouldn't happen)
+    if (availableTypes.length === 0) {
+        return { name: 'grunt', data: ENEMY_TYPES.grunt };
+    }
+    
+    const waveBonus = wave * 0.05;
     let random = Math.random() * totalWeight;
     
     for (const type of availableTypes) {
@@ -651,11 +676,18 @@ function updateTelegraph(enemy, now) {
 }
 
 function updateChaseEnemy(enemy) {
+    const dist = enemy.position.distanceTo(player.position);
+    
+    // Closing speed acceleration - enemies speed up when close to player
+    let speedMultiplier = 1.0;
+    if (dist < 10) speedMultiplier = 1.5;       // 50% faster when very close
+    else if (dist < 20) speedMultiplier = 1.2;  // 20% faster when medium range
+    
     tempVec3.subVectors(player.position, enemy.position);
     tempVec3.y = 0;
     tempVec3.normalize();
-    enemy.position.x += tempVec3.x * enemy.speed;
-    enemy.position.z += tempVec3.z * enemy.speed;
+    enemy.position.x += tempVec3.x * enemy.speed * speedMultiplier;
+    enemy.position.z += tempVec3.z * enemy.speed * speedMultiplier;
     
     if (gameState.unlockedEnemyBehaviors.jumping) {
         for (const obs of obstacles) {

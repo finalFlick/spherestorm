@@ -22,9 +22,12 @@ export function resetLastShot() {
     lastShot = 0;
 }
 
+// Player max shoot range
+const MAX_PROJECTILE_RANGE = 20;
+
 // Vertical aim lock-on helper
 function getNearestEnemies(count, maxRange) {
-    maxRange = maxRange || 35;
+    maxRange = maxRange || MAX_PROJECTILE_RANGE;
     const currentBoss = getCurrentBoss();
     const allTargets = [...enemies];
     if (currentBoss) allTargets.push(currentBoss);
@@ -71,6 +74,7 @@ export function shootProjectile() {
         projectile.velocity = direction.clone().multiplyScalar(gameState.stats.projectileSpeed);
         projectile.damage = gameState.stats.damage;
         projectile.life = 120;
+        projectile.spawnPos = player.position.clone();  // Track spawn position for range limit
         
         scene.add(projectile);
         projectiles.push(projectile);
@@ -83,6 +87,19 @@ export function updateProjectiles(delta) {
         const proj = projectiles[i];
         proj.position.add(proj.velocity);
         proj.life--;
+        
+        // Range limit check - remove projectiles that traveled too far
+        if (proj.spawnPos) {
+            const distTraveled = proj.position.distanceTo(proj.spawnPos);
+            if (distTraveled > MAX_PROJECTILE_RANGE) {
+                proj.geometry.dispose();
+                proj.material.dispose();
+                scene.remove(proj);
+                projectiles.splice(i, 1);
+                continue;
+            }
+        }
+        
         let hit = false;
         
         // Check enemy hits
