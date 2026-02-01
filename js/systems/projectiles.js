@@ -11,10 +11,13 @@ import {
 import { player } from '../entities/player.js';
 import { handleEnemyDeath } from '../entities/enemies.js';
 import { killBoss } from '../entities/boss.js';
-import { spawnParticle } from '../effects/particles.js';
+import { spawnParticle, spawnShieldHitVFX, spawnShieldBreakVFX } from '../effects/particles.js';
 import { spawnXpGem, spawnHeart } from './pickups.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from './damage.js';
 import { DAMAGE_COOLDOWN, HEART_DROP_CHANCE, HEART_HEAL } from '../config/constants.js';
+import { triggerSlowMo, triggerScreenFlash, createExposedVFX } from './visualFeedback.js';
+import { showTutorialCallout } from '../ui/hud.js';
+import { PulseMusic } from './pulseMusic.js';
 
 let lastShot = 0;
 
@@ -24,6 +27,116 @@ export function resetLastShot() {
 
 // Player max shoot range
 const MAX_PROJECTILE_RANGE = 20;
+
+// Object pool for projectiles - prevents memory leaks
+const PROJECTILE_POOL_SIZE = 60;
+const ENEMY_PROJECTILE_POOL_SIZE = 40;
+let projectilePool = [];
+let enemyProjectilePool = [];
+let poolInitialized = false;
+
+// Shared geometry and materials for all projectiles
+let sharedProjectileGeometry = null;
+let sharedProjectileMaterial = null;
+let sharedEnemyProjectileGeometry = null;
+let sharedEnemyProjectileMaterial = null;
+
+export function initProjectilePool() {
+    if (poolInitialized) return;
+    
+    // Create shared geometries and materials once
+    sharedProjectileGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+    sharedProjectileMaterial = new THREE.MeshBasicMaterial({
+        color: 0x44ffff,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    sharedEnemyProjectileGeometry = new THREE.SphereGeometry(0.12, 6, 6);
+    sharedEnemyProjectileMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff6644,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    // Pre-create player projectile pool
+    for (let i = 0; i < PROJECTILE_POOL_SIZE; i++) {
+        const proj = new THREE.Mesh(sharedProjectileGeometry, sharedProjectileMaterial);
+        proj.visible = false;
+        proj.active = false;
+        proj.velocity = new THREE.Vector3();
+        proj.spawnPos = new THREE.Vector3();
+        scene.add(proj);
+        projectilePool.push(proj);
+    }
+    
+    // Pre-create enemy projectile pool
+    for (let i = 0; i < ENEMY_PROJECTILE_POOL_SIZE; i++) {
+        const proj = new THREE.Mesh(sharedEnemyProjectileGeometry, sharedEnemyProjectileMaterial);
+        proj.visible = false;
+        proj.active = false;
+        proj.velocity = new THREE.Vector3();
+        scene.add(proj);
+        enemyProjectilePool.push(proj);
+    }
+    
+    poolInitialized = true;
+}
+
+function getNextPlayerProjectile() {
+    // Find inactive projectile
+    for (const proj of projectilePool) {
+        if (!proj.active) {
+            proj.active = true;
+            proj.visible = true;
+            return proj;
+        }
+    }
+    // Pool exhausted - reuse oldest
+    const proj = projectilePool[0];
+    projectiles.splice(projectiles.indexOf(proj), 1);
+    proj.active = true;
+    proj.visible = true;
+    return proj;
+}
+
+function getNextEnemyProjectile() {
+    // Find inactive projectile
+    for (const proj of enemyProjectilePool) {
+        if (!proj.active) {
+            proj.active = true;
+            proj.visible = true;
+            return proj;
+        }
+    }
+    // Pool exhausted - reuse oldest
+    const proj = enemyProjectilePool[0];
+    enemyProjectiles.splice(enemyProjectiles.indexOf(proj), 1);
+    proj.active = true;
+    proj.visible = true;
+    return proj;
+}
+
+function returnProjectileToPool(proj) {
+    proj.active = false;
+    proj.visible = false;
+    proj.life = 0;
+}
+
+export function spawnEnemyProjectileFromPool(fromPosition, targetPosition, damage) {
+    if (!poolInitialized) initProjectilePool();
+    
+    const projectile = getNextEnemyProjectile();
+    
+    projectile.position.copy(fromPosition);
+    tempVec3.subVectors(targetPosition, fromPosition).normalize();
+    projectile.velocity.copy(tempVec3).multiplyScalar(0.3);
+    projectile.damage = damage;
+    projectile.life = 150;
+    
+    enemyProjectiles.push(projectile);
+    return projectile;
+}
 
 // Vertical aim lock-on helper
 function getNearestEnemies(count, maxRange) {
@@ -45,6 +158,8 @@ function getNearestEnemies(count, maxRange) {
 }
 
 export function shootProjectile() {
+    if (!poolInitialized) initProjectilePool();
+    
     const now = Date.now();
     const fireRate = 500 / gameState.stats.attackSpeed;
     if (now - lastShot < fireRate) return;
@@ -56,14 +171,7 @@ export function shootProjectile() {
     
     for (let i = 0; i < projectileCount; i++) {
         const target = targets[i % targets.length];
-        const projectile = new THREE.Mesh(
-            new THREE.SphereGeometry(0.15, 8, 8),
-            new THREE.MeshBasicMaterial({
-                color: 0x44ffff,
-                transparent: true,
-                opacity: 0.9
-            })
-        );
+        const projectile = getNextPlayerProjectile();
         
         projectile.position.copy(player.position);
         projectile.position.y += 0.5;
@@ -71,12 +179,11 @@ export function shootProjectile() {
         // Vertical aim lock-on: target enemy center
         tempVec3.copy(target.position);
         const direction = tempVec3_2.subVectors(tempVec3, projectile.position).normalize();
-        projectile.velocity = direction.clone().multiplyScalar(gameState.stats.projectileSpeed);
+        projectile.velocity.copy(direction).multiplyScalar(gameState.stats.projectileSpeed);
         projectile.damage = gameState.stats.damage;
         projectile.life = 120;
-        projectile.spawnPos = player.position.clone();  // Track spawn position for range limit
+        projectile.spawnPos.copy(player.position);  // Track spawn position for range limit
         
-        scene.add(projectile);
         projectiles.push(projectile);
     }
 }
@@ -92,9 +199,7 @@ export function updateProjectiles(delta) {
         if (proj.spawnPos) {
             const distTraveled = proj.position.distanceTo(proj.spawnPos);
             if (distTraveled > MAX_PROJECTILE_RANGE) {
-                proj.geometry.dispose();
-                proj.material.dispose();
-                scene.remove(proj);
+                returnProjectileToPool(proj);
                 projectiles.splice(i, 1);
                 continue;
             }
@@ -108,8 +213,45 @@ export function updateProjectiles(delta) {
             const hitboxSize = enemy.baseSize * enemy.scale.x * 0.85;
             
             if (proj.position.distanceTo(enemy.position) < hitboxSize + 0.2) {
-                enemy.health -= proj.damage * (1 - (enemy.damageReduction || 0));
-                spawnParticle(proj.position, 0xff4444, 2);
+                let damageDealt = proj.damage * (1 - (enemy.damageReduction || 0));
+                
+                // Check for shield
+                if (enemy.shieldHP > 0) {
+                    // First time hitting shield - show tutorial
+                    showTutorialCallout('shield', 'Break shields first!', 2000);
+                    
+                    enemy.shieldHP -= damageDealt;
+                    spawnShieldHitVFX(proj.position, enemy.baseColor);
+                    PulseMusic.onShieldHit();
+                    
+                    // Shield break
+                    if (enemy.shieldHP <= 0) {
+                        enemy.shieldBroken = true;
+                        spawnShieldBreakVFX(enemy.position, 0x4488ff);
+                        PulseMusic.onShieldBreak();
+                        triggerSlowMo(5, 0.3);
+                        triggerScreenFlash(0x4488ff, 6);
+                        
+                        // Brief stun (12 frames = 200ms)
+                        enemy.stunned = true;
+                        enemy.stunTimer = 12;
+                        
+                        // Remove shield visual
+                        if (enemy.shieldMesh) {
+                            enemy.remove(enemy.shieldMesh);
+                            enemy.shieldMesh = null;
+                        }
+                    }
+                } else {
+                    // Normal damage
+                    enemy.health -= damageDealt;
+                    spawnParticle(proj.position, 0xff4444, 2);
+                    
+                    // Track damage dealt for combat stats
+                    if (gameState.combatStats) {
+                        gameState.combatStats.damageDealt += damageDealt;
+                    }
+                }
                 
                 // Shrink on damage
                 const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
@@ -120,16 +262,56 @@ export function updateProjectiles(delta) {
                 if (enemyMat && enemyMat.emissive) {
                     enemyMat.emissive.setHex(0xffffff);
                     enemyMat.emissiveIntensity = 1;
+                    // Capture references to avoid stale closure issues
+                    const matCapture = enemyMat;
+                    const colorCapture = enemy.baseColor;
+                    const enemyCapture = enemy;
                     setTimeout(() => {
-                        if (enemyMat && enemyMat.emissive) {
-                            enemyMat.emissive.setHex(enemy.baseColor);
-                            enemyMat.emissiveIntensity = 0.3;
+                        // Guard: enemy may have been killed/removed during flash
+                        if (enemyCapture && 
+                            enemyCapture.parent && 
+                            matCapture && 
+                            matCapture.emissive &&
+                            !matCapture.disposed) {
+                            try {
+                                matCapture.emissive.setHex(colorCapture);
+                                matCapture.emissiveIntensity = 0.3;
+                            } catch (e) {
+                                // Enemy disposed during callback - safely ignore
+                            }
                         }
                     }, 50);
                 }
                 
                 // Check death
                 if (enemy.health <= 0) {
+                    // Check if this was a boss minion
+                    if (enemy.isBossMinion && enemy.parentBoss) {
+                        const boss = enemy.parentBoss;
+                        const index = boss.summonedMinions.indexOf(enemy);
+                        if (index > -1) {
+                            boss.summonedMinions.splice(index, 1);
+                        }
+                        
+                        // Check if all minions dead - trigger exposed state
+                        if (boss.summonedMinions.length === 0 && boss.shieldActive) {
+                            boss.shieldActive = false;
+                            boss.isExposed = true;
+                            boss.exposedTimer = boss.exposedConfig.duration;
+                            
+                            // Shield shatter VFX and audio
+                            if (boss.shieldMesh) {
+                                boss.shieldMesh.visible = false;
+                            }
+                            spawnShieldBreakVFX(boss.position, 0x4488ff);
+                            PulseMusic.onBossShieldBreak();
+                            PulseMusic.onBossExposed();
+                            
+                            // Create exposed VFX
+                            boss.exposedVFX = createExposedVFX(boss);
+                        }
+                    }
+                    
                     handleEnemyDeath(enemy);
                     
                     spawnXpGem(enemy.position, enemy.xpValue);
@@ -141,13 +323,12 @@ export function updateProjectiles(delta) {
                     }
                     
                     // Cleanup - handle both Mesh and Group enemies
+                    // NOTE: Don't dispose geometry (it's cached/shared), only materials
                     if (enemy.isGroup || enemy.type === 'Group') {
                         enemy.traverse(child => {
-                            if (child.geometry) child.geometry.dispose();
                             if (child.material) child.material.dispose();
                         });
                     } else {
-                        if (enemy.geometry) enemy.geometry.dispose();
                         if (enemy.material) enemy.material.dispose();
                     }
                     scene.remove(enemy);
@@ -165,17 +346,52 @@ export function updateProjectiles(delta) {
         // Check boss hit
         const currentBoss = getCurrentBoss();
         if (!hit && currentBoss && proj.position.distanceTo(currentBoss.position) < currentBoss.size * currentBoss.scale.x + 0.2) {
-            currentBoss.health -= proj.damage;
-            spawnParticle(proj.position, 0xff4444, 2);
+            let damageDealt = proj.damage;
+            
+            // Check for boss shield
+            if (currentBoss.shieldActive) {
+                // First time hitting boss shield - show tutorial
+                showTutorialCallout('bossShield', 'Kill minions to drop the shield!', 3000);
+                
+                // Boss shield reduces damage significantly
+                damageDealt *= (1 - 0.95); // 95% damage reduction
+                spawnShieldHitVFX(proj.position, currentBoss.baseColor);
+                PulseMusic.onShieldHit();
+            } else if (currentBoss.isExposed) {
+                // Exposed state - bonus damage
+                damageDealt *= 1.25;
+                spawnParticle(proj.position, 0xffdd44, 3);
+            } else {
+                spawnParticle(proj.position, 0xff4444, 2);
+            }
+            
+            currentBoss.health -= damageDealt;
+            
+            // Track damage dealt for combat stats
+            if (gameState.combatStats) {
+                gameState.combatStats.damageDealt += damageDealt;
+            }
             
             currentBoss.scale.setScalar(0.75 + 0.25 * Math.max(0, currentBoss.health / currentBoss.maxHealth));
             
             if (currentBoss.bodyMaterial) {
                 currentBoss.bodyMaterial.emissive.setHex(0xffffff);
+                // Capture references to avoid stale closure issues
                 const bossRef = currentBoss;
+                const matCapture = currentBoss.bodyMaterial;
+                const colorCapture = currentBoss.baseColor;
                 setTimeout(() => {
-                    if (bossRef && bossRef.bodyMaterial) {
-                        bossRef.bodyMaterial.emissive.setHex(bossRef.baseColor);
+                    // Guard: boss may have been killed during flash
+                    if (bossRef && 
+                        bossRef.parent && 
+                        matCapture && 
+                        matCapture.emissive &&
+                        !matCapture.disposed) {
+                        try {
+                            matCapture.emissive.setHex(colorCapture);
+                        } catch (e) {
+                            // Boss disposed during callback - safely ignore
+                        }
                     }
                 }, 50);
             }
@@ -189,9 +405,7 @@ export function updateProjectiles(delta) {
         
         // Remove projectile
         if (hit || proj.life <= 0) {
-            proj.geometry.dispose();
-            proj.material.dispose();
-            scene.remove(proj);
+            returnProjectileToPool(proj);
             projectiles.splice(i, 1);
         }
     }
@@ -206,21 +420,17 @@ export function updateProjectiles(delta) {
         if (proj.position.distanceTo(player.position) < 1) {
             const now = Date.now();
             if (now - lastDamageTime > DAMAGE_COOLDOWN * 0.5) {
-                takeDamage(proj.damage);
+                takeDamage(proj.damage, 'Enemy Projectile', 'projectile');
                 setLastDamageTime(now);
             }
-            proj.geometry.dispose();
-            proj.material.dispose();
-            scene.remove(proj);
+            returnProjectileToPool(proj);
             enemyProjectiles.splice(i, 1);
             continue;
         }
         
         // Remove expired
         if (proj.life <= 0) {
-            proj.geometry.dispose();
-            proj.material.dispose();
-            scene.remove(proj);
+            returnProjectileToPool(proj);
             enemyProjectiles.splice(i, 1);
         }
     }
