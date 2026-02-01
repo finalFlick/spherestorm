@@ -5,6 +5,7 @@ import { obstacles, hazardZones, tempVec3, tempVec3_2, tempVec3_3 } from '../cor
 import { PLAYER_JUMP_VELOCITY, PLAYER_GRAVITY, BOUNCE_FACTORS, TRAIL_SPAWN_DISTANCE } from '../config/constants.js';
 import { spawnParticle } from '../effects/particles.js';
 import { spawnTrail, lastTrailPos, setLastTrailPos } from '../effects/trail.js';
+import { takeDamage } from '../systems/damage.js';
 
 export let player = null;
 export let isDashing = false;
@@ -201,12 +202,22 @@ export function updatePlayer(delta) {
         setLastTrailPos(player.position.clone());
     }
     
-    // Hazard damage - handled directly here to avoid circular import
+    // Hazard damage - frame-based for consistent behavior with slow-mo/lag
     for (const hz of hazardZones) {
         const dx = player.position.x - hz.position.x;
         const dz = player.position.z - hz.position.z;
         if (Math.sqrt(dx * dx + dz * dz) < hz.radius && player.position.y < 1.5) {
-            gameState.health -= hz.damagePerFrame;
+            // Increment frame counter while in hazard
+            hz.tickTimer++;
+            
+            // Apply damage every N frames to prevent micro-ticks
+            if (hz.tickTimer >= hz.damageTickInterval) {
+                takeDamage(hz.damagePerTick, 'Hazard Zone', 'hazard');
+                hz.tickTimer = 0;
+            }
+        } else {
+            // Reset timer when player exits hazard
+            hz.tickTimer = 0;
         }
     }
     

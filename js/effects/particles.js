@@ -397,3 +397,46 @@ export function resetParticles() {
     }
     poolIndex = 0;
 }
+
+// ==================== SHIELD VFX ====================
+
+export function spawnShieldHitVFX(position, color) {
+    // Spark effect when hitting shield
+    for (let i = 0; i < 4; i++) {
+        const p = getNextParticle();
+        p.position.copy(position);
+        p.velocity.set(
+            (Math.random() - 0.5) * 0.2,
+            Math.random() * 0.15,
+            (Math.random() - 0.5) * 0.2
+        );
+        p.life = 15;
+        p.maxLife = 15;
+        p.material.color.setHex(0x4488ff); // Shield blue
+        p.material.opacity = 0.8;
+        p.visible = true;
+        p.vfxType = 'sparkRing';
+        p.scale.setScalar(0.4);
+    }
+}
+
+export function spawnShieldBreakVFX(position, color) {
+    // Large shatter effect
+    for (let i = 0; i < 20; i++) {
+        const p = getNextParticle();
+        const angle = (i / 20) * Math.PI * 2;
+        p.position.copy(position);
+        p.velocity.set(
+            Math.cos(angle) * 0.4,
+            0.2 + Math.random() * 0.2,
+            Math.sin(angle) * 0.4
+        );
+        p.life = 30;
+        p.maxLife = 30;
+        p.material.color.setHex(color);
+        p.material.opacity = 1;
+        p.visible = true;
+        p.vfxType = 'shatter';
+        p.scale.set(0.3 + Math.random() * 0.3, 0.8, 0.2);
+    }
+}
