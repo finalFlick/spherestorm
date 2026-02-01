@@ -92,36 +92,47 @@ export function updateProjectiles(delta) {
             
             if (proj.position.distanceTo(enemy.position) < hitboxSize + 0.2) {
                 enemy.health -= proj.damage * (1 - (enemy.damageReduction || 0));
-                spawnParticle(proj.position, 0xff4444, 3);
+                spawnParticle(proj.position, 0xff4444, 2);
                 
                 // Shrink on damage
                 const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
                 enemy.scale.setScalar(0.65 + 0.35 * healthPercent);
                 
-                // Hit flash
-                enemy.material.emissive.setHex(0xffffff);
-                enemy.material.emissiveIntensity = 1;
-                setTimeout(() => {
-                    if (enemy.material) {
-                        enemy.material.emissive.setHex(enemy.baseColor);
-                        enemy.material.emissiveIntensity = 0.3;
-                    }
-                }, 50);
+                // Hit flash - handle both Mesh and Group enemies
+                const enemyMat = enemy.baseMaterial || enemy.material;
+                if (enemyMat && enemyMat.emissive) {
+                    enemyMat.emissive.setHex(0xffffff);
+                    enemyMat.emissiveIntensity = 1;
+                    setTimeout(() => {
+                        if (enemyMat && enemyMat.emissive) {
+                            enemyMat.emissive.setHex(enemy.baseColor);
+                            enemyMat.emissiveIntensity = 0.3;
+                        }
+                    }, 50);
+                }
                 
                 // Check death
                 if (enemy.health <= 0) {
                     handleEnemyDeath(enemy);
                     
                     spawnXpGem(enemy.position, enemy.xpValue);
-                    spawnParticle(enemy.position, enemy.baseColor, 10);
+                    spawnParticle(enemy.position, enemy.baseColor, 5);
                     
                     // Heart drop
                     if (Math.random() < (enemy.isElite ? HEART_DROP_CHANCE.elite : HEART_DROP_CHANCE.normal)) {
                         spawnHeart(enemy.position.clone(), enemy.isElite ? HEART_HEAL.elite : HEART_HEAL.normal);
                     }
                     
-                    enemy.geometry.dispose();
-                    enemy.material.dispose();
+                    // Cleanup - handle both Mesh and Group enemies
+                    if (enemy.isGroup || enemy.type === 'Group') {
+                        enemy.traverse(child => {
+                            if (child.geometry) child.geometry.dispose();
+                            if (child.material) child.material.dispose();
+                        });
+                    } else {
+                        if (enemy.geometry) enemy.geometry.dispose();
+                        if (enemy.material) enemy.material.dispose();
+                    }
                     scene.remove(enemy);
                     enemies.splice(j, 1);
                     
@@ -138,7 +149,7 @@ export function updateProjectiles(delta) {
         const currentBoss = getCurrentBoss();
         if (!hit && currentBoss && proj.position.distanceTo(currentBoss.position) < currentBoss.size * currentBoss.scale.x + 0.2) {
             currentBoss.health -= proj.damage;
-            spawnParticle(proj.position, 0xff4444, 3);
+            spawnParticle(proj.position, 0xff4444, 2);
             
             currentBoss.scale.setScalar(0.75 + 0.25 * Math.max(0, currentBoss.health / currentBoss.maxHealth));
             
@@ -152,7 +163,7 @@ export function updateProjectiles(delta) {
                 }, 50);
             }
             
-            if (currentBoss.health <= 0) {
+            if (currentBoss.health <= 0 && !currentBoss.isDying) {
                 killBoss();
             }
             
