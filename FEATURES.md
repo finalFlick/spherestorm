@@ -52,7 +52,7 @@ SPHERESTORM is an **arcade-style score runner** with:
 #### Arena Mastery Badges (Persistent)
 | Badge | Icon | Arena | Boss |
 |-------|------|-------|------|
-| Initiate | 🏆 | 1 | The Gatekeeper |
+| Initiate | 🏆 | 1 | Red Puffer King |
 | Bulwark Breaker | 🛡️ | 2 | The Monolith |
 | Ascension Adept | ⬆️ | 3 | The Ascendant |
 | Platform Knight | 👑 | 4 | The Overgrowth |
@@ -89,7 +89,7 @@ SPHERESTORM is an **arcade-style score runner** with:
 **Enemy Types:**
 | Type | Behavior | Min Arena |
 |------|----------|-----------|
-| Grunt | Basic chase AI | 1 |
+| Red Puffer | Basic chase AI | 1 |
 | Shooter | Maintains distance, fires projectiles | 1 |
 | Shielded | 50% damage reduction | 1 |
 | Fast Bouncer | Bounces off walls, slight homing | 2 |
@@ -104,7 +104,7 @@ Bosses are **puzzle tests** of arena mechanics, not just bullet sponges.
 
 | Boss | Arena | Mechanics Tested | Puzzle Element |
 |------|-------|------------------|----------------|
-| The Gatekeeper | 1 | Movement, dodging | Charge attack timing, minion management |
+| Red Puffer King | 1 | Movement, dodging | Charge attack timing, minion management |
 | The Monolith | 2 | Cover usage | Hazard avoidance, spawn control |
 | The Ascendant | 3 | Spatial awareness | Predict teleport patterns |
 | The Overgrowth | 4 | Platform control | Height management, split phase |

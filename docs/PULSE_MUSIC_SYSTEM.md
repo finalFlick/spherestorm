@@ -39,7 +39,7 @@ ARENA_CONFIG = {
 #### Boss Configurations (6 Bosses)
 | Arena | Boss Name | AI Type | Musical Identity |
 |-------|-----------|---------|------------------|
-| 1 | THE GATEKEEPER | `pillarGuardian` | Stoic, ritualistic |
+| 1 | RED PUFFER KING | `pillarGuardian` | Stoic, ritualistic |
 | 2 | THE MONOLITH | `slimeQueen` | Organic, pulsating |
 | 3 | THE ASCENDANT | `teleportingTyrant` | Glitchy, unpredictable |
 | 4 | THE OVERGROWTH | `balloonKing` | Swelling, ominous |
@@ -370,7 +370,7 @@ interface MusicProfile {
 
 ### Boss-Specific Musical Behaviors
 
-#### THE GATEKEEPER (Arena 1)
+#### RED PUFFER KING (Arena 1)
 - **Charge Attack**: Music cuts to silence → impact on hit
 - **Summon**: Each spawned enemy adds a voice to the choir
 - **Cooldown**: Sustained organ note

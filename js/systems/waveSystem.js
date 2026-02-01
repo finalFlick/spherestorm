@@ -2,8 +2,9 @@ import { gameState } from '../core/gameState.js';
 import { enemies, getCurrentBoss } from '../core/entities.js';
 import { player } from '../entities/player.js';
 import { spawnWaveEnemy } from '../entities/enemies.js';
-import { spawnBoss } from '../entities/boss.js';
-import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE } from '../config/constants.js';
+import { spawnBoss, spawnIntroMinions, triggerDemoAbility, endDemoMode, prepareBossForCutscene, endCutsceneAndRepositionPlayer } from '../entities/boss.js';
+import { clearAllPickups, updateArenaPortal, clearArenaPortal } from './pickups.js';
+import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { generateArena } from '../arena/generator.js';
@@ -17,8 +18,10 @@ import {
     showUnlockNotification,
     showBadgeUnlock,
     showModifierAnnouncement,
+    showTutorialCallout,
     updateUI 
 } from '../ui/hud.js';
+import { scene } from '../core/scene.js';
 import { startCinematic, triggerSlowMo, endCinematic } from './visualFeedback.js';
 
 // Timing constants (in frames at 60fps) - 3x longer for readability
@@ -380,22 +383,97 @@ function handleBossIntro() {
         showBossAnnouncement();
         PulseMusic.onBossStart(gameState.currentArena);
         gameState.announcementPaused = true;  // Pause during announcement
+        gameState.bossIntroDemoPhase = 0;     // Track demo sequence progress
+        gameState.introMinions = [];           // Track demo minions for cleanup
     }
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > BOSS_INTRO_FRAMES) {
+    // Phase 1: Wait for announcement, then spawn boss
+    if (gameState.waveTimer === BOSS_INTRO_FRAMES) {
+        // Clear any remaining pickups before boss fight
+        clearAllPickups();
+        
         const boss = spawnBoss(gameState.currentArena);
+        gameState.currentBossRef = boss;  // Store reference for demo sequence
+        hideBossAnnouncement();
+        
+        // Trigger cinematic camera focus on boss
+        if (boss) {
+            // Prepare boss for cutscene (disable AI, ensure safe positioning)
+            prepareBossForCutscene(boss);
+            
+            // Extended cinematic duration for Arena 1 demo sequence
+            const cinematicDuration = (gameState.currentArena === 1) 
+                ? BOSS_INTRO_TOTAL_DURATION 
+                : BOSS_INTRO_CINEMATIC_DURATION;
+            startCinematic(boss, cinematicDuration, true);
+            triggerSlowMo(BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE);
+        }
+    }
+    
+    // Boss 1 (Arena 1) Demo Sequence - spawn minions, then demo charge
+    if (gameState.currentArena === 1 && gameState.waveTimer > BOSS_INTRO_FRAMES) {
+        const framesSinceSpawn = gameState.waveTimer - BOSS_INTRO_FRAMES;
+        const boss = gameState.currentBossRef || getCurrentBoss();
+        
+        // Demo Phase 1: Spawn intro minions
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.MINION_SPAWN_DELAY && boss) {
+            gameState.introMinions = spawnIntroMinions(boss, 3);
+            showTutorialCallout('introSummon', 'The boss can summon minions!', 2000);
+            gameState.bossIntroDemoPhase = 1;
+        }
+        
+        // Demo Phase 2: Despawn intro minions (they fade out)
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.MINION_DESPAWN_DELAY) {
+            // Remove intro minions from scene
+            if (gameState.introMinions && gameState.introMinions.length > 0) {
+                for (const minion of gameState.introMinions) {
+                    if (minion && minion.parent) {
+                        scene.remove(minion);
+                        // Also remove from enemies array
+                        const idx = enemies.indexOf(minion);
+                        if (idx !== -1) enemies.splice(idx, 1);
+                    }
+                }
+                gameState.introMinions = [];
+            }
+            gameState.bossIntroDemoPhase = 2;
+        }
+        
+        // Demo Phase 3: Trigger demo charge
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_DELAY && boss) {
+            triggerDemoAbility(boss, 'charge');
+            showTutorialCallout('introCharge', 'Watch for the charge telegraph - dodge sideways!', 2500);
+            gameState.bossIntroDemoPhase = 3;
+        }
+        
+        // Demo Complete: Transition to combat
+        if (framesSinceSpawn >= BOSS1_INTRO_DEMO.SEQUENCE_END) {
+            if (boss) {
+                endDemoMode(boss);
+                // Safely reposition player and resume boss AI
+                endCutsceneAndRepositionPlayer(boss);
+            }
+            gameState.bossActive = true;
+            gameState.waveState = WAVE_STATE.BOSS_ACTIVE;
+            gameState.waveTimer = 0;
+            gameState.announcementPaused = false;
+            gameState.bossIntroDemoPhase = 0;
+            gameState.currentBossRef = null;
+            return;
+        }
+    }
+    // Non-Arena 1 bosses: Immediate transition (existing behavior)
+    else if (gameState.currentArena !== 1 && gameState.waveTimer > BOSS_INTRO_FRAMES) {
+        const boss = gameState.currentBossRef || getCurrentBoss();
+        if (boss) {
+            // Safely reposition player and resume boss AI
+            endCutsceneAndRepositionPlayer(boss);
+        }
         gameState.bossActive = true;
         gameState.waveState = WAVE_STATE.BOSS_ACTIVE;
         gameState.waveTimer = 0;
-        gameState.announcementPaused = false;  // Unpause when announcement ends
-        hideBossAnnouncement();
-        
-        // Trigger cinematic camera focus on boss with slow-mo
-        if (boss) {
-            startCinematic(boss, BOSS_INTRO_CINEMATIC_DURATION, true);
-            triggerSlowMo(BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE);
-        }
+        gameState.announcementPaused = false;
     }
 }
 
@@ -419,9 +497,22 @@ function handleBossDefeated() {
     }
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > BOSS_DEFEATED_FRAMES) {
+    // Final boss (Arena 6): Auto-transition after celebration (no portal needed - game ends)
+    const isFinalBoss = gameState.currentArena === 6;
+    if (isFinalBoss && gameState.waveTimer > BOSS_DEFEATED_FRAMES * 3) {
+        // Extended celebration time for final boss victory
         gameState.waveState = WAVE_STATE.ARENA_TRANSITION;
         gameState.waveTimer = 0;
+        return;
+    }
+    
+    // Other arenas: Wait for player to enter portal
+    // Portal is spawned in killBoss() with a delay
+    // updateArenaPortal() handles collision detection and triggers ARENA_TRANSITION
+    if (!isFinalBoss && gameState.waveTimer > BOSS_DEFEATED_FRAMES) {
+        // Update portal animation and check for player entry
+        // triggerPortalTransition() in pickups.js sets waveState to ARENA_TRANSITION
+        updateArenaPortal();
     }
 }
 
@@ -429,6 +520,9 @@ function handleArenaTransition() {
     gameState.waveTimer++;
     
     if (gameState.waveTimer > ARENA_TRANSITION_FRAMES) {
+        // Clear portal before transitioning
+        clearArenaPortal();
+        
         gameState.currentArena++;
         gameState.currentWave = 1;
         generateArena(gameState.currentArena);

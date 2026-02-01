@@ -269,15 +269,21 @@
         #close-roster:hover { border-color: #ffdd44; color: #ffdd44; }
         
         /* Pause menu buttons */
-        #pause-roster-btn, #pause-main-menu-btn { margin-top: 20px; padding: 10px 25px; font-size: 14px; background: transparent; border: 2px solid #666; border-radius: 8px; cursor: pointer; color: #aaa; transition: all 0.3s ease; margin-left: 10px; }
-        #pause-roster-btn:hover, #pause-main-menu-btn:hover { border-color: #ffdd44; color: #ffdd44; }
+        #pause-roster-btn, #pause-main-menu-btn, #pause-debug-btn { margin-top: 20px; padding: 10px 25px; font-size: 14px; background: transparent; border: 2px solid #666; border-radius: 8px; cursor: pointer; color: #aaa; transition: all 0.3s ease; margin-left: 10px; }
+        #pause-roster-btn:hover, #pause-main-menu-btn:hover, #pause-debug-btn:hover { border-color: #ffdd44; color: #ffdd44; }
         #pause-main-menu-btn { border-color: #ff4444; color: #ff4444; }
         #pause-main-menu-btn:hover { border-color: #ff6666; color: #ff6666; }
+        #pause-debug-btn { border-color: #ff8800; color: #ff8800; display: none; }
+        #pause-debug-btn:hover { border-color: #ffaa44; color: #ffaa44; }
+        
+        /* Version Display (debug only) */
+        #version-display { position: fixed; bottom: 10px; right: 10px; font-size: 12px; color: rgba(255, 255, 255, 0.4); font-family: monospace; z-index: 1000; pointer-events: none; display: none; }
     </style>
 </head>
 <body>
     <div id="game-container">
         <div id="damage-flash"></div>
+        <div id="version-display"></div>
         
         <!-- HUD -->
         <div id="hud">
@@ -349,7 +355,7 @@
         </div>
         
         <!-- Menus -->
-        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button><button id="pause-main-menu-btn">Main Menu</button></div>
+        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button><button id="pause-debug-btn">Debug</button><button id="pause-main-menu-btn">Main Menu</button></div>
         
         <div id="upgrade-menu">
             <h2>LEVEL UP!</h2>
@@ -443,7 +449,7 @@
             </div>
             
             <div class="debug-section">
-                <h3>Spawn Boss</h3>
+                <h3>Start Boss Battle</h3>
                 <div class="debug-row">
                     <span class="debug-label">Boss Type:</span>
                     <select id="debug-boss-select" class="debug-select">
@@ -454,7 +460,7 @@
                         <option value="5">Boss 5 - The Burrower</option>
                         <option value="6">Boss 6 - Chaos Incarnate</option>
                     </select>
-                    <button id="debug-spawn-boss" class="debug-btn danger">Spawn Boss</button>
+                    <button id="debug-spawn-boss" class="debug-btn danger">Start Boss Battle</button>
                 </div>
             </div>
             

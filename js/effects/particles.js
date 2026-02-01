@@ -462,3 +462,38 @@ export function spawnShieldBreakVFX(position, color) {
         p.scale.set(0.3 + Math.random() * 0.3, 0.8, 0.2);
     }
 }
+
+// Bubble particle for porcupinefish charge trail
+export function spawnBubbleParticle(boss) {
+    if (!poolInitialized) initParticlePool();
+    if (!boss || !boss.chargeDirection) return;
+    
+    const p = getNextParticle();
+    
+    // Get position behind boss based on charge direction
+    const behindOffset = boss.chargeDirection.clone().multiplyScalar(-0.8);
+    behindOffset.y += 0.3;
+    
+    const pos = boss.position.clone().add(behindOffset);
+    
+    // Random offset for spread
+    pos.x += (Math.random() - 0.5) * 0.8;
+    pos.z += (Math.random() - 0.5) * 0.8;
+    
+    p.position.copy(pos);
+    
+    // Bubbles rise and drift slightly
+    p.velocity.set(
+        (Math.random() - 0.5) * 0.02,
+        0.03 + Math.random() * 0.02,
+        (Math.random() - 0.5) * 0.02
+    );
+    
+    p.life = 30;
+    p.maxLife = 30;
+    p.material.color.setHex(0x88ffff);  // Cyan bubble color
+    p.material.opacity = 0.7;
+    p.visible = true;
+    p.vfxType = 'bubble';
+    p.scale.setScalar(0.15 + Math.random() * 0.1);
+}

@@ -106,7 +106,7 @@ export const BADGES = {
         icon: '🏆',
         category: BADGE_CATEGORIES.ARENA,
         color: '#bronze',
-        description: 'Defeated The Gatekeeper',
+        description: 'Defeated the Red Puffer King',
         arena: 1,
         persistent: true
     },

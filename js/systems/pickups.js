@@ -1,10 +1,11 @@
 import { scene } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
-import { xpGems, hearts, tempVec3, obstacles } from '../core/entities.js';
+import { xpGems, hearts, tempVec3, obstacles, getArenaPortal, setArenaPortal } from '../core/entities.js';
 import { player } from '../entities/player.js';
-import { HEART_TTL, XP_GEM_TTL } from '../config/constants.js';
+import { HEART_TTL, XP_GEM_TTL, WAVE_STATE } from '../config/constants.js';
 import { spawnParticle } from '../effects/particles.js';
 import { levelUp } from '../ui/menus.js';
+import { triggerSlowMo, triggerScreenFlash } from './visualFeedback.js';
 
 // Get the surface height at a given X/Z position (checks platforms/obstacles)
 function getSurfaceHeight(x, z) {
@@ -188,4 +189,207 @@ export function updateHearts(delta) {
             hearts.splice(i, 1);
         }
     }
+}
+
+/**
+ * Clear all pickups from the arena (XP gems and hearts)
+ * Called when spawning a new boss or loading a new arena to prevent carryover
+ */
+export function clearAllPickups() {
+    // Clear XP gems
+    for (const gem of xpGems) {
+        if (gem.parent) {
+            scene.remove(gem);
+        }
+        if (gem.geometry) gem.geometry.dispose();
+        if (gem.material) gem.material.dispose();
+    }
+    xpGems.length = 0;
+    
+    // Clear hearts
+    for (const heart of hearts) {
+        if (heart.parent) {
+            scene.remove(heart);
+        }
+        heart.children.forEach(c => {
+            if (c.geometry) c.geometry.dispose();
+            if (c.material) c.material.dispose();
+        });
+    }
+    hearts.length = 0;
+}
+
+// ==================== ARENA PORTAL SYSTEM ====================
+// Portal spawns after boss defeat for player to progress to next arena
+
+const PORTAL_RADIUS = 2;
+const PORTAL_HEIGHT = 4;
+const PORTAL_COLLISION_RADIUS = 2.5;
+
+/**
+ * Spawn an arena portal at the given position
+ * Player must enter this portal to progress to the next arena
+ */
+export function spawnArenaPortal(position) {
+    // Clear any existing portal
+    clearArenaPortal();
+    
+    // Create portal group
+    const portal = new THREE.Group();
+    portal.position.copy(position);
+    portal.position.y = 0.1;  // Slightly above ground
+    
+    // Outer ring (torus)
+    const ringGeom = new THREE.TorusGeometry(PORTAL_RADIUS, 0.2, 16, 32);
+    const ringMat = new THREE.MeshStandardMaterial({
+        color: 0x00ffff,
+        emissive: 0x00ffff,
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.9
+    });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.rotation.x = Math.PI / 2;  // Lay flat
+    ring.position.y = 0.5;
+    portal.add(ring);
+    
+    // Inner glow (cylinder)
+    const glowGeom = new THREE.CylinderGeometry(PORTAL_RADIUS * 0.9, PORTAL_RADIUS * 0.9, 0.1, 32);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.5
+    });
+    const glow = new THREE.Mesh(glowGeom, glowMat);
+    glow.position.y = 0.5;
+    portal.add(glow);
+    
+    // Vertical beam effect
+    const beamGeom = new THREE.CylinderGeometry(0.3, 0.3, PORTAL_HEIGHT, 16);
+    const beamMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.4
+    });
+    const beam = new THREE.Mesh(beamGeom, beamMat);
+    beam.position.y = PORTAL_HEIGHT / 2;
+    portal.add(beam);
+    
+    // Particles orbiting the portal (decorative spheres)
+    const particleCount = 8;
+    portal.orbitParticles = [];
+    for (let i = 0; i < particleCount; i++) {
+        const particleGeom = new THREE.SphereGeometry(0.15, 8, 8);
+        const particleMat = new THREE.MeshBasicMaterial({
+            color: 0x88ffff,
+            transparent: true,
+            opacity: 0.8
+        });
+        const particle = new THREE.Mesh(particleGeom, particleMat);
+        particle.orbitAngle = (i / particleCount) * Math.PI * 2;
+        particle.orbitHeight = 0.5 + Math.random() * 2;
+        portal.orbitParticles.push(particle);
+        portal.add(particle);
+    }
+    
+    // Store references for animation
+    portal.ring = ring;
+    portal.glow = glow;
+    portal.beam = beam;
+    portal.spawnTime = Date.now();
+    portal.isPortal = true;
+    
+    scene.add(portal);
+    setArenaPortal(portal);
+    
+    return portal;
+}
+
+/**
+ * Update portal animation and check for player collision
+ * Returns true if player entered the portal
+ */
+export function updateArenaPortal() {
+    const portal = getArenaPortal();
+    if (!portal) return false;
+    
+    const time = Date.now() * 0.001;
+    
+    // Rotate the ring
+    if (portal.ring) {
+        portal.ring.rotation.z += 0.02;
+    }
+    
+    // Pulse the glow
+    if (portal.glow && portal.glow.material) {
+        portal.glow.material.opacity = 0.3 + Math.sin(time * 3) * 0.2;
+    }
+    
+    // Animate beam
+    if (portal.beam && portal.beam.material) {
+        portal.beam.material.opacity = 0.3 + Math.sin(time * 2) * 0.15;
+        portal.beam.rotation.y += 0.01;
+    }
+    
+    // Animate orbiting particles
+    if (portal.orbitParticles) {
+        for (const particle of portal.orbitParticles) {
+            particle.orbitAngle += 0.03;
+            particle.position.x = Math.cos(particle.orbitAngle) * (PORTAL_RADIUS * 0.7);
+            particle.position.z = Math.sin(particle.orbitAngle) * (PORTAL_RADIUS * 0.7);
+            particle.position.y = particle.orbitHeight + Math.sin(time * 2 + particle.orbitAngle) * 0.3;
+        }
+    }
+    
+    // Check player collision
+    if (player && player.position) {
+        const dist = player.position.distanceTo(portal.position);
+        if (dist < PORTAL_COLLISION_RADIUS) {
+            // Player entered portal - trigger transition
+            triggerPortalTransition();
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Clear the arena portal
+ */
+export function clearArenaPortal() {
+    const portal = getArenaPortal();
+    if (!portal) return;
+    
+    // Dispose geometries and materials
+    portal.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+    });
+    
+    scene.remove(portal);
+    setArenaPortal(null);
+}
+
+/**
+ * Trigger the portal transition effect and set wave state
+ */
+function triggerPortalTransition() {
+    // Visual feedback
+    triggerSlowMo(30, 0.3);
+    triggerScreenFlash(0x00ffff, 20);
+    
+    // Spawn particles at player
+    if (player && player.position) {
+        for (let i = 0; i < 20; i++) {
+            spawnParticle(player.position, 0x00ffff, 10);
+        }
+    }
+    
+    // Clear the portal
+    clearArenaPortal();
+    
+    // Set wave state to arena transition
+    gameState.waveState = WAVE_STATE.ARENA_TRANSITION;
+    gameState.waveTimer = 0;
 }

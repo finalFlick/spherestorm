@@ -5,7 +5,7 @@
 
 export const ENEMY_TYPES = {
     grunt: {
-        name: 'Grunt',
+        name: 'Red Puffer',
         size: 0.50,          // Standard
         health: 12,
         speed: 0.055,        // Faster (+57%)
@@ -15,11 +15,12 @@ export const ENEMY_TYPES = {
         behavior: 'chase',
         spawnWeight: 40,
         arenaIntro: 1,       // Introduced in Arena 1
+        usePorcupinefishMesh: true,  // Uses mini porcupinefish visual (like Boss 1)
         // Roster display fields
-        tagline: 'The Relentless Pursuer',
-        description: 'Basic infantry of the storm. Grunts mindlessly chase their targets, overwhelming through sheer numbers. What they lack in tactics, they make up for in persistence.',
+        tagline: 'Spawn of the King',
+        description: 'Tiny offspring of the Red Puffer King. These aggressive puffers swarm in numbers, overwhelming through sheer persistence. What they lack in size, they make up for in relentless pursuit.',
         behaviorText: 'Chases the player directly without stopping',
-        // Visual profile: steady glow (basic enemy)
+        // Visual profile: not used (porcupinefish mesh overrides)
         visualProfile: {
             type: 'glow',
             glowIntensity: 0.4,
@@ -261,7 +262,7 @@ export const ENEMY_TYPES = {
 };
 
 // Arena progression reference:
-// Arena 1: grunt only (learn basics)
+// Arena 1: Red Puffer only (learn basics)
 // Arena 2: + fastBouncer, splitter, shielded (learn dodging, priorities)
 // Arena 3: + shooter, shieldBreaker (learn ranged threats, charges)
 // Arena 4: + waterBalloon, teleporter (learn space control, prediction)
