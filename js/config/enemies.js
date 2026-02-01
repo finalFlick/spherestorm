@@ -40,8 +40,10 @@ export const ENEMY_TYPES = {
         behavior: 'shooter',
         shootRange: 15,
         shootCooldown: 2000,
-        spawnWeight: 25,
-        arenaIntro: 3,       // Introduced in Arena 3
+        spawnWeight: 0,      // DEMOTED: Boss minion only
+        arenaIntro: null,    // No longer introduced via arena progression
+        isBossMinion: true,  // NEW: Boss summon only
+        isEliteOnly: true,   // NEW: Elite variant only
         // Roster display fields
         tagline: 'Death From a Distance',
         description: 'Cowardly but deadly. Shooters prefer to engage from range, retreating when threatened. Their projectiles are slow but punishing if you ignore them.',
@@ -65,8 +67,10 @@ export const ENEMY_TYPES = {
         color: 0x4444ff,     // Deep blue - tanky
         xpValue: 3,
         behavior: 'chase',
-        damageReduction: 0.5,
-        spawnWeight: 15,
+        damageReduction: 0,  // Was 0.5, now shield replaces damage reduction
+        shieldHP: 20,        // NEW: Shield health pool
+        maxShieldHP: 20,
+        spawnWeight: 30,     // Increased from 15 (Arena 2 signature enemy)
         arenaIntro: 2,       // Introduced in Arena 2
         // Roster display fields
         tagline: 'The Walking Fortress',
@@ -93,17 +97,19 @@ export const ENEMY_TYPES = {
         color: 0xffff00,     // Pure yellow - fast
         xpValue: 3,
         behavior: 'bouncer',
-        spawnWeight: 10,
-        minArena: 2,
+        spawnWeight: 20,     // Increased from 10 (Arena 4 signature)
+        arenaIntro: 4,       // UPDATED: Now Arena 4 (was minArena: 2)
+        homingStrength: 0.0015, // Slightly increased from 0.001
         // Roster display fields
         tagline: 'Chaos in Motion',
         description: 'Hyperactive and unpredictable. Fast Bouncers ricochet off walls and obstacles like living pinballs, gradually homing toward their target. Their erratic paths make them hard to track.',
         behaviorText: 'Bounces off walls with slight homing toward player',
-        // Visual profile: bright glow trail
+        // Visual profile: enhanced bright glow trail for visibility
         visualProfile: {
             type: 'glow',
-            glowIntensity: 0.7,
-            pulseSpeed: 0.15
+            glowIntensity: 0.9,   // Increased from 0.7
+            pulseSpeed: 0.2,      // Increased from 0.15
+            trailEnabled: true    // NEW: add trail effect
         },
         movementSignature: 'squash',
         telegraph: null,
@@ -148,8 +154,9 @@ export const ENEMY_TYPES = {
         behavior: 'shieldBreaker',
         rushRange: 8,
         rushSpeed: 0.15,
-        spawnWeight: 8,
-        arenaIntro: 4,       // Introduced in Arena 4
+        spawnWeight: 0,      // DEMOTED: Elite variant only
+        arenaIntro: null,    // No longer introduced via arena progression
+        isEliteOnly: true,   // NEW: Elite variant only
         // Roster display fields
         tagline: 'The Charging Menace',
         description: 'Aggressive and deceptively patient. Shield Breakers approach calmly until you enter their rush range, then explode forward at devastating speed. Their high damage punishes careless positioning.',
@@ -176,8 +183,9 @@ export const ENEMY_TYPES = {
         growRate: 0.002,
         maxSize: 1.2,
         explosionRadius: 4,
-        spawnWeight: 4,
-        minArena: 4,         // GATED: Water balloons Arena 4+
+        spawnWeight: 0,      // DEMOTED: Boss minion only
+        arenaIntro: null,    // No longer introduced via arena progression
+        isBossMinion: true,  // NEW: Boss summon only (hazard spawner)
         // Roster display fields
         tagline: 'The Ticking Time Bomb',
         description: 'Slow but insidious. Water Balloons swell larger with each passing moment, eventually bursting into a damaging hazard zone. Kill them before they reach critical mass - or suffer the splash.',
@@ -232,9 +240,9 @@ export const ENEMY_TYPES = {
         hopSpeed: 0.4,       // Fast hop between pillars
         pauseDuration: 30,   // 0.5 second pause after landing (faster response)
         detectionRange: 6,   // Range to detect player on same pillar
-        spawnWeight: 0,      // Don't spawn via regular system - spawned on pillars directly
-        minArena: 2,
-        maxArena: 3,         // Only spawns in Arena 2-3 (pillar arenas)
+        spawnWeight: 25,     // UPDATED: Now spawns normally (Arena 3 signature)
+        arenaIntro: 3,       // UPDATED: Arena 3 signature enemy
+        maxArena: 4,         // Only spawns in Arena 3-4
         // Roster display fields
         tagline: 'No Safe Haven',
         description: 'Vigilant enforcers of the arena. Pillar Police patrol the high ground, leaping between pillar tops with alarming speed. Think you can camp on a pillar? Think again.',
