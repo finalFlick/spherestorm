@@ -1,108 +1,263 @@
 // Enemy type definitions with weighted spawning
+// Colors are distinct and saturated for easy identification
+// Visual profiles: glow/pulse/orbit effects only (smooth spheres, no geometry attachments)
+// Size bands: Swarm (0.25-0.35), Standard (0.45-0.55), Heavy (0.90-1.20)
+
 export const ENEMY_TYPES = {
     grunt: {
         name: 'Grunt',
-        size: 0.5,
+        size: 0.50,          // Standard
         health: 12,
         speed: 0.035,
         damage: 10,
-        color: 0xff4466,
+        color: 0xff2222,     // Bright red - basic threat
         xpValue: 1,
         behavior: 'chase',
-        spawnWeight: 40
+        spawnWeight: 40,
+        // Roster display fields
+        tagline: 'The Relentless Pursuer',
+        description: 'Basic infantry of the storm. Grunts mindlessly chase their targets, overwhelming through sheer numbers. What they lack in tactics, they make up for in persistence.',
+        behaviorText: 'Chases the player directly without stopping',
+        // Visual profile: steady glow (basic enemy)
+        visualProfile: {
+            type: 'glow',
+            glowIntensity: 0.4,
+            pulseSpeed: 0
+        },
+        movementSignature: 'sway',
+        telegraph: null,
+        deathVfx: { color: 0xff2222, count: 12, type: 'burst' }
     },
     shooter: {
         name: 'Shooter',
-        size: 0.45,
+        size: 0.45,          // Standard (smaller)
         health: 8,
         speed: 0.025,
         damage: 8,
-        color: 0x44ff66,
+        color: 0x22ff22,     // Bright green - ranged
         xpValue: 2,
         behavior: 'shooter',
         shootRange: 15,
         shootCooldown: 2000,
-        spawnWeight: 25
+        spawnWeight: 25,
+        minArena: 3,         // GATED: Shooters only Arena 3+
+        // Roster display fields
+        tagline: 'Death From a Distance',
+        description: 'Cowardly but deadly. Shooters prefer to engage from range, retreating when threatened. Their projectiles are slow but punishing if you ignore them.',
+        behaviorText: 'Maintains distance and fires projectiles every 2 seconds',
+        // Visual profile: pulsing glow when ready to fire
+        visualProfile: {
+            type: 'glow',
+            glowIntensity: 0.5,
+            pulseSpeed: 0.05
+        },
+        movementSignature: 'strafe',
+        telegraph: { type: 'flash', duration: 300, color: 0x88ff88 },
+        deathVfx: { color: 0x22ff22, count: 10, type: 'sparkRing' }
     },
     shielded: {
         name: 'Shielded',
-        size: 0.6,
+        size: 1.00,          // Heavy (bigger!)
         health: 30,
-        speed: 0.02,
+        speed: 0.032,        // Faster than before (was 0.02)
         damage: 12,
-        color: 0x6666ff,
+        color: 0x4444ff,     // Deep blue - tanky
         xpValue: 3,
         behavior: 'chase',
         damageReduction: 0.5,
-        spawnWeight: 15
+        spawnWeight: 15,
+        minArena: 2,         // GATED: Shielded from Arena 2+
+        // Roster display fields
+        tagline: 'The Walking Fortress',
+        description: 'Encased in hardened energy, Shielded enemies absorb half of all incoming damage. Slow but inevitable, they force you to commit resources or reposition.',
+        behaviorText: 'Chases with 50% damage reduction',
+        // Visual profile: orbiting particles (shield aura)
+        visualProfile: {
+            type: 'orbit',
+            orbitCount: 3,
+            orbitRadius: 0.5,
+            orbitSpeed: 0.05,   // Faster orbit (was 0.03)
+            glowIntensity: 0.4
+        },
+        movementSignature: 'stomp',
+        telegraph: null,
+        deathVfx: { color: 0x4444ff, count: 16, type: 'shatter' }
     },
     fastBouncer: {
         name: 'Fast Bouncer',
-        size: 0.35,
+        size: 0.28,          // Swarm (tiny!)
         health: 6,
         speed: 0.12,
         damage: 8,
-        color: 0xffff44,
+        color: 0xffff00,     // Pure yellow - fast
         xpValue: 3,
         behavior: 'bouncer',
         spawnWeight: 10,
-        minArena: 2
+        minArena: 2,
+        // Roster display fields
+        tagline: 'Chaos in Motion',
+        description: 'Hyperactive and unpredictable. Fast Bouncers ricochet off walls and obstacles like living pinballs, gradually homing toward their target. Their erratic paths make them hard to track.',
+        behaviorText: 'Bounces off walls with slight homing toward player',
+        // Visual profile: bright glow trail
+        visualProfile: {
+            type: 'glow',
+            glowIntensity: 0.7,
+            pulseSpeed: 0.15
+        },
+        movementSignature: 'squash',
+        telegraph: null,
+        deathVfx: { color: 0xffff00, count: 8, type: 'streak' }
     },
     splitter: {
         name: 'Splitter',
-        size: 0.7,
+        size: 1.10,          // Heavy (very big!)
         health: 20,
         speed: 0.03,
         damage: 10,
-        color: 0xff44ff,
+        color: 0xff00ff,     // Bright magenta - splits
         xpValue: 4,
         behavior: 'chase',
         onDeath: 'split',
         splitCount: 3,
         spawnWeight: 8,
-        minArena: 2
+        minArena: 2,
+        // Roster display fields
+        tagline: 'Death Breeds More Death',
+        description: 'A ticking time bomb of multiplication. When destroyed, Splitters fragment into three smaller, faster versions of themselves. Killing one is never the end.',
+        behaviorText: 'Chases player; splits into 3 smaller enemies on death',
+        // Visual profile: unstable pulsing (about to split)
+        visualProfile: {
+            type: 'pulse',
+            glowIntensity: 0.5,
+            pulseSpeed: 0.08,
+            pulseRange: 0.3
+        },
+        movementSignature: 'inertia',
+        telegraph: { type: 'crackGlow', duration: 400, color: 0xff88ff },
+        deathVfx: { color: 0xff00ff, count: 15, type: 'crackSplit' }
     },
     shieldBreaker: {
         name: 'Shield Breaker',
-        size: 0.55,
+        size: 0.55,          // Standard
         health: 15,
         speed: 0.04,
         damage: 18,
-        color: 0xff8844,
+        color: 0xff8800,     // Orange - aggressive
         xpValue: 4,
         behavior: 'shieldBreaker',
         rushRange: 8,
         rushSpeed: 0.15,
         spawnWeight: 8,
-        minArena: 3
+        minArena: 3,
+        // Roster display fields
+        tagline: 'The Charging Menace',
+        description: 'Aggressive and deceptively patient. Shield Breakers approach calmly until you enter their rush range, then explode forward at devastating speed. Their high damage punishes careless positioning.',
+        behaviorText: 'Charges at 4x speed when player is within 8 units',
+        // Visual profile: intensifying glow before charge
+        visualProfile: {
+            type: 'glow',
+            glowIntensity: 0.5,
+            pulseSpeed: 0
+        },
+        movementSignature: 'jitter',
+        telegraph: { type: 'compress', duration: 350, color: 0xffaa44 },
+        deathVfx: { color: 0xff8800, count: 14, type: 'shockCone' }
     },
     waterBalloon: {
         name: 'Water Balloon',
-        size: 0.4,
+        size: 0.40,          // Standard (grows to 1.2)
         health: 25,
         speed: 0.015,
         damage: 5,
-        color: 0x44ffff,
+        color: 0x00ffff,     // Cyan - grows/explodes
         xpValue: 6,
         behavior: 'waterBalloon',
         growRate: 0.002,
         maxSize: 1.2,
         explosionRadius: 4,
         spawnWeight: 4,
-        minArena: 3
+        minArena: 4,         // GATED: Water balloons Arena 4+
+        // Roster display fields
+        tagline: 'The Ticking Time Bomb',
+        description: 'Slow but insidious. Water Balloons swell larger with each passing moment, eventually bursting into a damaging hazard zone. Kill them before they reach critical mass - or suffer the splash.',
+        behaviorText: 'Grows over time; explodes into hazard zone at max size or on death',
+        // Visual profile: transparent + inner glow
+        visualProfile: {
+            type: 'transparent',
+            opacity: 0.6,
+            glowIntensity: 0.4,
+            pulseSpeed: 0.06
+        },
+        movementSignature: 'wobble',
+        telegraph: { type: 'pulse', duration: 500, color: 0x88ffff },
+        deathVfx: { color: 0x00ffff, count: 20, type: 'splash' }
     },
     teleporter: {
         name: 'Teleporter',
-        size: 0.45,
+        size: 0.42,          // Standard (smaller)
         health: 12,
         speed: 0.03,
         damage: 15,
-        color: 0xaa44ff,
+        color: 0x8800ff,     // Purple - warps
         xpValue: 5,
         behavior: 'teleporter',
         teleportCooldown: 3000,
         teleportRange: 8,
         spawnWeight: 4,
-        minArena: 4
+        minArena: 4,
+        // Roster display fields
+        tagline: 'Now You See Me...',
+        description: 'Masters of spatial manipulation. Teleporters blink to random positions near you every few seconds, making them frustratingly hard to pin down. Their unpredictable movement demands constant vigilance.',
+        behaviorText: 'Teleports to random position near player every 3 seconds',
+        // Visual profile: flickering/phasing glow
+        visualProfile: {
+            type: 'flicker',
+            glowIntensity: 0.6,
+            flickerSpeed: 0.2
+        },
+        movementSignature: 'stutter',
+        telegraph: { type: 'flicker', duration: 250, color: 0xaa66ff },
+        deathVfx: { color: 0x8800ff, count: 12, type: 'glitch' }
+    },
+    pillarPolice: {
+        name: 'Pillar Police',
+        size: 0.38,          // Small-medium, agile
+        health: 10,
+        speed: 0.06,         // Fast ground movement
+        damage: 12,
+        color: 0xffffff,     // White - stands out against dark pillars
+        xpValue: 4,
+        behavior: 'pillarHopper',
+        hopSpeed: 0.4,       // Fast hop between pillars
+        pauseDuration: 30,   // 0.5 second pause after landing (faster response)
+        detectionRange: 6,   // Range to detect player on same pillar
+        spawnWeight: 0,      // Don't spawn via regular system - spawned on pillars directly
+        minArena: 2,
+        maxArena: 3,         // Only spawns in Arena 2-3 (pillar arenas)
+        // Roster display fields
+        tagline: 'No Safe Haven',
+        description: 'Vigilant enforcers of the arena. Pillar Police patrol the high ground, leaping between pillar tops with alarming speed. Think you can camp on a pillar? Think again.',
+        behaviorText: 'Hops between pillar tops; aggressively pursues players who try to camp',
+        // Visual profile: flying orbiter (two spheres orbiting each other)
+        visualProfile: {
+            type: 'orbiter',
+            glowIntensity: 0.8,
+            orbitSpeed: 0.15,
+            orbitRadius: 0.5
+        },
+        movementSignature: 'orbiter',
+        telegraph: { type: 'crouch', duration: 200, color: 0xcccccc },
+        deathVfx: { color: 0xffffff, count: 10, type: 'burst' }
     }
 };
+
+// Arena progression reference:
+// Arena 1: grunt only (learn basics)
+// Arena 2: + fastBouncer, splitter, shielded (learn dodging, priorities)
+// Arena 3: + shooter, shieldBreaker (learn ranged threats, charges)
+// Arena 4: + waterBalloon, teleporter (learn space control, prediction)
+
+// Color discipline reference
+// Warm (red/orange/yellow): Touch/collision/burst threats
+// Cool (blue/cyan/purple): Durability/space manipulation
+// Green: Ranged/utility

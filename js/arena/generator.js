@@ -1,6 +1,7 @@
 import { scene, ground } from '../core/scene.js';
 import { obstacles, hazardZones, arenaWalls } from '../core/entities.js';
 import { ARENA_CONFIG } from '../config/arenas.js';
+import { cachePillarPositions } from '../entities/enemies.js';
 
 export function generateArena(arenaNumber) {
     clearArenaGeometry();
@@ -19,6 +20,9 @@ export function generateArena(arenaNumber) {
     if (ground && ground.material) {
         ground.material.color.setHex(arenaData.color);
     }
+    
+    // Cache pillar positions for pillar hopper enemies
+    cachePillarPositions();
 }
 
 export function clearArenaGeometry() {

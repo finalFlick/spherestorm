@@ -1,7 +1,7 @@
 import { gameState } from '../core/gameState.js';
 import { enemies, getCurrentBoss } from '../core/entities.js';
 import { player } from '../entities/player.js';
-import { spawnWaveEnemy } from '../entities/enemies.js';
+import { spawnWaveEnemy, spawnPillarPoliceOnAllPillars } from '../entities/enemies.js';
 import { spawnBoss } from '../entities/boss.js';
 import { WAVE_STATE } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
@@ -51,6 +51,11 @@ function handleWaveIntro() {
         gameState.enemiesToSpawn = Math.floor(base * scaling);
         gameState.waveEnemiesRemaining = gameState.enemiesToSpawn;
         gameState.lastWaveSpawn = 0;
+        
+        // Spawn Pillar Police on all pillars in Arena 2-3
+        if (gameState.currentArena >= 2 && gameState.currentArena <= 3) {
+            spawnPillarPoliceOnAllPillars();
+        }
         
         hideWaveAnnouncement();
     }
