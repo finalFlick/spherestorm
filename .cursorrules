@@ -1,10 +1,10 @@
-# SPHERESTORM Development Rules
+# MantaSphere Development Rules
 
-This document provides guidance for AI agents and developers working on the SPHERESTORM codebase.
+This document provides guidance for AI agents and developers working on the MantaSphere codebase.
 
 ## Game Identity
 
-SPHERESTORM is an **arcade-style score runner** built on these pillars:
+MantaSphere is an **arcade-style score runner** built on these pillars:
 
 1. **Progressive Complexity** - Arenas teach mechanics incrementally
 2. **Boss Puzzles** - Bosses test learned skills, not just HP pools
@@ -218,16 +218,84 @@ python -m http.server 8000
 
 | Doc | Purpose |
 |-----|---------|
+| `docs/PLAYER.md` | Player system - movement, combat, stats, controls |
+| `docs/BOSS.md` | Boss system reference - all bosses, abilities, phases |
+| `docs/ENEMIES.md` | Enemy roster - all enemy types, behaviors, spawn mechanics |
+| `docs/ARENA.md` | Arena progression - wave system, geometry, unlocks |
 | `docs/EPICS.md` | Feature tracking and epic status |
 | `docs/PROJECT_STATE.md` | Current implementation state and known issues |
 | `docs/PULSE_MUSIC_SYSTEM.md` | Adaptive music system design |
+| `PROMPTS.md` | Designer personas for feature design |
 | `FEATURES.md` | Complete feature list with checkboxes |
 
+#### Design Prompt Workflow
+
+When working on **feature design** (not just bug fixes), follow this workflow:
+
+1. **Load the designer persona** from `PROMPTS.md` for the feature area
+2. **Read current state** from the corresponding documentation
+3. **Apply persona principles** to your design decisions
+
+| Feature Area | Persona | State Doc |
+|--------------|---------|-----------|
+| Boss fights | Boss Designer | `docs/BOSS.md` |
+| Enemy types | Enemy Designer | `docs/ENEMIES.md` |
+| Arena design | Arena Designer | `docs/ARENA.md` |
+| Music/Audio | Audio Designer | `docs/PULSE_MUSIC_SYSTEM.md` |
+
+**Example:** When asked to design a new boss:
+1. Read `PROMPTS.md` -> Boss Designer section
+2. Adopt the persona (fair, readable, memorable design principles)
+3. Read `docs/BOSS.md` for current boss implementations
+4. Apply the design framework to the new boss
+
+#### Documentation Maintenance Policy
+
+**Before making ANY code changes:**
+
+1. **Review relevant documentation** for the feature you're modifying
+   - Working on player? Read `docs/PLAYER.md`
+   - Working on bosses? Read `docs/BOSS.md`
+   - Working on enemies? Read `docs/ENEMIES.md`
+   - Working on arenas? Read `docs/ARENA.md`
+   - Working on music? Read `docs/PULSE_MUSIC_SYSTEM.md`
+
+2. **Keep documentation in sync with code**
+   - When adding/modifying features, update the corresponding docs
+   - When changing behavior, update the behavior descriptions
+   - When adjusting stats, update the stat tables
+
 **Before committing changes:**
-- **Search for `TODO`, `FIXME`, `STUB`, empty function bodies** - Ask user to implement before committing
-- Update `docs/EPICS.md` if feature/epic status changed
-- Update `docs/PROJECT_STATE.md` if behavior or architecture changed
-- Update `FEATURES.md` if adding/completing features
+
+1. **Search for `TODO`, `FIXME`, `STUB`, empty function bodies** - Ask user to implement before committing
+2. **Review docs for accuracy** - Check if your changes require doc updates
+3. **Update affected documentation files** in the same commit as code changes
+4. Update `docs/EPICS.md` if feature/epic status changed
+5. Update `docs/PROJECT_STATE.md` if behavior or architecture changed
+6. Update `FEATURES.md` if adding/completing features
+
+**Documentation-to-Code Mapping:**
+
+| Code Files | Documentation |
+|------------|---------------|
+| `js/entities/player.js`, `js/systems/damage.js`, `js/systems/projectiles.js`, `js/config/upgrades.js` | `docs/PLAYER.md` |
+| `js/config/bosses.js`, `js/entities/boss.js` | `docs/BOSS.md` |
+| `js/config/enemies.js`, `js/entities/enemies.js` | `docs/ENEMIES.md` |
+| `js/config/arenas.js`, `js/arena/generator.js`, `js/systems/waveSystem.js` | `docs/ARENA.md` |
+| `js/systems/pulseMusic.js` | `docs/PULSE_MUSIC_SYSTEM.md` |
+| Feature tracking, epic status | `docs/EPICS.md` |
+| Implementation state, known issues | `docs/PROJECT_STATE.md` |
+
+**Examples:**
+
+- Adding a new player stat? Update `docs/PLAYER.md` stats table and upgrade that affects it
+- Changing movement speed or dash mechanics? Update `docs/PLAYER.md` movement system section
+- Adding a new boss ability? Update `docs/BOSS.md` with the ability description, cooldown, and which bosses use it
+- Changing enemy spawn weights? Update `docs/ENEMIES.md` spawn weight tables
+- Adjusting wave counts? Update `docs/ARENA.md` arena roster table
+- Adding new sound events? Update `docs/PULSE_MUSIC_SYSTEM.md` integration points
+
+**Rationale:** Documentation drift causes confusion and wasted time. By enforcing reviews before changes and updates before commits, we keep docs trustworthy and useful.
 
 ### 11. Balance Guidelines
 
@@ -468,7 +536,7 @@ function animate() {
         updateGame(delta);
         gameState._errorCount = 0; // Reset on success
     } catch (error) {
-        console.error('[SPHERESTORM] Update error:', error);
+        console.error('[MantaSphere] Update error:', error);
         gameState._errorCount = (gameState._errorCount || 0) + 1;
         
         if (gameState._errorCount <= 3) {
