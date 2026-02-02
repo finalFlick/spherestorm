@@ -7,7 +7,7 @@ export const BOSS_CONFIG = {
         name: 'RED PUFFER KING', 
         health: 1250,  // Reduced for better pacing
         damage: 25, 
-        size: 2.5, 
+        size: 2.0,  // Reduced for better player/boss scale ratio
         color: 0xff2222, 
         speed: 0.06,
         

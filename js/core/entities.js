@@ -35,6 +35,17 @@ export function setArenaPortal(portal) {
     portalHolder.current = portal;
 }
 
+// Boss entrance portal (spawns before boss, freezes during fight)
+const entrancePortalHolder = { current: null };
+
+export function getBossEntrancePortal() {
+    return entrancePortalHolder.current;
+}
+
+export function setBossEntrancePortal(portal) {
+    entrancePortalHolder.current = portal;
+}
+
 // Reusable vectors for performance
 export const tempVec3 = new THREE.Vector3();
 export const tempVec3_2 = new THREE.Vector3();

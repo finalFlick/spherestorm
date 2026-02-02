@@ -129,6 +129,26 @@ export function createPlayer() {
 }
 
 export function updatePlayer(delta) {
+    // Lock movement during cutscenes to prevent drift into danger
+    // EXCEPTION: Allow movement during interactive dodge tutorial (demo_dodge_wait state)
+    const allowMovementDuringCutscene = gameState.interactiveDodgeTutorial === true;
+    
+    if (gameState.cutsceneActive && !allowMovementDuringCutscene) {
+        // Heavy movement dampening - decay any existing velocity
+        if (player.velocity) {
+            player.velocity.multiplyScalar(0.1);
+            player.position.add(player.velocity);
+        }
+        // Still update visual lean decay
+        currentLeanX *= 0.9;
+        currentLeanZ *= 0.9;
+        if (player.bodyGroup) {
+            player.bodyGroup.rotation.x = currentLeanX * 0.3;
+            player.bodyGroup.rotation.z = currentLeanZ * 0.3;
+        }
+        return;  // Skip normal input processing
+    }
+    
     const moveDir = new THREE.Vector3();
     const forward = tempVec3.set(0, 0, -1).applyAxisAngle(tempVec3_2.set(0, 1, 0), cameraAngleX);
     const right = tempVec3_3.set(1, 0, 0).applyAxisAngle(tempVec3_2.set(0, 1, 0), cameraAngleX);

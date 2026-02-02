@@ -4,14 +4,14 @@ import { enemies, obstacles, hazardZones, tempVec3, getCurrentBoss, setCurrentBo
 import { player } from './player.js';
 import { spawnSpecificEnemy, spawnSplitEnemy } from './enemies.js';
 import { BOSS_CONFIG, ABILITY_COOLDOWNS, ABILITY_TELLS } from '../config/bosses.js';
-import { DAMAGE_COOLDOWN, HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES, GAME_TITLE } from '../config/constants.js';
+import { DAMAGE_COOLDOWN, HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES, GAME_TITLE, PHASE2_CUTSCENE, PHASE3_CUTSCENE } from '../config/constants.js';
 import { spawnParticle, spawnShieldBreakVFX, spawnBubbleParticle } from '../effects/particles.js';
-import { spawnXpGem, spawnHeart, spawnArenaPortal } from '../systems/pickups.js';
+import { spawnXpGem, spawnHeart, spawnArenaPortal, unfreezeBossEntrancePortal } from '../systems/pickups.js';
 import { createHazardZone } from '../arena/generator.js';
 import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
 import { showBossHealthBar, updateBossHealthBar, hideBossHealthBar, showExposedBanner, showPhaseAnnouncement, showBoss6CycleAnnouncement, updateBoss6CycleIndicator, hideBoss6CycleIndicator, showTutorialCallout, showChainIndicator, hideChainIndicator, showBoss6SequencePreview, hideBoss6SequencePreview } from '../ui/hud.js';
 import { markBossEncountered } from '../ui/rosterUI.js';
-import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX, createComboTether, updateComboTether, createComboLockInMarker, updateComboLockInMarker, createMinionTether, updateMinionTethers, createTetherSnapVFX, updateTetherSnapVFX, createChargeTrailSegment, updateChargeTrailSegment, createDetonationWarningVFX, updateDetonationWarningVFX, createTeleportDecoy, updateTeleportDecoy, createBlinkBarrageMarker, updateBlinkBarrageMarker, createVineZone, updateVineZone, createBurrowPath, updateBurrowPath, createFakeEmergeMarker, updateFakeEmergeMarker, createEnergyTransferVFX } from '../systems/visualFeedback.js';
+import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX, createComboTether, updateComboTether, createComboLockInMarker, updateComboLockInMarker, createMinionTether, updateMinionTethers, createTetherSnapVFX, updateTetherSnapVFX, createChargeTrailSegment, updateChargeTrailSegment, createDetonationWarningVFX, updateDetonationWarningVFX, createTeleportDecoy, updateTeleportDecoy, createBlinkBarrageMarker, updateBlinkBarrageMarker, createVineZone, updateVineZone, createBurrowPath, updateBurrowPath, createFakeEmergeMarker, updateFakeEmergeMarker, createEnergyTransferVFX, createWallImpactVFX, updateWallImpactVFX } from '../systems/visualFeedback.js';
 import { PulseMusic } from '../systems/pulseMusic.js';
 
 // Anti-stuck detection uses BOSS_STUCK_THRESHOLD and BOSS_STUCK_FRAMES from constants.js
@@ -218,9 +218,9 @@ function updatePorcupinefishInflation(boss, deltaInflation) {
     const shapeInflation = Math.max(0, inflation);
     
     // OVERALL SIZE SCALING - dramatic size change
-    // Blast (-0.3): 0.7x, Deflated (0): 0.85x, Inflated (1): 1.3x
+    // Blast (-0.8): 0.5x, Deflated (0): 0.85x, Inflated (1): 1.3x
     const overallScale = 0.85 + inflation * 0.45;
-    boss.scale.setScalar(Math.max(0.7, overallScale));
+    boss.scale.setScalar(Math.max(0.5, overallScale));
     
     // Body shape: deflated = elongated ellipsoid, inflated = sphere
     // Deflated: (1.3, 0.75, 1.0), Inflated: (1.0, 1.0, 1.0)
@@ -348,6 +348,14 @@ function resetPufferVisuals(boss) {
     if (boss.bodyMaterial) {
         boss.bodyMaterial.emissive.setHex(boss.baseColor);
     }
+}
+
+// Shared breathing logic - ensures identical animation in intro and combat
+// Used by both intro_showcase state and Phase 1 combat chase
+function applyChaseBreathing(boss) {
+    if (!boss.isPorcupinefish) return;
+    const breathCycle = Math.sin(boss.aiTimer * 0.03) * 0.15 + 0.15;
+    boss.targetInflation = breathCycle;  // Pulses 0.0 to 0.3
 }
 
 export function spawnBoss(arenaNumber) {
@@ -564,6 +572,7 @@ export function spawnBoss(arenaNumber) {
         initializeBoss6AbilityCycle(boss);
     }
     
+    // Boss emerges from the entrance portal (near the wall)
     boss.position.set(0, config.size, -35);
     scene.add(boss);
     setCurrentBoss(boss);
@@ -576,6 +585,28 @@ export function spawnBoss(arenaNumber) {
 }
 
 export function updateBoss() {
+    // ==================== POST-DEFEAT TIMERS (run even without boss) ====================
+    // These use gameState since boss is removed after defeat
+    
+    // Portal spawn delay after boss defeat
+    if (gameState.portalSpawnTimer > 0) {
+        gameState.portalSpawnTimer--;
+        if (gameState.portalSpawnTimer <= 0) {
+            spawnPortalAfterDefeat(null);
+        }
+    }
+    
+    // Victory celebration particle waves
+    if (gameState.victoryParticleWave !== undefined && gameState.victoryParticleWave < 3) {
+        if (!gameState.victoryParticleTimer) gameState.victoryParticleTimer = 0;
+        gameState.victoryParticleTimer++;
+        if (gameState.victoryParticleTimer >= 30) {  // 0.5 second intervals
+            gameState.victoryParticleTimer = 0;
+            spawnVictoryParticleWave(null);
+            gameState.victoryParticleWave++;
+        }
+    }
+    
     const currentBoss = getCurrentBoss();
     if (!currentBoss) return;
     
@@ -585,7 +616,9 @@ export function updateBoss() {
     // ==================== PORCUPINEFISH INFLATION UPDATE ====================
     if (boss.isPorcupinefish) {
         // Don't override inflation during charge ability - let ability code control it
-        const inChargeAbility = boss.aiState === 'wind_up' || boss.aiState === 'charging';
+        // Include retreat_charge which has its own winding/charging substates
+        // Include wall_impact and wall_recovery as part of charge sequence
+        const inChargeAbility = boss.aiState === 'wind_up' || boss.aiState === 'charging' || boss.aiState === 'retreat_charge' || boss.aiState === 'wall_impact' || boss.aiState === 'wall_recovery';
         
         if (!inChargeAbility) {
             // Determine target inflation based on shield state
@@ -593,7 +626,7 @@ export function updateBoss() {
             if (boss.shieldActive) {
                 boss.targetInflation = 1.0;  // Inflated (armored orb)
             } else if (boss.phase === 1 || !boss.shieldConfig) {
-                boss.targetInflation = 0.0;  // Deflated (swimmer)
+                applyChaseBreathing(boss);  // Subtle breathing while chasing (same as intro)
             } else {
                 // Phase 2+ without shield: still slightly inflated for threat read
                 boss.targetInflation = boss.isExposed ? 0.3 : 0.0;
@@ -618,16 +651,63 @@ export function updateBoss() {
         // Update bristle effect
         updateSpineBristle(boss);
         
-        // Slowly rotate to face player (disabled during charge commitment)
-        const isCharging = boss.aiState === 'charging' || boss.chargeDirLocked;
-        if (!isCharging && !boss.shieldActive) {
-            const dx = player.position.x - boss.position.x;
-            const dz = player.position.z - boss.position.z;
-            const targetAngle = Math.atan2(dx, dz);
+        // Slowly rotate to face player (only lock during charge commitment)
+        // DESIGN RULE: Shield affects MOVEMENT (Phase 2 anchor), not ROTATION
+        // Boss should always telegraph threat direction by facing player
+        // Lock rotation during: charging (committed), wall impact (stunned)
+        const rotationLocked = boss.chargeDirLocked || boss.aiState === 'charging' || boss.aiState === 'wall_impact';
+        
+        // Allow rotation during cutscene for these states (so boss faces charge direction)
+        const allowRotationInCutscene = boss.aiState === 'wall_recovery' || 
+                                        boss.aiState === 'intro_showcase' || 
+                                        boss.aiState === 'wind_up';
+        
+        if (!rotationLocked && (!gameState.cutsceneActive || allowRotationInCutscene)) {
+            let targetAngle;
+            
+            // During wind_up: face the charge direction (so boss never charges backwards)
+            if (boss.aiState === 'wind_up') {
+                let chargeDir;
+                if (boss.inDemoMode && boss.demoChargeDir) {
+                    chargeDir = boss.demoChargeDir;
+                } else {
+                    // Face toward player (normal combat)
+                    chargeDir = tempVec3.subVectors(player.position, boss.position);
+                    chargeDir.y = 0;
+                    chargeDir.normalize();
+                }
+                targetAngle = Math.atan2(chargeDir.x, chargeDir.z);
+            }
+            // During wall_recovery in demo mode, turn toward the NEXT wall charge direction (farthest wall)
+            else if (boss.aiState === 'wall_recovery' && boss.inDemoMode) {
+                // Face the direction we'll charge next (farthest wall for dramatic effect)
+                const distToPositiveX = 42 - boss.position.x;
+                const distToNegativeX = 42 + boss.position.x;
+                const distToPositiveZ = 42 - boss.position.z;
+                const distToNegativeZ = 42 + boss.position.z;
+                const maxDist = Math.max(distToPositiveX, distToNegativeX, distToPositiveZ, distToNegativeZ);
+                
+                const nextWallDir = new THREE.Vector3();
+                if (maxDist === distToPositiveX) nextWallDir.set(1, 0, 0);
+                else if (maxDist === distToNegativeX) nextWallDir.set(-1, 0, 0);
+                else if (maxDist === distToPositiveZ) nextWallDir.set(0, 0, 1);
+                else nextWallDir.set(0, 0, -1);
+                
+                targetAngle = Math.atan2(nextWallDir.x, nextWallDir.z);
+            } else {
+                // Normal: face the player
+                const dx = player.position.x - boss.position.x;
+                const dz = player.position.z - boss.position.z;
+                targetAngle = Math.atan2(dx, dz);
+            }
+            
             const diff = Math.atan2(Math.sin(targetAngle - boss.rotation.y), Math.cos(targetAngle - boss.rotation.y));
             
-            // Turn rate: ~100 degrees/sec at 60fps
-            const maxStep = 0.03;
+            // Turn rate varies by state
+            let maxStep = 0.03;  // Default: ~100 degrees/sec
+            if (boss.aiState === 'wall_recovery') maxStep = 0.15;  // Very fast for turnaround
+            else if (boss.aiState === 'wind_up') maxStep = 0.1;   // Fast to face charge direction
+            
             boss.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
         }
     }
@@ -678,6 +758,33 @@ export function updateBoss() {
         boss.phaseTransitionTimer--;
         if (boss.phaseTransitionTimer <= 0) {
             completePhaseTransition(boss);
+        }
+    }
+    
+    // ==================== FRAME-BASED CUTSCENE TIMERS ====================
+    // These replace setTimeout calls to ensure pause-safe timing
+    
+    // Invincibility buffer after cutscene ends
+    if (boss.invincibilityBufferTimer > 0) {
+        boss.invincibilityBufferTimer--;
+        if (boss.invincibilityBufferTimer <= 0) {
+            gameState.cutsceneInvincible = false;
+        }
+    }
+    
+    // Phase 2: Shield activation delay
+    if (boss.shieldActivationTimer > 0) {
+        boss.shieldActivationTimer--;
+        if (boss.shieldActivationTimer <= 0) {
+            activatePhase2Shield(boss);
+        }
+    }
+    
+    // Phase 3: Demo charge delay
+    if (boss.phase3DemoTimer > 0) {
+        boss.phase3DemoTimer--;
+        if (boss.phase3DemoTimer <= 0) {
+            triggerPhase3DemoCharge(boss);
         }
     }
     
@@ -1053,10 +1160,25 @@ function isTopLethalityAbility(boss, ability) {
 }
 
 function updateBossAI(boss) {
-    // Skip all AI processing during cutscenes
-    if (boss.aiState === 'cutscene_idle' || gameState.cutsceneActive) {
-        return;
+    // ==================== CUTSCENE HANDLING ====================
+    // During cutscenes: tick abilities (for demo charge to execute), but skip decision AI
+    if (gameState.cutsceneActive) {
+        // Demo abilities need to execute their full state machine during cutscenes
+        // This allows wind_up -> charging -> cooldown to progress
+        // Also execute special cutscene states: intro_showcase, phase2_cutscene, phase3_cutscene
+        const inActiveAbility = boss.aiState !== 'idle' && 
+                                boss.aiState !== 'cooldown' && 
+                                boss.aiState !== 'cutscene_idle';
+        
+        // Always tick ability progression during cutscenes (includes intro_showcase, phase cutscenes, demo attacks)
+        if (inActiveAbility) {
+            continueCurrentAbility(boss);
+        }
+        return;  // No decision AI during cutscenes
     }
+    
+    // Skip if in cutscene_idle state (without cutsceneActive flag)
+    if (boss.aiState === 'cutscene_idle') return;
     
     // Red Puffer King P3 summon freeze - boss pauses briefly during ring summon
     if (boss.summonFreeze && boss.summonFreezeTimer > 0) {
@@ -1594,29 +1716,56 @@ function lerpColor(c1, c2, t) {
 export { BOSS6_CYCLE_NAMES, BOSS6_CYCLE_COLORS };
 
 // ==================== DEMO ABILITY SYSTEM ====================
-// For phase transition cutscenes - triggers ability in safe direction
+// For phase transition cutscenes - interactive dodge tutorial
+// Boss charges toward player, waits for player to dodge, then completes charge
 
 export function triggerDemoAbility(boss, abilityName) {
     if (!boss) return;
     
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:triggerDemoAbility',message:'triggerDemoAbility called',data:{abilityName:abilityName,bossPos:{x:boss.position.x,z:boss.position.z},playerPos:{x:player.position.x,z:player.position.z}},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'DEMO'})}).catch(()=>{});
+    // #endregion
+    
     boss.inDemoMode = true;
     boss.demoAbility = abilityName;
     
-    // Calculate safe direction (away from player, or toward arena edge)
-    const playerDir = tempVec3.subVectors(player.position, boss.position).normalize();
-    const safeDir = playerDir.clone().negate();  // Opposite of player
-    safeDir.y = 0;
-    safeDir.normalize();
+    // Demo charges toward PLAYER for interactive dodge tutorial
+    // Player must move out of the danger zone before the charge continues
+    const chargeDir = tempVec3.subVectors(player.position, boss.position);
+    chargeDir.y = 0;
+    chargeDir.normalize();
     
-    // Store the safe direction for use during ability
-    boss.demoChargeDir = safeDir.clone();
+    boss.demoChargeDir = chargeDir.clone();
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:triggerDemoAbility',message:'Charge direction calculated',data:{chargeDirX:chargeDir.x,chargeDirZ:chargeDir.z},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'DEMO'})}).catch(()=>{});
+    // #endregion
     
     switch (abilityName) {
         case 'charge':
-            boss.aiState = 'wind_up';
+            // Enter interactive dodge wait state
+            boss.aiState = 'demo_dodge_wait';
             boss.aiTimer = 0;
             boss.bodyMaterial.emissiveIntensity = 1;
+            boss.demoTutorialShown = false;  // Track if we've shown the tutorial text
+            boss.interactiveDodgeCount = boss.interactiveDodgeCount || 0;  // Track interactive dodges (0-indexed)
+            
+            // CRITICAL: Enable player movement during interactive dodge tutorial
+            gameState.interactiveDodgeTutorial = true;
+            
+            // CLEANUP existing marker before starting new charge
+            if (boss.chargeMarker) {
+                cleanupVFX(boss.chargeMarker);
+            }
             boss.chargeMarker = null;
+            
+            // Create the charge marker immediately so player can see danger zone
+            boss.chargeMarker = createChargePathMarker(boss.position, chargeDir, 80);
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:triggerDemoAbility',message:'Charge marker created, entering demo_dodge_wait',data:{hasMarker:!!boss.chargeMarker},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'DEMO'})}).catch(()=>{});
+            // #endregion
+            
             if (boss.isPorcupinefish) {
                 boss.targetInflation = 1.0;
                 boss.wigglePhase = 0;
@@ -1640,13 +1789,19 @@ export function endDemoMode(boss) {
         boss.inDemoMode = false;
         boss.demoAbility = null;
         boss.demoChargeDir = null;
+        boss.interactiveDodgeCount = 0;  // Reset interactive dodge counter
+        // CLEANUP any active charge marker from demo
+        if (boss.chargeMarker) {
+            cleanupVFX(boss.chargeMarker);
+            boss.chargeMarker = null;
+        }
     }
 }
 
 // ==================== CUTSCENE SAFETY SYSTEM ====================
 // Ensures player safety during boss intro and phase transition cutscenes
 
-const CUTSCENE_SAFE_DISTANCE = 15;  // Minimum distance between boss and player
+const CUTSCENE_SAFE_DISTANCE = 25;  // Minimum distance between boss and player after cutscene
 const BOSS_CUTSCENE_POSITION = { x: 0, y: 0, z: -20 };  // Boss position during cutscenes (arena center-back)
 
 /**
@@ -1687,9 +1842,10 @@ export function prepareBossForCutscene(boss) {
  */
 export function endCutsceneAndRepositionPlayer(boss) {
     if (!boss) {
-        // No boss - just clear cutscene state
+        // No boss - just clear cutscene state and show player
         gameState.cutsceneActive = false;
         gameState.cutsceneInvincible = false;
+        if (player) player.visible = true;
         return;
     }
     
@@ -1725,23 +1881,51 @@ export function endCutsceneAndRepositionPlayer(boss) {
         safePos.z *= scale;
     }
     
-    // Move player to safe position
-    if (player && player.position) {
+    // Move player to safe position and make visible again
+    if (player) {
         player.position.copy(safePos);
         player.velocity.set(0, 0, 0);  // Clear any momentum
+        player.visible = true;  // Show player after cutscene
     }
     
     // Resume normal boss AI
     boss.aiState = 'idle';
     boss.aiTimer = 0;
     
+    // Clear demo state (from demo abilities during cutscene)
+    boss.inDemoMode = false;
+    boss.demoAbility = null;
+    boss.demoChargeDir = null;
+    boss.bubbleAcc = 0;  // Clear bubble accumulator
+    
     // Clear cutscene state
     gameState.cutsceneActive = false;
     
     // Brief invincibility buffer after cutscene (30 frames = 0.5 seconds)
-    setTimeout(() => {
-        gameState.cutsceneInvincible = false;
-    }, 500);
+    // Use frame-based timer instead of setTimeout (pause-safe)
+    boss.invincibilityBufferTimer = 30;
+}
+
+/**
+ * Skip current cutscene (called when player presses skip key)
+ * Jumps to end of cutscene immediately
+ */
+export function skipCurrentCutscene() {
+    const boss = getCurrentBoss();
+    if (!boss) return;
+    
+    // Only skip if actually in a cutscene state
+    const cutsceneStates = ['cutscene_idle', 'phase2_cutscene', 'phase3_cutscene'];
+    if (!cutsceneStates.includes(boss.aiState) && !gameState.cutsceneActive) {
+        return;
+    }
+    
+    // Jump to end of current cutscene by setting timer to max
+    boss.cutsceneTimer = 9999;
+    
+    // Also clear slow-mo if active
+    // (triggerSlowMo is imported, but clearing requires direct state access)
+    // This will naturally end on next frame when cutscene ends
 }
 
 // Helper to spawn intro minions around boss
@@ -1834,10 +2018,65 @@ function continueCurrentAbility(boss) {
     const tellDuration = getTellDuration(boss);
     
     switch (boss.aiState) {
+        // INTERACTIVE DODGE TUTORIAL - waits for player to exit danger zone
+        case 'demo_dodge_wait':
+            // #region agent log
+            if (boss.aiTimer % 60 === 0) fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:demo_dodge_wait',message:'In demo_dodge_wait state',data:{aiTimer:boss.aiTimer,hasChargeMarker:!!boss.chargeMarker,hasDemoChargeDir:!!boss.demoChargeDir,playerInZone:isPlayerInChargeZone(boss,player),playerPos:{x:player.position.x,z:player.position.z},bossPos:{x:boss.position.x,z:boss.position.z}},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'DEMO'})}).catch(()=>{});
+            // #endregion
+            
+            // Update the charge marker animation
+            if (boss.chargeMarker) {
+                updateChargePathMarker(boss.chargeMarker, 0.5);  // Hold at 50% progress
+            }
+            
+            // Show tutorial callout on first frame
+            if (!boss.demoTutorialShown) {
+                boss.demoTutorialShown = true;
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:demo_dodge_wait',message:'Showing tutorial callout',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'DEMO'})}).catch(()=>{});
+                // #endregion
+                showTutorialCallout('dodgeTutorial', 'Move out of the red zone!', 0);  // 0 = no auto-hide
+            }
+            
+            // Porcupinefish: Hold inflation and do subtle wobble
+            if (boss.isPorcupinefish) {
+                boss.targetInflation = 0.8;
+                boss.wigglePhase = (boss.wigglePhase || 0) + 0.1;
+                if (boss.pufferBody && boss.pufferBase?.bodyRot) {
+                    const br = boss.pufferBase.bodyRot;
+                    boss.pufferBody.rotation.set(
+                        br.x + Math.sin(boss.wigglePhase) * 0.05,
+                        br.y,
+                        br.z + Math.cos(boss.wigglePhase * 0.7) * 0.04
+                    );
+                }
+            }
+            
+            // Check if player has exited the danger zone
+            if (!isPlayerInChargeZone(boss, player)) {
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:demo_dodge_wait',message:'Player exited danger zone - transitioning to wind_up',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'DEMO'})}).catch(()=>{});
+                // #endregion
+                
+                // Disable interactive dodge tutorial mode
+                gameState.interactiveDodgeTutorial = false;
+                
+                // Player dodged! Transition to actual wind_up then charge
+                boss.aiState = 'wind_up';
+                boss.aiTimer = Math.floor(tellDuration.charge * 0.7);  // Skip some wind-up since we already showed marker
+                boss.chargeDirLocked = true;  // Lock direction to where we were aiming
+                boss.lockedChargeDir = boss.demoChargeDir.clone();
+                
+                // Hide the tutorial callout
+                // Note: showTutorialCallout will auto-hide when new one is shown
+            }
+            break;
+            
         // CHARGE ABILITY
         case 'wind_up':
-            // Create telegraph marker on first frame
-            if (boss.aiTimer === 0) {
+            // Create telegraph marker on first frame (check if marker doesn't exist yet)
+            // Note: Can't rely on aiTimer === 0 due to timing between updateBoss and waveSystem
+            if (!boss.chargeMarker) {
                 // Demo mode: use safe direction for marker
                 let dir;
                 if (boss.inDemoMode && boss.demoChargeDir) {
@@ -1846,7 +2085,8 @@ function continueCurrentAbility(boss) {
                     dir = tempVec3.subVectors(player.position, boss.position).normalize();
                     dir.y = 0;
                 }
-                boss.chargeMarker = createChargePathMarker(boss.position, dir, 15);
+                // Charge length = full arena (80 units) so boss can charge across entire map
+                boss.chargeMarker = createChargePathMarker(boss.position, dir, 80);
                 
                 // Audio cue for charge wind-up
                 PulseMusic.onBossChargeWindup();
@@ -1950,7 +2190,7 @@ function continueCurrentAbility(boss) {
         case 'charging':
             // Porcupinefish: BLAST deflation during charge (puffer releasing water)
             if (boss.isPorcupinefish) {
-                boss.targetInflation = -0.3;  // Extra-small for dramatic blast effect (0.7x scale)
+                boss.targetInflation = -0.7;  // Extra-small for dramatic blast effect (~0.5x scale)
                 boss.inflationSpeed = 0.2;    // Very fast deflation
                 
                 // Rate-limited bubble trail (not every frame)
@@ -1974,26 +2214,146 @@ function continueCurrentAbility(boss) {
                 }
             }
             
-            if (boss.aiTimer > 50 || isOutOfBounds(boss)) {
-                boss.aiState = 'cooldown';
-                boss.aiTimer = 0;
-                boss.bodyMaterial.emissiveIntensity = 0.5;
+            // Charge until hitting arena boundary (or safety timeout after 300 frames = 5 seconds)
+            if (isOutOfBounds(boss) || boss.aiTimer > 300) {
+                // Calculate wall normal (direction from wall toward arena center)
+                const wallNormal = new THREE.Vector3();
+                if (Math.abs(boss.position.x) > 42) {
+                    wallNormal.x = boss.position.x > 0 ? -1 : 1;
+                }
+                if (Math.abs(boss.position.z) > 42) {
+                    wallNormal.z = boss.position.z > 0 ? -1 : 1;
+                }
+                wallNormal.normalize();
+                
+                // Store wall normal for recovery state
+                boss.wallNormal = wallNormal.clone();
+                
+                // Clamp position to wall
                 clampBossPosition(boss);
-                // Reset trail position for next charge
-                boss.lastChargeTrailPos.set(0, 0, 0);
                 
-                // Porcupinefish: Reset visuals after charge ends
-                resetPufferVisuals(boss);
-                
-                // End demo mode if active
-                if (boss.inDemoMode) {
-                    endDemoMode(boss);
+                // Cleanup any previous wall impact VFX before creating new one
+                if (boss.wallImpactVFX) {
+                    cleanupVFX(boss.wallImpactVFX);
+                    boss.wallImpactVFX = null;
                 }
                 
-                // Boss 1: Set phase-based recovery timer for charge
-                const config = BOSS_CONFIG[gameState.currentArena];
-                if (gameState.currentArena === 1 && config.chargeRecovery) {
-                    boss.chargeRecoveryTimer = config.chargeRecovery[`phase${boss.phase}`] || 30;
+                // Create wall impact VFX
+                boss.wallImpactVFX = createWallImpactVFX(boss.position.clone(), wallNormal, boss.baseColor || 0xff4444);
+                
+                // Transition to wall impact state
+                boss.aiState = 'wall_impact';
+                boss.aiTimer = 0;
+                boss.wallChargeCount = (boss.wallChargeCount || 0) + 1;
+                
+                // Reset trail position for next charge
+                boss.lastChargeTrailPos.set(0, 0, 0);
+            }
+            break;
+            
+        // WALL IMPACT - Boss just hit the wall, brief stun
+        case 'wall_impact':
+            // Update wall impact VFX
+            if (boss.wallImpactVFX) {
+                if (updateWallImpactVFX(boss.wallImpactVFX)) {
+                    cleanupVFX(boss.wallImpactVFX);
+                    boss.wallImpactVFX = null;
+                }
+            }
+            
+            // Stunned animation - shake/wobble
+            if (boss.isPorcupinefish) {
+                boss.rotation.z = Math.sin(boss.aiTimer * 0.5) * 0.1;
+            }
+            
+            // Brief stun (30 frames = 0.5 seconds)
+            if (boss.aiTimer > 30) {
+                boss.rotation.z = 0; // Reset wobble
+                
+                // Cleanup any remaining wall impact VFX
+                if (boss.wallImpactVFX) {
+                    cleanupVFX(boss.wallImpactVFX);
+                    boss.wallImpactVFX = null;
+                }
+                
+                boss.aiState = 'wall_recovery';
+                boss.aiTimer = 0;
+            }
+            break;
+            
+        // WALL RECOVERY - Boss recovers, moves away from wall, turns to face player
+        case 'wall_recovery':
+            // Move away from wall (first 30 frames)
+            if (boss.wallNormal && boss.aiTimer < 30) {
+                boss.position.add(boss.wallNormal.clone().multiplyScalar(0.3));
+            }
+            
+            // Boss rotation toward player is handled by main updateBoss() with faster rate during wall_recovery
+            
+            // Recovery complete (60 frames = 1 second)
+            if (boss.aiTimer > 60) {
+                // Porcupinefish: Reset visuals after wall sequence
+                resetPufferVisuals(boss);
+                
+                // Decide: charge again or cooldown based on how many wall charges
+                // After 2 consecutive wall charges, go to cooldown to prevent infinite bouncing
+                if (boss.wallChargeCount >= 2) {
+                    boss.aiState = 'cooldown';
+                    boss.aiTimer = 0;
+                    boss.bodyMaterial.emissiveIntensity = 0.5;
+                    boss.wallChargeCount = 0;
+                    
+                    // Boss 1: Set phase-based recovery timer for charge
+                    const config = BOSS_CONFIG[gameState.currentArena];
+                    if (gameState.currentArena === 1 && config.chargeRecovery) {
+                        boss.chargeRecoveryTimer = config.chargeRecovery[`phase${boss.phase}`] || 30;
+                    }
+                } else if (boss.inDemoMode) {
+                    // Interactive dodge tutorial - check if we've completed 3 interactive charges
+                    boss.interactiveDodgeCount = (boss.interactiveDodgeCount || 0) + 1;
+                    
+                    if (boss.interactiveDodgeCount >= 3) {
+                        // 3 interactive charges complete - end demo
+                        boss.aiState = 'cooldown';
+                        boss.aiTimer = 0;
+                        boss.bodyMaterial.emissiveIntensity = 0.5;
+                        boss.wallChargeCount = 0;
+                        endDemoMode(boss);
+                        
+                        // Boss 1: Set phase-based recovery timer for charge
+                        const config = BOSS_CONFIG[gameState.currentArena];
+                        if (gameState.currentArena === 1 && config.chargeRecovery) {
+                            boss.chargeRecoveryTimer = config.chargeRecovery[`phase${boss.phase}`] || 30;
+                        }
+                    } else {
+                        // Re-enter interactive dodge wait for next charge
+                        boss.wallChargeCount = 0;
+                        
+                        // Calculate new charge direction toward player
+                        const chargeDir = new THREE.Vector3()
+                            .subVectors(player.position, boss.position)
+                            .normalize();
+                        chargeDir.y = 0;
+                        boss.demoChargeDir = chargeDir;
+                        
+                        // Clean up old marker, create new one
+                        if (boss.chargeMarker) {
+                            cleanupVFX(boss.chargeMarker);
+                        }
+                        boss.chargeMarker = createChargePathMarker(boss.position, chargeDir, 80);
+                        
+                        // Enable player movement for interactive dodge
+                        gameState.interactiveDodgeTutorial = true;
+                        
+                        boss.aiState = 'demo_dodge_wait';
+                        boss.aiTimer = 0;
+                        boss.demoTutorialShown = false;  // Show tutorial again for next charge
+                    }
+                } else {
+                    // Charge again! Wind up toward player
+                    boss.aiState = 'wind_up';
+                    boss.aiTimer = 0;
+                    boss.chargeMarker = null; // Will be recreated in wind_up
                 }
             }
             break;
@@ -2887,13 +3247,55 @@ function continueCurrentAbility(boss) {
                     if (boss.retreatTimer > 40) {
                         boss.retreatState = 'winding';
                         boss.retreatTimer = 0;
+                        // Create charge marker at start of wind-up
+                        const windDir = tempVec3.subVectors(player.position, boss.position).normalize();
+                        windDir.y = 0;
+                        // Charge length = full arena (80 units) so boss can charge across entire map
+                        boss.chargeMarker = createChargePathMarker(boss.position, windDir, 80);
+                        // Porcupinefish: Start inflation and wiggle
+                        if (boss.isPorcupinefish) {
+                            boss.targetInflation = 1.0;
+                            boss.wigglePhase = 0;
+                            boss.chargeDirLocked = false;
+                        }
                     }
                     break;
                     
                 case 'winding':
-                    // Wind up (telegraph)
+                    // Wind up (telegraph) - same VFX as normal wind_up
                     boss.bodyMaterial.emissiveIntensity = 
                         0.5 + (boss.retreatTimer / 30) * 0.5;
+                    
+                    // Update charge marker
+                    if (boss.chargeMarker) {
+                        updateChargePathMarker(boss.chargeMarker, boss.retreatTimer / 30);
+                    }
+                    
+                    // Porcupinefish: Wiggle animation (same as wind_up)
+                    if (boss.isPorcupinefish && boss.pufferBase) {
+                        boss.wigglePhase += 0.3;
+                        const progress = boss.retreatTimer / 30;
+                        const intensity = 0.5 + progress * 0.5;
+                        
+                        if (boss.pufferBody && boss.pufferBase.bodyRot) {
+                            const br = boss.pufferBase.bodyRot;
+                            boss.pufferBody.rotation.set(
+                                br.x + Math.sin(boss.wigglePhase) * 0.1 * intensity,
+                                br.y,
+                                br.z + Math.cos(boss.wigglePhase * 0.7) * 0.08 * intensity
+                            );
+                        }
+                        
+                        if (boss.pufferTail && boss.pufferBase.tailScale) {
+                            const ts = boss.pufferBase.tailScale;
+                            boss.pufferTail.scale.set(
+                                ts.x * (1 + Math.sin(boss.wigglePhase * 2) * 0.3 * intensity),
+                                ts.y,
+                                ts.z
+                            );
+                        }
+                    }
+                    
                     boss.retreatTimer++;
                     if (boss.retreatTimer > 30) {
                         boss.retreatState = 'charging';
@@ -2902,21 +3304,63 @@ function continueCurrentAbility(boss) {
                             player.position, 
                             boss.position
                         ).normalize().clone();
+                        // Cleanup marker
+                        if (boss.chargeMarker) {
+                            cleanupVFX(boss.chargeMarker);
+                            boss.chargeMarker = null;
+                        }
                     }
                     break;
                     
                 case 'charging':
+                    // Porcupinefish: Deflation + bubbles (same as normal charging)
+                    if (boss.isPorcupinefish) {
+                        boss.targetInflation = -0.7;  // Match normal charging blast scale
+                        boss.inflationSpeed = 0.2;
+                        boss.bubbleAcc = (boss.bubbleAcc || 0) + 2;
+                        while (boss.bubbleAcc >= 1) {
+                            boss.bubbleAcc -= 1;
+                            spawnBubbleParticle(boss);
+                        }
+                    }
+                    
                     // Fast charge
                     boss.position.add(
                         boss.chargeDirection.clone()
                             .multiplyScalar(boss.chargeSpeed * 1.2)
                     );
                     boss.retreatTimer++;
-                    if (boss.retreatTimer > 50 || isOutOfBounds(boss)) {
-                        boss.aiState = 'cooldown';
-                        boss.aiTimer = 0;
-                        boss.bodyMaterial.emissiveIntensity = 0.5;
+                    // Charge until hitting arena boundary (or safety timeout)
+                    if (isOutOfBounds(boss) || boss.retreatTimer > 300) {
+                        // Calculate wall normal (direction from wall toward arena center)
+                        const wallNormal = new THREE.Vector3();
+                        if (Math.abs(boss.position.x) > 42) {
+                            wallNormal.x = boss.position.x > 0 ? -1 : 1;
+                        }
+                        if (Math.abs(boss.position.z) > 42) {
+                            wallNormal.z = boss.position.z > 0 ? -1 : 1;
+                        }
+                        wallNormal.normalize();
+                        
+                        // Store wall normal for recovery state
+                        boss.wallNormal = wallNormal.clone();
+                        
+                        // Clamp position to wall
                         clampBossPosition(boss);
+                        
+                        // Cleanup any previous wall impact VFX before creating new one
+                        if (boss.wallImpactVFX) {
+                            cleanupVFX(boss.wallImpactVFX);
+                            boss.wallImpactVFX = null;
+                        }
+                        
+                        // Create wall impact VFX
+                        boss.wallImpactVFX = createWallImpactVFX(boss.position.clone(), wallNormal, boss.baseColor || 0xff4444);
+                        
+                        // Transition to wall impact state (shared with normal charge)
+                        boss.aiState = 'wall_impact';
+                        boss.aiTimer = 0;
+                        boss.wallChargeCount = (boss.wallChargeCount || 0) + 1;
                         boss.retreatState = null;
                     }
                     break;
@@ -2964,11 +3408,160 @@ function continueCurrentAbility(boss) {
         case 'cutscene_idle':
             // Boss does nothing during cutscenes - AI is suspended
             // Just face toward player slowly for visual interest
+            
             const cutsceneDx = player.position.x - boss.position.x;
             const cutsceneDz = player.position.z - boss.position.z;
             const cutsceneTargetAngle = Math.atan2(cutsceneDx, cutsceneDz);
             const cutsceneDiff = Math.atan2(Math.sin(cutsceneTargetAngle - boss.rotation.y), Math.cos(cutsceneTargetAngle - boss.rotation.y));
             boss.rotation.y += cutsceneDiff * 0.02;  // Very slow turn
+            break;
+        
+        // INTRO SHOWCASE - Active boss entrance (Phase 1 intro only)
+        case 'intro_showcase':
+            if (!boss.showcaseTimer) boss.showcaseTimer = 0;
+            boss.showcaseTimer++;
+            
+            // Always face player (menacing)
+            const showcaseDx = player.position.x - boss.position.x;
+            const showcaseDz = player.position.z - boss.position.z;
+            const showcaseTargetAngle = Math.atan2(showcaseDx, showcaseDz);  // Fixed: correct parameter order
+            const showcaseDiff = Math.atan2(Math.sin(showcaseTargetAngle - boss.rotation.y), Math.cos(showcaseTargetAngle - boss.rotation.y));
+            boss.rotation.y += showcaseDiff * 0.05;  // Faster than cutscene_idle - more menacing
+            
+            // Breathing/pulsing - use shared function for consistency with combat
+            applyChaseBreathing(boss);
+            
+            // Prowl slowly toward player (but don't reach them - stop at safe distance)
+            const distToPlayer = Math.sqrt(showcaseDx * showcaseDx + showcaseDz * showcaseDz);
+            if (distToPlayer > 12) {
+                // Slow menacing approach
+                const dir = tempVec3.set(showcaseDx, 0, showcaseDz).normalize();
+                boss.position.x += dir.x * 0.02;
+                boss.position.z += dir.z * 0.02;
+            }
+            break;
+        
+        // PHASE 2 CUTSCENE - Teach shield + minion dependency
+        case 'phase2_cutscene':
+            if (!boss.cutsceneTimer) boss.cutsceneTimer = 0;
+            boss.cutsceneTimer++;
+            
+            // Frame 1: Arena pulse VFX
+            if (boss.cutsceneTimer === 1) {
+                triggerScreenFlash(0x4488ff, 20);
+            }
+            
+            // Frame 60: "PHASE 2" text
+            if (boss.cutsceneTimer === PHASE2_CUTSCENE.TEXT_PHASE) {
+                showTutorialCallout('phase2Title', 'PHASE 2', 1500);
+            }
+            
+            // Frame 120: Shield manifests with VFX
+            if (boss.cutsceneTimer === PHASE2_CUTSCENE.SHIELD_MANIFEST) {
+                boss.shieldActive = true;
+                boss.shieldStartTime = Date.now();
+                if (boss.shieldMesh) {
+                    boss.shieldMesh.visible = true;
+                }
+                if (boss.isPorcupinefish) {
+                    triggerSpineBristle(boss);
+                    boss.inflationState = 0.3;
+                }
+                triggerScreenFlash(0x4488ff, 15);
+                PulseMusic.onBossShieldActivate?.();
+            }
+            
+            // Frame 180: Spawn tethered minions
+            if (boss.cutsceneTimer === PHASE2_CUTSCENE.MINION_SPAWN) {
+                spawnPhase2DemoMinions(boss);
+            }
+            
+            // Frame 300: Explain text
+            if (boss.cutsceneTimer === PHASE2_CUTSCENE.TEXT_EXPLAIN) {
+                showTutorialCallout('phase2Shield', 'Kill tethered minions to break the shield!', 2500);
+            }
+            
+            // Frame 420: Demo kill one minion (scripted)
+            if (boss.cutsceneTimer === PHASE2_CUTSCENE.DEMO_KILL) {
+                demoKillOneMinion(boss);
+            }
+            
+            // Frame 600: Ready text
+            if (boss.cutsceneTimer === PHASE2_CUTSCENE.TEXT_READY) {
+                showTutorialCallout('phase2Ready', 'Now you try!', 1500);
+            }
+            
+            // Frame 720: End cutscene
+            if (boss.cutsceneTimer >= PHASE2_CUTSCENE.TOTAL_DURATION) {
+                endCutsceneAndRepositionPlayer(boss);
+                boss.aiState = 'static_shielded';
+                boss.aiTimer = 0;
+                boss.summonTimer = 300;  // 5 second delay before next summon wave
+                boss.cutsceneTimer = 0;
+            }
+            break;
+        
+        // PHASE 3 CUTSCENE - Teach shielded chase twist
+        case 'phase3_cutscene':
+            if (!boss.cutsceneTimer) boss.cutsceneTimer = 0;
+            boss.cutsceneTimer++;
+            
+            // Frame 1: Rage pulse VFX
+            if (boss.cutsceneTimer === 1) {
+                triggerScreenFlash(0xff4444, 20);
+            }
+            
+            // Frame 60: "FINAL PHASE" text
+            if (boss.cutsceneTimer === PHASE3_CUTSCENE.TEXT_PHASE) {
+                showTutorialCallout('phase3Title', 'FINAL PHASE', 1500);
+            }
+            
+            // Frame 120: Shield reasserts with red tint
+            if (boss.cutsceneTimer === PHASE3_CUTSCENE.SHIELD_REASSERT) {
+                if (!boss.shieldActive) {
+                    boss.shieldActive = true;
+                    boss.shieldStartTime = Date.now();
+                }
+                if (boss.shieldMesh) {
+                    boss.shieldMesh.visible = true;
+                    if (boss.shieldMesh.material) {
+                        boss.shieldMesh.material.opacity = 0.7;
+                        if (boss.shieldMesh.material.emissive) {
+                            boss.shieldMesh.material.emissive.setHex(0xff4444);
+                        }
+                        boss.shieldMesh.material.emissiveIntensity = 0.5;
+                    }
+                }
+                triggerScreenFlash(0xff4444, 10);
+            }
+            
+            // Frame 180: Brief chase demo (boss moves toward player)
+            if (boss.cutsceneTimer >= PHASE3_CUTSCENE.DEMO_CHASE && boss.cutsceneTimer < PHASE3_CUTSCENE.DEMO_CHARGE) {
+                // Move slowly toward player to show chase behavior
+                const chaseDir = tempVec3.subVectors(player.position, boss.position).normalize();
+                chaseDir.y = 0;
+                boss.position.x += chaseDir.x * 0.05;
+                boss.position.z += chaseDir.z * 0.05;
+            }
+            
+            // Frame 300: Demo charge while shielded
+            if (boss.cutsceneTimer === PHASE3_CUTSCENE.DEMO_CHARGE) {
+                triggerSlowMo(45, 0.3);
+                triggerDemoAbility(boss, 'charge');
+            }
+            
+            // Frame 480: Survive text
+            if (boss.cutsceneTimer === PHASE3_CUTSCENE.TEXT_SURVIVE) {
+                showTutorialCallout('phase3Survive', 'Shield rule still applies - survive the chase!', 2500);
+            }
+            
+            // Frame 600: End cutscene
+            if (boss.cutsceneTimer >= PHASE3_CUTSCENE.TOTAL_DURATION) {
+                endCutsceneAndRepositionPlayer(boss);
+                boss.aiState = 'idle';
+                boss.aiTimer = 0;
+                boss.cutsceneTimer = 0;
+            }
             break;
             
         // PILLAR PERCH + SLAM (Boss 2)
@@ -3793,117 +4386,19 @@ function completePhaseTransition(boss) {
     // Update visual for new phase
     updateBossPhaseVisuals(boss);
     
-    // Red Puffer King Phase 2: Demo minion spawn + energy transfer + shield formation
+    // Red Puffer King Phase 2: Start Phase 2 cutscene (teach shield + minion dependency)
     const config = BOSS_CONFIG[gameState.currentArena];
     if (gameState.currentArena === 1 && newPhase === 2) {
         if (boss.shieldConfig && config.phaseBehavior?.[2]?.autoShield) {
-            // Initialize summon tracking
-            boss.summonedMinions = boss.summonedMinions || [];
-            boss.minionTethers = boss.minionTethers || [];
-            
-            // PHASE 2 DEMO: Spawn minions first, then show energy transfer to form shield
-            const demoMinions = [];
-            const minionCount = 3;
-            const spawnRadius = 8;
-            
-            for (let i = 0; i < minionCount; i++) {
-                const angle = (i / minionCount) * Math.PI * 2;
-                const spawnPos = new THREE.Vector3(
-                    boss.position.x + Math.cos(angle) * spawnRadius,
-                    1,
-                    boss.position.z + Math.sin(angle) * spawnRadius
-                );
-                const minion = spawnSpecificEnemy('grunt', spawnPos);
-                if (minion) {
-                    minion.isBossMinion = true;
-                    minion.parentBoss = boss;
-                    boss.summonedMinions.push(minion);
-                    demoMinions.push(minion);
-                    
-                    // Create tether VFX
-                    const tether = createMinionTether(boss, minion, boss.baseColor);
-                    if (tether) {
-                        minion.tether = tether;
-                        boss.minionTethers.push(tether);
-                    }
-                }
-            }
-            
-            // Show energy transfer VFX from minions to boss
-            if (demoMinions.length > 0) {
-                createEnergyTransferVFX(demoMinions, boss, 90);
-                // Slow-mo during energy transfer for emphasis
-                triggerSlowMo(60, 0.4);  // 1 second at 40% speed
-            }
-            
-            // Delay shield activation slightly for dramatic effect
-            setTimeout(() => {
-                boss.shieldActive = true;
-                boss.shieldStartTime = Date.now();
-                if (boss.shieldMesh) {
-                    boss.shieldMesh.visible = true;
-                }
-                
-                // Trigger porcupinefish inflation bristle effect for dramatic Phase 2 entrance
-                if (boss.isPorcupinefish) {
-                    triggerSpineBristle(boss);
-                    // Extra dramatic: instant partial inflation before lerp takes over
-                    boss.inflationState = 0.3;
-                }
-                
-                triggerScreenFlash(0x4488ff, 15);
-            }, 1500);  // 1.5 seconds after minion spawn
-            
-            // Enter static shielded state
-            boss.aiState = 'static_shielded';
-            boss.aiTimer = 0;
-            // Disable summon timer since we already spawned minions
-            boss.summonTimer = 300;  // 5 second delay before next summon wave
-            
-            // Show tutorial for first time
-            showTutorialCallout('phase2Shield', 'Kill linked minions to break the shield!', 3000);
-            PulseMusic.onBossShieldActivate?.();
+            startPhase2Cutscene(boss);
+            return;  // Don't mark transition complete yet - cutscene will handle it
         }
     }
     
-    // Red Puffer King Phase 3: Demo shielded dash, then resume aggressive chase
+    // Red Puffer King Phase 3: Start Phase 3 cutscene (teach shielded chase twist)
     if (gameState.currentArena === 1 && newPhase === 3) {
-        // Exit static_shielded state if still in it
-        if (boss.aiState === 'static_shielded') {
-            boss.aiState = 'idle';
-            boss.aiTimer = 0;
-        }
-        // Keep shield active if it was up (stacked mechanic)
-        // Shield will only break when minions are killed
-        
-        // Ensure shield is visible and prominent for demo
-        if (!boss.shieldActive) {
-            boss.shieldActive = true;
-            boss.shieldStartTime = Date.now();
-        }
-        if (boss.shieldMesh) {
-            boss.shieldMesh.visible = true;
-            // Make shield extra prominent for Phase 3 demo
-            if (boss.shieldMesh.material) {
-                boss.shieldMesh.material.opacity = 0.7;  // More visible
-                boss.shieldMesh.material.emissive?.setHex(0xff4444);  // Red tint for aggression
-                boss.shieldMesh.material.emissiveIntensity = 0.5;
-            }
-        }
-        
-        // PHASE 3 DEMO: Trigger a shielded dash demonstration
-        // Delay slightly to let phase transition visuals settle
-        setTimeout(() => {
-            if (boss && boss.health > 0) {
-                // Slow-mo during shielded charge demo for emphasis
-                triggerSlowMo(45, 0.3);  // 0.75 second at 30% speed
-                // Trigger demo charge in safe direction while shielded
-                triggerDemoAbility(boss, 'charge');
-            }
-        }, 500);  // 0.5 second delay
-        
-        // Show Phase 3 callout
-        showTutorialCallout('phase3Pressure', 'PHASE 3 - Boss charges while shielded!', 2500);
+        startPhase3Cutscene(boss);
+        return;  // Don't mark transition complete yet - cutscene will handle it
     }
     
     // Overgrowth P3: Trigger split immediately
@@ -3915,6 +4410,175 @@ function completePhaseTransition(boss) {
     
     boss.phaseTransitioning = false;
     boss.pendingPhase = null;
+}
+
+// ==================== FRAME-BASED TIMER CALLBACKS ====================
+// These are called by the timer checks in updateBoss() - replacing setTimeout
+
+// Activate Phase 2 shield (called after delay for dramatic effect)
+function activatePhase2Shield(boss) {
+    if (!boss || boss.health <= 0) return;
+    
+    boss.shieldActive = true;
+    boss.shieldStartTime = Date.now();
+    if (boss.shieldMesh) {
+        boss.shieldMesh.visible = true;
+    }
+    
+    // Trigger porcupinefish inflation bristle effect for dramatic Phase 2 entrance
+    if (boss.isPorcupinefish) {
+        triggerSpineBristle(boss);
+        // Extra dramatic: instant partial inflation before lerp takes over
+        boss.inflationState = 0.3;
+    }
+    
+    triggerScreenFlash(0x4488ff, 15);
+}
+
+// Trigger Phase 3 demo charge (called after delay)
+function triggerPhase3DemoCharge(boss) {
+    if (!boss || boss.health <= 0) return;
+    
+    // Slow-mo during shielded charge demo for emphasis
+    triggerSlowMo(45, 0.3);  // 0.75 second at 30% speed
+    // Trigger demo charge in safe direction while shielded
+    triggerDemoAbility(boss, 'charge');
+}
+
+// Spawn portal after boss defeat (called after delay)
+function spawnPortalAfterDefeat(boss) {
+    // Boss may be null at this point, use stored position from gameState
+    if (gameState.portalSpawnPos) {
+        spawnArenaPortal(gameState.portalSpawnPos);
+        showTutorialCallout('portal', 'Enter the portal to proceed to the next arena!', 3000);
+        gameState.portalSpawnPos = null;
+    }
+}
+
+// Spawn victory particle wave (called repeatedly)
+function spawnVictoryParticleWave(boss) {
+    if (!gameState.victoryParticlePos) return;
+    
+    const bossPos = gameState.victoryParticlePos;
+    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+    
+    for (let i = 0; i < 6; i++) {
+        const offset = new THREE.Vector3(
+            (Math.random() - 0.5) * 15,
+            3 + Math.random() * 5,
+            (Math.random() - 0.5) * 15
+        );
+        spawnParticle(bossPos.clone().add(offset), colors[i], 15);
+    }
+}
+
+// ==================== PHASE CUTSCENE HELPERS ====================
+
+// Start Phase 2 cutscene (called from completePhaseTransition)
+function startPhase2Cutscene(boss) {
+    prepareBossForCutscene(boss);
+    boss.aiState = 'phase2_cutscene';
+    boss.cutsceneTimer = 0;
+    
+    // Initialize summon tracking
+    boss.summonedMinions = boss.summonedMinions || [];
+    boss.minionTethers = boss.minionTethers || [];
+}
+
+// Start Phase 3 cutscene (called from completePhaseTransition)
+function startPhase3Cutscene(boss) {
+    prepareBossForCutscene(boss);
+    boss.aiState = 'phase3_cutscene';
+    boss.cutsceneTimer = 0;
+    
+    // Exit static_shielded state if still in it
+    // (will be replaced by phase3_cutscene state)
+}
+
+// Spawn demo minions for Phase 2 cutscene
+function spawnPhase2DemoMinions(boss) {
+    const minionCount = 3;
+    const spawnRadius = 8;
+    
+    for (let i = 0; i < minionCount; i++) {
+        const angle = (i / minionCount) * Math.PI * 2;
+        const spawnPos = new THREE.Vector3(
+            boss.position.x + Math.cos(angle) * spawnRadius,
+            1,
+            boss.position.z + Math.sin(angle) * spawnRadius
+        );
+        const minion = spawnSpecificEnemy('grunt', spawnPos);
+        if (minion) {
+            minion.isBossMinion = true;
+            minion.parentBoss = boss;
+            boss.summonedMinions.push(minion);
+            
+            // Create tether VFX
+            const tether = createMinionTether(boss, minion, boss.baseColor);
+            if (tether) {
+                minion.tether = tether;
+                boss.minionTethers.push(tether);
+            }
+        }
+    }
+    
+    // Show energy transfer VFX
+    if (boss.summonedMinions.length > 0) {
+        createEnergyTransferVFX(boss.summonedMinions, boss, 90);
+        triggerSlowMo(60, 0.4);
+    }
+}
+
+// Demo kill one minion to show shield mechanic
+function demoKillOneMinion(boss) {
+    if (!boss.summonedMinions || boss.summonedMinions.length === 0) return;
+    
+    // Pick first minion to "kill" (scripted)
+    const targetMinion = boss.summonedMinions[0];
+    if (!targetMinion) return;
+    
+    // Create tether snap VFX
+    if (targetMinion.tether) {
+        createTetherSnapVFX(boss.position, targetMinion.position, boss.baseColor);
+    }
+    
+    // Flicker shield to show it's weakening
+    if (boss.shieldMesh && boss.shieldMesh.material) {
+        const originalOpacity = boss.shieldMesh.material.opacity;
+        boss.shieldMesh.material.opacity = 0.2;
+        // Note: Can't use setTimeout, so shield will stay flickered until cutscene ends
+        // This is acceptable for demo purposes
+    }
+    
+    // Spawn particle burst at minion location
+    spawnParticle(targetMinion.position, targetMinion.baseColor || 0xff6600, 15);
+    
+    // Remove minion from scene
+    const minionIndex = boss.summonedMinions.indexOf(targetMinion);
+    if (minionIndex !== -1) {
+        boss.summonedMinions.splice(minionIndex, 1);
+    }
+    
+    // Remove from enemies array
+    const enemyIndex = enemies.indexOf(targetMinion);
+    if (enemyIndex !== -1) {
+        enemies.splice(enemyIndex, 1);
+    }
+    
+    // Remove tether
+    if (targetMinion.tether) {
+        const tetherIndex = boss.minionTethers.indexOf(targetMinion.tether);
+        if (tetherIndex !== -1) {
+            boss.minionTethers.splice(tetherIndex, 1);
+        }
+        scene.remove(targetMinion.tether);
+    }
+    
+    // Remove minion mesh
+    scene.remove(targetMinion);
+    
+    // Audio cue
+    PulseMusic.onMinionKill?.();
 }
 
 // Update boss appearance based on phase
@@ -3991,6 +4655,52 @@ function updateBossPhaseVisuals(boss) {
 
 function isOutOfBounds(boss) {
     return Math.abs(boss.position.x) > 42 || Math.abs(boss.position.z) > 42;
+}
+
+/**
+ * Check if player is within the boss's charge path danger zone
+ * The charge path is a rectangle from boss to the arena edge in the charge direction
+ * Width is 5 units (same as the visual marker)
+ * @param {Object} boss - The boss object
+ * @param {Object} playerObj - The player object  
+ * @returns {boolean} True if player is in the danger zone
+ */
+function isPlayerInChargeZone(boss, playerObj) {
+    if (!boss || !playerObj || !boss.demoChargeDir) return false;
+    
+    const chargeDir = boss.demoChargeDir;
+    const bossPos = boss.position;
+    const playerPos = playerObj.position;
+    
+    // Calculate player position relative to boss
+    const relX = playerPos.x - bossPos.x;
+    const relZ = playerPos.z - bossPos.z;
+    
+    // Get the charge direction as a unit vector
+    const dirX = chargeDir.x;
+    const dirZ = chargeDir.z;
+    
+    // Calculate perpendicular direction (90 degrees rotated)
+    const perpX = -dirZ;
+    const perpZ = dirX;
+    
+    // Project player position onto charge direction (forward distance)
+    const forwardDist = relX * dirX + relZ * dirZ;
+    
+    // Project player position onto perpendicular direction (lateral distance)
+    const lateralDist = Math.abs(relX * perpX + relZ * perpZ);
+    
+    // Danger zone parameters
+    const zoneWidth = 5;  // Match the charge marker width
+    const zoneLength = 80;  // Full arena length
+    const halfWidth = zoneWidth / 2;
+    
+    // Player is in danger zone if:
+    // 1. They are in front of the boss (forward distance > 0)
+    // 2. They are within the charge path length (forward distance < zoneLength)
+    // 3. They are within the path width (lateral distance < halfWidth)
+    // Also include a small buffer behind the boss (forward distance > -3)
+    return forwardDist > -3 && forwardDist < zoneLength && lateralDist < halfWidth + 1;
 }
 
 function spawnMiniBoss(position, index, totalCount = 3, health = 150, simpleMode = false) {
@@ -4111,21 +4821,10 @@ export function killBoss() {
         triggerScreenFlash(0xffffff, 0.7);
         
         // Multiple staggered particle bursts (celebratory fireworks effect)
-        const bossPos = currentBoss.position.clone();
-        const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
-        
-        for (let wave = 0; wave < 3; wave++) {
-            setTimeout(() => {
-                for (let i = 0; i < 6; i++) {
-                    const offset = new THREE.Vector3(
-                        (Math.random() - 0.5) * 15,
-                        3 + Math.random() * 5,
-                        (Math.random() - 0.5) * 15
-                    );
-                    spawnParticle(bossPos.clone().add(offset), colors[i], 15);
-                }
-            }, wave * 500);
-        }
+        // Use frame-based timer stored in gameState (boss will be removed)
+        gameState.victoryParticlePos = currentBoss.position.clone();
+        gameState.victoryParticleWave = 0;
+        gameState.victoryParticleTimer = 0;
         
         // Victory fanfare audio
         PulseMusic.onFinalBossVictory();
@@ -4160,6 +4859,9 @@ export function killBoss() {
     scene.remove(currentBoss);
     setCurrentBoss(null);
     
+    // Unfreeze the entrance portal so player can use it to progress
+    unfreezeBossEntrancePortal();
+    
     gameState.bossActive = false;
     hideBossHealthBar();
     hideBoss6CycleIndicator();
@@ -4172,9 +4874,8 @@ export function killBoss() {
         portalPos.y = 0;  // Ground level
         
         // Delay portal spawn for dramatic effect (2 seconds after boss death)
-        setTimeout(() => {
-            spawnArenaPortal(portalPos);
-            showTutorialCallout('portal', 'Enter the portal to proceed to the next arena!', 3000);
-        }, 2000);
+        // Use frame-based timer stored in gameState (boss will be removed)
+        gameState.portalSpawnTimer = 120;  // 2 seconds at 60fps
+        gameState.portalSpawnPos = portalPos;
     }
 }

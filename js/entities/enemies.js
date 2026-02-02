@@ -107,7 +107,7 @@ function getCachedConeGeometry(radius, height, segments = 6) {
 function createMiniPorcupinefishMesh(size, color) {
     const group = new THREE.Group();
     
-    // Main body - sphere
+    // Main body - sphere (body radius = size)
     const bodyGeom = getCachedSphereGeometry(size, 12);
     const bodyMat = new THREE.MeshStandardMaterial({
         color: color,
@@ -118,40 +118,41 @@ function createMiniPorcupinefishMesh(size, color) {
     body.castShadow = true;
     group.add(body);
     
-    // Glow effect
-    const glowGeom = getCachedSphereGeometry(size * 1.15, 8);
+    // Glow effect - slightly larger than body
+    const glowGeom = getCachedSphereGeometry(size * 1.1, 8);
     const glowMat = new THREE.MeshBasicMaterial({
         color: color,
         transparent: true,
-        opacity: 0.2
+        opacity: 0.15
     });
     const glow = new THREE.Mesh(glowGeom, glowMat);
     group.add(glow);
     
-    // Eyes - simple white spheres with black pupils
-    const eyeGeom = getCachedSphereGeometry(size * 0.12, 6);
+    // Eyes - positioned ON the body surface (use larger sizes for visibility)
+    // Eye positions must be at distance >= size from center to be visible
+    const eyeGeom = getCachedSphereGeometry(size * 0.18, 6);
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const pupilGeom = getCachedSphereGeometry(size * 0.06, 4);
+    const pupilGeom = getCachedSphereGeometry(size * 0.09, 4);
     const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
     
-    // Left eye
+    // Left eye - position at body surface (distance = size from center)
     const leftEye = new THREE.Mesh(eyeGeom, eyeMat);
-    leftEye.position.set(-size * 0.35, size * 0.25, size * 0.7);
+    leftEye.position.set(-size * 0.4, size * 0.35, size * 0.85);
     group.add(leftEye);
     const leftPupil = new THREE.Mesh(pupilGeom, pupilMat);
-    leftPupil.position.set(-size * 0.35, size * 0.25, size * 0.82);
+    leftPupil.position.set(-size * 0.4, size * 0.35, size * 1.0);
     group.add(leftPupil);
     
     // Right eye
     const rightEye = new THREE.Mesh(eyeGeom, eyeMat);
-    rightEye.position.set(size * 0.35, size * 0.25, size * 0.7);
+    rightEye.position.set(size * 0.4, size * 0.35, size * 0.85);
     group.add(rightEye);
     const rightPupil = new THREE.Mesh(pupilGeom, pupilMat);
-    rightPupil.position.set(size * 0.35, size * 0.25, size * 0.82);
+    rightPupil.position.set(size * 0.4, size * 0.35, size * 1.0);
     group.add(rightPupil);
     
-    // Tail fin - small cone at the back
-    const tailGeom = getCachedConeGeometry(size * 0.2, size * 0.4, 4);
+    // Tail fin - positioned clearly behind body
+    const tailGeom = getCachedConeGeometry(size * 0.3, size * 0.5, 4);
     const tailMat = new THREE.MeshStandardMaterial({
         color: color,
         emissive: color,
@@ -159,11 +160,11 @@ function createMiniPorcupinefishMesh(size, color) {
     });
     const tail = new THREE.Mesh(tailGeom, tailMat);
     tail.rotation.x = Math.PI / 2;
-    tail.position.set(0, 0, -size * 0.9);
+    tail.position.set(0, 0, -size * 1.2);
     group.add(tail);
     
-    // Side fins - small cones
-    const finGeom = getCachedConeGeometry(size * 0.15, size * 0.3, 3);
+    // Side fins - positioned outside body surface
+    const finGeom = getCachedConeGeometry(size * 0.2, size * 0.4, 3);
     const finMat = new THREE.MeshStandardMaterial({
         color: color,
         emissive: color,
@@ -174,24 +175,24 @@ function createMiniPorcupinefishMesh(size, color) {
     const leftFin = new THREE.Mesh(finGeom, finMat);
     leftFin.rotation.z = Math.PI / 2;
     leftFin.rotation.y = -0.3;
-    leftFin.position.set(-size * 0.75, 0, size * 0.15);
+    leftFin.position.set(-size * 1.0, 0, size * 0.2);
     group.add(leftFin);
     
     const rightFin = new THREE.Mesh(finGeom, finMat.clone());
     rightFin.rotation.z = -Math.PI / 2;
     rightFin.rotation.y = 0.3;
-    rightFin.position.set(size * 0.75, 0, size * 0.15);
+    rightFin.position.set(size * 1.0, 0, size * 0.2);
     group.add(rightFin);
     
-    // Single dorsal fin on top
-    const dorsalGeom = getCachedConeGeometry(size * 0.1, size * 0.25, 3);
+    // Single dorsal fin on top - positioned above body
+    const dorsalGeom = getCachedConeGeometry(size * 0.15, size * 0.35, 3);
     const dorsalMat = new THREE.MeshStandardMaterial({
         color: color,
         emissive: color,
         emissiveIntensity: 0.4
     });
     const dorsal = new THREE.Mesh(dorsalGeom, dorsalMat);
-    dorsal.position.set(0, size * 0.7, -size * 0.1);
+    dorsal.position.set(0, size * 1.0, -size * 0.15);
     group.add(dorsal);
     
     // Store material reference for hit flash
@@ -1130,7 +1131,15 @@ export function updateEnemies(delta) {
             enemy.velocityY = 0;
         }
         
-        enemy.rotation.y += 0.04;
+        // Mini porcupinefish enemies face the player; others spin
+        if (enemy.isMiniPorcupinefish) {
+            // Face toward player (calculate angle from enemy to player)
+            const dx = player.position.x - enemy.position.x;
+            const dz = player.position.z - enemy.position.z;
+            enemy.rotation.y = Math.atan2(dx, dz);
+        } else {
+            enemy.rotation.y += 0.04;
+        }
         
         // Player collision
         const scaledSize = enemy.baseSize * enemy.scale.x;
