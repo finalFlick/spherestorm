@@ -801,3 +801,61 @@ log('SPAWN', 'enemy_spawned', { type: 'grunt', pos: { x, z } });
 1. Enable tags: `WAVE`, `STATE`, `SPAWN`
 2. Check state machine transitions (should see `wave_clear`)
 3. Look for `[SAFETY]` warnings
+
+### 17. Version Management (Semantic Versioning)
+
+The project follows **Semantic Versioning 2.0.0** (MAJOR.MINOR.PATCH) tracked in the `VERSION` file.
+
+#### Version Bump Rules
+
+**MAJOR version** (X.0.0) - Breaking changes:
+- Breaking API changes to game systems (incompatible save data)
+- Removal of core features or mechanics
+- Major architecture rewrites that change fundamental behavior
+- Changes that require players to restart progression
+
+**MINOR version** (0.X.0) - New features (backwards compatible):
+- New arenas, bosses, or enemy types
+- New upgrade systems or modules
+- New game modes or mechanics
+- Significant feature additions that don't break existing saves
+- Documentation updates for new features
+
+**PATCH version** (0.0.X) - Bug fixes and minor improvements:
+- Bug fixes that don't change behavior
+- Performance optimizations
+- Code cleanup and refactoring
+- Documentation corrections
+- Balance tweaks (enemy stats, damage values)
+- Visual polish (particle effects, UI improvements)
+
+#### When to Bump Version
+
+**Before pushing to remote:**
+1. Review all commits since last version bump
+2. Determine highest severity change (MAJOR > MINOR > PATCH)
+3. Update `VERSION` file with new version
+4. Include version bump in final commit message: `chore: bump version to X.Y.Z`
+
+**Example Workflow:**
+```bash
+# Make changes and commit them
+git commit -m "feat: add Arena 2 boss"
+git commit -m "fix: correct projectile collision bug"
+
+# Review changes and bump version
+# Arena 2 boss = MINOR bump (new feature)
+# Bug fix = PATCH bump
+# Result: MINOR bump wins (0.1.0 → 0.2.0)
+
+echo "0.2.0" > VERSION
+git add VERSION
+git commit -m "chore: bump version to 0.2.0"
+git push
+```
+
+#### Version History
+
+Track major milestones:
+- **0.1.0**: Initial release (Arena 1, basic systems)
+- **0.2.0**: Documentation overhaul, code quality sweep, module system groundwork
