@@ -27,6 +27,14 @@ export function resetLastShot() {
     lastShot = 0;
 }
 
+export function getLastShot() {
+    return lastShot;
+}
+
+export function getFireRate() {
+    return 500 / gameState.stats.attackSpeed;
+}
+
 // Player max shoot range
 const MAX_PROJECTILE_RANGE = 25;
 
@@ -268,10 +276,6 @@ export function updateProjectiles(delta) {
                         gameState.combatStats.damageDealt += damageDealt;
                     }
                 }
-                
-                // REMOVED: Shrink on damage (user preference - just use glow VFX)
-                // enemy.scale.setScalar(0.65 + 0.35 * healthPercent);
-                
                 // Hit flash - handle both Mesh and Group enemies
                 const enemyMat = enemy.baseMaterial || enemy.material;
                 if (enemyMat && enemyMat.emissive) {

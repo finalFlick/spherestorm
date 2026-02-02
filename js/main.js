@@ -763,8 +763,11 @@ function setupDebugControls() {
     const warpBtn = document.getElementById('debug-warp-btn');
     if (warpBtn) {
         addTrackedListener(warpBtn, 'click', () => {
-            const arena = parseInt(document.getElementById('debug-warp-arena').value);
-            const wave = parseInt(document.getElementById('debug-warp-wave').value);
+            const arenaEl = document.getElementById('debug-warp-arena');
+            const waveEl = document.getElementById('debug-warp-wave');
+            if (!arenaEl || !waveEl) return;
+            const arena = parseInt(arenaEl.value, 10) || 1;
+            const wave = parseInt(waveEl.value, 10) || 1;
             debugWarpToArenaWave(arena, wave);
         });
     }
@@ -773,7 +776,9 @@ function setupDebugControls() {
     const spawnBossBtn = document.getElementById('debug-spawn-boss');
     if (spawnBossBtn) {
         addTrackedListener(spawnBossBtn, 'click', () => {
-            const bossNum = parseInt(document.getElementById('debug-boss-select').value);
+            const bossEl = document.getElementById('debug-boss-select');
+            if (!bossEl) return;
+            const bossNum = parseInt(bossEl.value, 10) || 1;
             debugSpawnBoss(bossNum);
         });
     }

@@ -30,7 +30,7 @@ SPHERESTORM uses a **progressive complexity system** where each arena introduces
 - Arena 6: Synthesis of all mechanics
 
 **Tiered Wave Counts:**
-- Early arenas (1-2): Short, focused learning (3-5 waves)
+- Early arenas (1-2): Short, focused learning (5-7 waves; Arena 1 uses 3 segments with boss phases)
 - Mid arenas (3-4): Building complexity (6-8 waves)
 - Late arenas (5-6): Full challenge (8-10 waves)
 
@@ -61,7 +61,7 @@ Victory → Next Arena
 
 ### Arena 1: The Training Grounds
 
-**Waves:** 3 (quick intro)
+**Waves:** 7 (boss chase structure: 3+2+2)
 
 **Features:** Flat terrain, landmarks
 
@@ -86,6 +86,14 @@ Victory → Next Arena
 1. **Wave 1** (Lesson): Few Red Puffers, learn controls
 2. **Wave 2** (Integration): More Red Puffers, test movement
 3. **Wave 3** (Exam): Full pressure before boss
+
+**Wave Structure:**
+Arena 1 uses a unique "Boss Chase" system with 3 segments:
+1. **Segment 1** (Waves 1-3): Basic enemy patterns → Boss Phase 1 (retreats at 66% HP)
+2. **Segment 2** (Waves 4-5): Increased pressure → Boss Phase 2 (retreats at 33% HP)  
+3. **Segment 3** (Waves 6-7): Final challenge → Boss Phase 3 (defeated at 0% HP)
+
+Total: 7 wave encounters + 3 boss encounters
 
 **Boss:** RED PUFFER KING
 - Charge attacks

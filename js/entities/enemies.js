@@ -715,7 +715,7 @@ function spawnEnemyAtPosition(enemyType, x, z) {
 
 // School formation tracking
 let nextSchoolId = 1;
-let lastSchoolSpawnFrame = 0;
+let lastSchoolSpawnFrame = -9999;  // Start negative so first school isn't blocked by cooldown
 
 // Check if enemy type can form schools
 function canSchoolType(typeName) {
@@ -744,7 +744,10 @@ function getSchoolChance() {
     const arena = gameState.currentArena;
     const wave = gameState.currentWave;
     const arenaConfig = SCHOOL_CONFIG.chanceByWave[`arena${arena}`] || SCHOOL_CONFIG.chanceByWave.default;
-    return arenaConfig[wave] || arenaConfig[3] || 0;  // Use wave 3 as fallback for higher waves
+    // Use explicit undefined check - 0 is a valid chance value!
+    const waveChance = arenaConfig[wave];
+    if (waveChance !== undefined) return waveChance;
+    return arenaConfig[3] || 0;  // Fallback to wave 3 config for higher waves
 }
 
 // Calculate threat cost for an enemy type (local helper, mirrors waveSystem version)
@@ -826,18 +829,20 @@ export function handleSchoolLeaderDeath(deadLeader) {
     if (SCHOOL_CONFIG.leaderDeathBehavior === 'promote') {
         // Promote first follower to leader
         const newLeader = followers[0];
+        const oldLeaderOffset = newLeader.formationOffset || { x: 0, z: 0 };
+        
         newLeader.isSchoolLeader = true;
         newLeader.formationOffset = { x: 0, z: 0 };
         
-        // Recalculate follower offsets relative to new leader
+        // FIX: Keep existing formation positions, just adjust offsets relative to new leader
+        // Don't recalculate - preserve the current positions by adjusting offsets
         for (let i = 1; i < followers.length; i++) {
             const follower = followers[i];
-            const angle = Math.PI + (i % 2 === 0 ? 1 : -1) * (Math.ceil(i / 2) * 0.5);
-            const dist = SCHOOL_CONFIG.formationSpacing * Math.ceil(i / 2);
-            follower.formationOffset = {
-                x: Math.cos(angle) * dist,
-                z: Math.sin(angle) * dist
-            };
+            if (follower.formationOffset) {
+                // Adjust offset relative to new leader's old position
+                follower.formationOffset.x -= oldLeaderOffset.x;
+                follower.formationOffset.z -= oldLeaderOffset.z;
+            }
         }
     } else {
         // Disband - remove school affiliation from all followers
@@ -963,7 +968,6 @@ function selectEnemyByBudget() {
     const budgetRemaining = gameState.waveBudgetRemaining || 999;
     const cognitiveMax = gameState.waveCognitiveMax || 99;
     const cognitiveUsed = gameState.waveCognitiveUsed || 0;
-    
     // Filter available types by pool and budget
     const availableTypes = [];
     let totalWeight = 0;
@@ -1012,14 +1016,27 @@ function selectEnemyByBudget() {
         totalWeight += weight;
     }
     
-    // Fallback to grunt if no enemies available
+    // Fallback if no enemies available
     if (availableTypes.length === 0) {
-        // Check if grunt is affordable
-        const gruntCost = (THREAT_BUDGET.costs.grunt?.durability || 12) + (THREAT_BUDGET.costs.grunt?.damage || 10);
-        if (gruntCost <= budgetRemaining) {
-            return { name: 'grunt', data: ENEMY_TYPES.grunt, cost: gruntCost };
+        // Only fallback to grunt if it's in the wave pool (or no pool restriction)
+        const gruntInPool = !pool || pool.length === 0 || pool.includes('grunt');
+        if (gruntInPool) {
+            const gruntCost = (THREAT_BUDGET.costs.grunt?.durability || 12) + (THREAT_BUDGET.costs.grunt?.damage || 10);
+            if (gruntCost <= budgetRemaining) {
+                return { name: 'grunt', data: ENEMY_TYPES.grunt, cost: gruntCost };
+            }
         }
-        return null; // Budget exhausted
+        
+        // If grunt not in pool, try gruntTiny as last resort (it's always affordable)
+        const tinyInPool = !pool || pool.length === 0 || pool.includes('gruntTiny');
+        if (tinyInPool) {
+            const tinyCost = (THREAT_BUDGET.costs.gruntTiny?.durability || 5) + (THREAT_BUDGET.costs.gruntTiny?.damage || 4);
+            if (tinyCost <= budgetRemaining) {
+                return { name: 'gruntTiny', data: ENEMY_TYPES.gruntTiny, cost: tinyCost };
+            }
+        }
+        
+        return null; // Budget exhausted or no pool-valid fallback
     }
     
     // Weighted random selection
@@ -1033,7 +1050,9 @@ function selectEnemyByBudget() {
             weight *= COGNITIVE_LIMITS.featuredTypeBonus;
         }
         random -= weight;
-        if (random <= 0) return type;
+        if (random <= 0) {
+            return type;
+        }
     }
     
     return availableTypes[0];

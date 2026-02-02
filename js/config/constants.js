@@ -299,11 +299,6 @@ export const PHASE3_CUTSCENE = {
     TEXT_SURVIVE: 480            // "Shield rule still applies - survive the chase!" (8s)
 };
 
-// Legacy phase transition timing (kept for backward compatibility)
-export const PHASE_DEMO_DURATION = 90;             // 1.5 seconds for ability demo
-export const ENERGY_TRANSFER_DURATION = 90;        // 1.5 seconds for energy transfer VFX
-export const PHASE_DEMO_DELAY = 500;               // 0.5 second delay before demo starts (ms)
-
 // Visual feedback constants
 export const SLOW_MO_LERP_SPEED = 0.1;  // Interpolation speed for slow-mo transitions
 export const SCREEN_FLASH_DEFAULT_DURATION = 6;  // Default frames for screen flash effect

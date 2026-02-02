@@ -4,7 +4,7 @@ import { player } from '../entities/player.js';
 import { spawnWaveEnemy } from '../entities/enemies.js';
 import { spawnBoss, spawnIntroMinions, triggerDemoAbility, endDemoMode, prepareBossForCutscene, endCutsceneAndRepositionPlayer } from '../entities/boss.js';
 import { clearAllPickups, updateArenaPortal, clearArenaPortal, spawnBossEntrancePortal, freezeBossEntrancePortal, updateBossEntrancePortal } from './pickups.js';
-import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION, SPAWN_CHOREOGRAPHY } from '../config/constants.js';
+import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION, SPAWN_CHOREOGRAPHY, DEBUG } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { generateArena } from '../arena/generator.js';
@@ -26,11 +26,11 @@ import { scene } from '../core/scene.js';
 import { startCinematic, triggerSlowMo, endCinematic } from './visualFeedback.js';
 import { log, logOnce, logThrottled, assert } from './debugLog.js';
 
-// Timing constants (in frames at 60fps) - 3x longer for readability
-const WAVE_INTRO_FRAMES = 360;       // 6 seconds (3x original)
-const WAVE_CLEAR_FRAMES = 270;       // 4.5 seconds (3x original)
-const BOSS_INTRO_FRAMES = 540;       // 9 seconds (3x original)
-const BOSS_DEFEATED_FRAMES = 180;    // 3 seconds
+// Timing constants (in frames at 60fps) - tuned for 3-minute Arena 1 target
+const WAVE_INTRO_FRAMES = 90;        // 1.5 seconds - snappy but readable
+const WAVE_CLEAR_FRAMES = 90;        // 1.5 seconds - brief victory moment
+const BOSS_INTRO_FRAMES = 60;        // 1 second - dramatic entrance without delay
+const BOSS_DEFEATED_FRAMES = 120;    // 2 seconds - satisfying victory beat
 const ARENA_TRANSITION_FRAMES = 60;  // 1 second
 
 export function updateWaveSystem() {
@@ -55,14 +55,13 @@ function handleWaveIntro() {
     if (gameState.waveTimer === 0) {
         showWaveAnnouncement();
         PulseMusic.onWaveStart(gameState.currentWave);
-        gameState.announcementPaused = true;  // Pause during announcement
+        // Don't pause player during wave announcement - let them keep moving
     }
     gameState.waveTimer++;
     
     if (gameState.waveTimer > WAVE_INTRO_FRAMES) {
         gameState.waveState = WAVE_STATE.WAVE_ACTIVE;
         gameState.waveTimer = 0;
-        gameState.announcementPaused = false;  // Unpause when announcement ends
         
         const maxWaves = getMaxWaves();
         const isLessonWave = (gameState.currentWave === 1);
@@ -109,7 +108,8 @@ function handleWaveIntro() {
         }
         
         // Initialize threat budget
-        gameState.waveBudgetRemaining = Math.floor(baseBudget.total * arenaScale * modifierMult);
+        gameState.waveBudgetTotal = Math.floor(baseBudget.total * arenaScale * modifierMult);
+        gameState.waveBudgetRemaining = gameState.waveBudgetTotal;
         
         // Apply cognitive cap from modifier if specified (breather waves have lower cognitive load)
         const modifierConfig = gameState.waveModifier ? WAVE_MODIFIERS[gameState.waveModifier] : null;
@@ -132,14 +132,15 @@ function handleWaveIntro() {
         
         // Track wave start time for speed bonus calculation
         gameState.waveStartTime = Date.now();
+        if (DEBUG) console.log(`[SpeedBonus] Wave ${gameState.currentWave} start recorded`);
         
-        // Log wave start with full context
+        // Log wave start with full context (using waveType from above)
         log('WAVE', 'start', {
             wave: gameState.currentWave,
             budget: gameState.waveBudgetRemaining,
             cognitiveMax: gameState.waveCognitiveMax,
             modifier: gameState.waveModifier || 'none',
-            waveType: getWaveType(gameState.currentWave, getMaxWaves())
+            waveType: waveType
         });
         
         // Legacy compatibility - estimate enemy count for UI
@@ -223,6 +224,7 @@ function selectWaveModifier(arena, wave, maxWaves, isLessonWave) {
 // Initialize the enemy pool for this wave (cognitive caps)
 function initializeWaveEnemyPool() {
     const arena = gameState.currentArena;
+    const wave = gameState.currentWave;
     const maxTypes = COGNITIVE_LIMITS.maxTypesPerWave[arena] || 4;
     const arenaConfig = ARENA_CONFIG.arenas[arena];
     const lessonEnemy = arenaConfig?.lessonEnemy || 'grunt';
@@ -233,11 +235,16 @@ function initializeWaveEnemyPool() {
         return;
     }
     
-    // Always include the arena's featured enemy
-    const pool = [lessonEnemy];
+    // Get all available enemy types for this arena and wave (respects minWave)
+    const available = getAvailableEnemyTypesForArena(arena, wave);
     
-    // Get all available enemy types for this arena
-    const available = getAvailableEnemyTypesForArena(arena);
+    // Try to include the arena's featured enemy if available
+    const pool = [];
+    if (available.includes(lessonEnemy)) {
+        pool.push(lessonEnemy);
+    }
+    
+    // Add other available types
     const others = available.filter(t => t !== lessonEnemy);
     
     // Shuffle and fill remaining slots
@@ -249,14 +256,18 @@ function initializeWaveEnemyPool() {
     gameState.waveEnemyPool = pool;
 }
 
-// Get enemy types available in this arena
-function getAvailableEnemyTypesForArena(arena) {
+// Get enemy types available in this arena and wave
+function getAvailableEnemyTypesForArena(arena, wave = null) {
     const types = [];
     
     for (const [name, data] of Object.entries(ENEMY_TYPES)) {
         if (data.spawnWeight <= 0) continue;
         if (data.arenaIntro && data.arenaIntro > arena) continue;
         if (data.maxArena && data.maxArena < arena) continue;
+        
+        // Check minWave gating if wave provided
+        if (wave !== null && data.minWave && wave < data.minWave) continue;
+        
         types.push(name);
     }
     
@@ -350,6 +361,39 @@ function handleWaveActive() {
         if (gameState.waveModifier === 'breather') {
             burstChance = 0;
         }
+    }
+    
+    // Arena 1 special: progressive spawn pacing
+    // Start slow, speed up as wave progresses (building pressure feel)
+    // Hybrid ramping: each wave ramps internally + later waves start faster
+    if (gameState.currentArena === 1) {
+        // Wave number determines starting interval (later waves start faster)
+        const waveStartIntervals = {
+            1: 2000,  // Wave 1: very relaxed start (2.0s)
+            2: 1500,  // Wave 2: moderate start (1.5s)
+            3: 1200,  // Wave 3: quicker start (1.2s)
+            4: 1000,  // Waves 4+: fast start (1.0s)
+        };
+        
+        // Floor intervals (fastest each wave type can get)
+        const waveFloorIntervals = {
+            1: 1000,  // Wave 1 floor: 1.0s (never frantic)
+            2: 700,   // Wave 2 floor: 0.7s
+            3: 500,   // Wave 3 floor: 0.5s
+            4: 400,   // Waves 4+ floor: 0.4s
+        };
+        
+        const wave = Math.min(gameState.currentWave, 4);
+        const startInterval = waveStartIntervals[wave];
+        const floorInterval = waveFloorIntervals[wave];
+        
+        // Calculate ramp progress (0 = start of wave, 1 = most spawns done)
+        // Use spawn count relative to expected total spawns
+        const expectedSpawns = Math.ceil(gameState.waveBudgetTotal / 10); // Rough estimate
+        const spawnProgress = Math.min(1, gameState.waveSpawnCount / expectedSpawns);
+        
+        // Lerp from start to floor based on progress
+        spawnInterval = startInterval - (startInterval - floorInterval) * spawnProgress;
     }
     
     // Arena 5 special: reduce burst chance (tunnels amplify unfairness)
@@ -465,8 +509,8 @@ function handleWaveClear() {
         if (shouldBossReturn()) {
             // Prepare next boss phase
             const chase = gameState.arena1ChaseState;
+            const oldPhase = chase.bossPhaseToSpawn;
             chase.bossPhaseToSpawn = chase.bossEncounterCount + 1;
-            
             log('BOSS', 'return_triggered', {
                 phase: chase.bossPhaseToSpawn,
                 persistentHP: chase.persistentBossHealth,
@@ -482,7 +526,13 @@ function handleWaveClear() {
         
         // Normal wave progression
         const maxWaves = getMaxWaves();
-        if (gameState.currentWave >= maxWaves) {
+        
+        // FIX: In chase mode, don't use normal boss trigger - let shouldBossReturn() handle it
+        // The chase mode has more waves than base arena config
+        const inChaseMode = gameState.arena1ChaseState?.enabled;
+        const chaseComplete = inChaseMode && gameState.arena1ChaseState.bossEncounterCount >= 3;
+        
+        if (gameState.currentWave >= maxWaves && (!inChaseMode || chaseComplete)) {
             gameState.waveState = WAVE_STATE.BOSS_INTRO;
         } else {
             gameState.currentWave++;
@@ -558,63 +608,25 @@ function handleBossIntro() {
     
     // Boss 1 (Arena 1) Extended Demo Sequence - teach charge pattern with 3 demos
     // Boss prowls continuously in intro_showcase state between demos
+    // SKIP demo tutorial in chase mode - boss chase teaches through play
+    const skipDemo = gameState.arena1ChaseState?.enabled;
+    
     if (gameState.currentArena === 1 && gameState.waveTimer > BOSS_INTRO_FRAMES) {
         const framesSinceSpawn = gameState.waveTimer - BOSS_INTRO_FRAMES;
         const boss = gameState.currentBossRef || getCurrentBoss();
         
-        // Check if boss is currently in a demo ability (don't interrupt)
-        const inDemoAbility = boss && (
-            boss.aiState === 'demo_dodge_wait' ||
-            boss.aiState === 'wind_up' ||
-            boss.aiState === 'charging' ||
-            boss.aiState === 'wall_impact' ||
-            boss.aiState === 'wall_recovery' ||
-            boss.aiState === 'cooldown'
-        );
-        
-        // Demo charge #1 (slow, with slow-mo for readability) - 6 seconds
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_1 && boss && !inDemoAbility) {
-            triggerSlowMo(BOSS1_INTRO_DEMO.CHARGE_1_SLOWMO_DURATION, BOSS1_INTRO_DEMO.CHARGE_1_SLOWMO_SCALE);
-            triggerDemoAbility(boss, 'charge');
-            gameState.bossIntroDemoPhase = 1;
-        }
-        
-        // Teaching text (after first demo so player sees pattern first) - 10 seconds
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.TEXT_LESSON && boss) {
-            showTutorialCallout('introLesson', 'Watch the wind-up → dodge the dash → punish recovery', 3000);
-            gameState.bossIntroDemoPhase = 2;
-        }
-        
-        // Demo charge #2 (normal speed, same tells) - 15 seconds
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_2 && boss && !inDemoAbility) {
-            triggerDemoAbility(boss, 'charge');
-            gameState.bossIntroDemoPhase = 3;
-        }
-        
-        // Demo charge #3 (shows pattern repeats) - 20 seconds
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_3 && boss && !inDemoAbility) {
-            triggerDemoAbility(boss, 'charge');
-            gameState.bossIntroDemoPhase = 4;
-        }
-        
-        // Demo charge #4 (reinforces pattern) - 24 seconds
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_4 && boss && !inDemoAbility) {
-            triggerDemoAbility(boss, 'charge');
-            gameState.bossIntroDemoPhase = 5;
-        }
-        
-        // "FIGHT!" text - 28 seconds
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.TEXT_FIGHT && boss) {
-            showTutorialCallout('introFight', 'FIGHT!', 1500);
-            gameState.bossIntroDemoPhase = 6;
-        }
-        
-        // Demo Complete: Transition to combat - 30 seconds
-        if (framesSinceSpawn >= BOSS1_INTRO_DEMO.SEQUENCE_END) {
+        // In chase mode: Skip directly to combat after brief intro
+        // Reduced to 60 frames (1s) to match new BOSS_INTRO_FRAMES timing
+        if (skipDemo && framesSinceSpawn >= 60) {
             if (boss) {
                 endDemoMode(boss);
-                // Safely reposition player and resume boss AI
                 endCutsceneAndRepositionPlayer(boss);
+                
+                // Brief attack cooldown so boss doesn't charge immediately
+                boss.aiState = 'cooldown';
+                boss.aiTimer = 0;
+                boss.abilityCooldowns = boss.abilityCooldowns || {};
+                boss.abilityCooldowns.charge = 60;  // 1 second cooldown before first charge
             }
             gameState.bossActive = true;
             gameState.waveState = WAVE_STATE.BOSS_ACTIVE;
@@ -623,6 +635,72 @@ function handleBossIntro() {
             gameState.bossIntroDemoPhase = 0;
             gameState.currentBossRef = null;
             return;
+        }
+        
+        // Non-chase mode: Full demo tutorial sequence
+        if (!skipDemo) {
+            // Check if boss is currently in a demo ability (don't interrupt)
+            const inDemoAbility = boss && (
+                boss.aiState === 'demo_dodge_wait' ||
+                boss.aiState === 'wind_up' ||
+                boss.aiState === 'charging' ||
+                boss.aiState === 'wall_impact' ||
+                boss.aiState === 'wall_recovery' ||
+                boss.aiState === 'cooldown'
+            );
+            
+            // Demo charge #1 (slow, with slow-mo for readability) - 6 seconds
+            if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_1 && boss && !inDemoAbility) {
+                triggerSlowMo(BOSS1_INTRO_DEMO.CHARGE_1_SLOWMO_DURATION, BOSS1_INTRO_DEMO.CHARGE_1_SLOWMO_SCALE);
+                triggerDemoAbility(boss, 'charge');
+                gameState.bossIntroDemoPhase = 1;
+            }
+            
+            // Teaching text (after first demo so player sees pattern first) - 10 seconds
+            if (framesSinceSpawn === BOSS1_INTRO_DEMO.TEXT_LESSON && boss) {
+                showTutorialCallout('introLesson', 'Watch the wind-up → dodge the dash → punish recovery', 3000);
+                gameState.bossIntroDemoPhase = 2;
+            }
+            
+            // Demo charge #2 (normal speed, same tells) - 15 seconds
+            if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_2 && boss && !inDemoAbility) {
+                triggerDemoAbility(boss, 'charge');
+                gameState.bossIntroDemoPhase = 3;
+            }
+            
+            // Demo charge #3 (shows pattern repeats) - 20 seconds
+            if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_3 && boss && !inDemoAbility) {
+                triggerDemoAbility(boss, 'charge');
+                gameState.bossIntroDemoPhase = 4;
+            }
+            
+            // Demo charge #4 (reinforces pattern) - 24 seconds
+            if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_4 && boss && !inDemoAbility) {
+                triggerDemoAbility(boss, 'charge');
+                gameState.bossIntroDemoPhase = 5;
+            }
+            
+            // "FIGHT!" text - 28 seconds
+            if (framesSinceSpawn === BOSS1_INTRO_DEMO.TEXT_FIGHT && boss) {
+                showTutorialCallout('introFight', 'FIGHT!', 1500);
+                gameState.bossIntroDemoPhase = 6;
+            }
+            
+            // Demo Complete: Transition to combat - 30 seconds
+            if (framesSinceSpawn >= BOSS1_INTRO_DEMO.SEQUENCE_END) {
+                if (boss) {
+                    endDemoMode(boss);
+                    // Safely reposition player and resume boss AI
+                    endCutsceneAndRepositionPlayer(boss);
+                }
+                gameState.bossActive = true;
+                gameState.waveState = WAVE_STATE.BOSS_ACTIVE;
+                gameState.waveTimer = 0;
+                gameState.announcementPaused = false;
+                gameState.bossIntroDemoPhase = 0;
+                gameState.currentBossRef = null;
+                return;
+            }
         }
     }
     // Non-Arena 1 bosses: Immediate transition (existing behavior)
@@ -691,36 +769,133 @@ function getSegmentWaveTarget(segment) {
 
 // ==================== BOSS CHASE: RETREAT STATE ====================
 // Handles boss retreat animation and transition back to waves (Arena 1)
-const BOSS_RETREAT_FRAMES = 60;  // 1 second retreat animation
+const BOSS_RETREAT_FRAMES = 70;   // ~1.2 second retreat animation - visible but snappy
+const BOSS_RETREAT_SPIN_FRAMES = 20;  // First ~0.3s: spin in place with VFX
 
 function handleBossRetreat() {
     const boss = getCurrentBoss();
     
     gameState.waveTimer++;
     
-    // Animate boss retreat (shrink + rise)
+    // Animate boss retreat - two phases: spin, then big spiral up with lots of bubbles
     if (boss && boss.isRetreating) {
         boss.retreatAnimTimer = (boss.retreatAnimTimer || 0) + 1;
+        const frame = boss.retreatAnimTimer;
+        
+        // Store initial position for spiral
+        if (!boss.retreatStartPos) {
+            boss.retreatStartPos = boss.position.clone();
+            boss.initialScale = boss.scale.x;
+        }
         
         // Throttled retreat animation log (avoid spam)
         logThrottled('retreat-anim', 500, 'BOSS', 'retreat_animation', {
-            frame: boss.retreatAnimTimer,
+            frame: frame,
+            phase: frame <= BOSS_RETREAT_SPIN_FRAMES ? 'spin' : 'spiral',
             totalFrames: BOSS_RETREAT_FRAMES,
-            scale: parseFloat(boss.scale.x.toFixed(2))
+            y: parseFloat(boss.position.y.toFixed(1))
         });
         
-        // Shrink and float up
-        boss.position.y += 0.2;
-        boss.scale.multiplyScalar(0.95);
-        
-        // Spin effect
-        boss.rotation.y += 0.1;
+        // Phase 1 (0-50 frames): Spin in place with accelerating rotation and bubbles
+        if (frame <= BOSS_RETREAT_SPIN_FRAMES) {
+            // Accelerating spin
+            const spinSpeed = 0.1 + (frame / BOSS_RETREAT_SPIN_FRAMES) * 0.4;
+            boss.rotation.y += spinSpeed;
+            
+            // Spawn bubbles during spin phase too
+            if (frame % 4 === 0) {
+                spawnRetreatBubble(boss.position.clone());
+            }
+            
+            // Slight pulse/glow effect (boss material)
+            if (boss.bodyMaterial) {
+                boss.bodyMaterial.emissiveIntensity = 1 + Math.sin(frame * 0.5) * 0.5;
+            }
+        }
+        // Phase 2 (20-70 frames): Fast spiral up with bubble trail
+        else {
+            const flyFrame = frame - BOSS_RETREAT_SPIN_FRAMES;
+            const flyDuration = BOSS_RETREAT_FRAMES - BOSS_RETREAT_SPIN_FRAMES;
+            const flyProgress = flyFrame / flyDuration;
+            
+            // Fast spiral motion - tight circles
+            const spiralRadius = 10 * (1 - flyProgress * 0.4);  // Spiral tightens as it rises
+            const spiralAngle = flyFrame * 0.15;  // Faster spiral rotation for shorter duration
+            
+            // Calculate spiral position
+            const spiralX = boss.retreatStartPos.x + Math.cos(spiralAngle) * spiralRadius;
+            const spiralZ = boss.retreatStartPos.z + Math.sin(spiralAngle) * spiralRadius;
+            
+            // Fast upward flight
+            const flySpeed = 1.0 + flyProgress * 1.5;  // Accelerating rise
+            boss.position.x = spiralX;
+            boss.position.z = spiralZ;
+            boss.position.y += flySpeed;
+            
+            // Face the direction of spiral movement (tangent)
+            boss.rotation.y = spiralAngle + Math.PI / 2;
+            
+            // Spawn bubble trail (every 2 frames)
+            if (flyFrame % 2 === 0) {
+                spawnRetreatBubble(boss.position.clone());
+            }
+            
+            // Moderate shrink (visible but clearly departing)
+            const shrinkFactor = 1 - flyProgress * 0.3;  // Shrink to 70%
+            boss.scale.setScalar(boss.initialScale * shrinkFactor);
+        }
     }
     
     // Complete retreat after animation
     if (gameState.waveTimer >= BOSS_RETREAT_FRAMES) {
         completeRetreat(boss);
     }
+}
+
+// Spawn a rising bubble for boss retreat trail
+function spawnRetreatBubble(position) {
+    const bubbleGeo = new THREE.SphereGeometry(0.3 + Math.random() * 0.4, 8, 8);
+    const bubbleMat = new THREE.MeshStandardMaterial({
+        color: 0xaaddff,
+        emissive: 0x4488cc,
+        emissiveIntensity: 0.3,
+        transparent: true,
+        opacity: 0.7
+    });
+    const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
+    bubble.position.copy(position);
+    bubble.position.x += (Math.random() - 0.5) * 2;
+    bubble.position.z += (Math.random() - 0.5) * 2;
+    scene.add(bubble);
+    
+    // Animate bubble rising and fading
+    let frame = 0;
+    const maxFrames = 90;  // 1.5 seconds
+    function animateBubble() {
+        // Stop animation if bubble was removed or game stopped
+        if (!bubble.parent || !gameState.running) {
+            if (bubble.parent) scene.remove(bubble);
+            bubble.geometry.dispose();
+            bubble.material.dispose();
+            return;
+        }
+        
+        frame++;
+        bubble.position.y += 0.15 + Math.random() * 0.1;  // Slow rise with wobble
+        bubble.position.x += (Math.random() - 0.5) * 0.1;
+        bubble.position.z += (Math.random() - 0.5) * 0.1;
+        bubble.material.opacity = 0.7 * (1 - frame / maxFrames);
+        bubble.scale.multiplyScalar(0.99);  // Slowly shrink
+        
+        if (frame < maxFrames) {
+            requestAnimationFrame(animateBubble);
+        } else {
+            scene.remove(bubble);
+            bubble.geometry.dispose();
+            bubble.material.dispose();
+        }
+    }
+    animateBubble();
 }
 
 function completeRetreat(boss) {

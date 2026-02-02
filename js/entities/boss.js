@@ -604,11 +604,6 @@ export function spawnBoss(arenaNumber) {
             const minHpForPhase = boss.retreatThreshold + 50;  // 50 HP buffer
             boss.health = Math.max(chase.persistentBossHealth, minHpForPhase);
         }
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:spawnBoss:afterHPRestore',message:'Boss HP after restore',data:{hp:boss.health,threshold:boss.retreatThreshold,persistent:chase.persistentBossHealth,encounters:chase.bossEncounterCount,phase:boss.phase,phaseToSpawn:chase.bossPhaseToSpawn,margin:boss.health-boss.retreatThreshold},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6B'})}).catch(()=>{});
-        // #endregion
-        
         // Entrance invulnerability
         boss.entranceTimer = 0;
         boss.entranceInvulnFrames = 60;  // 1 second
@@ -2155,10 +2150,6 @@ export function spawnIntroMinions(boss, count = 3) {
 }
 
 function startAbility(boss, ability) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'boss.js:startAbility',message:'Ability started',data:{ability:ability,currentState:boss.aiState,cutsceneActive:gameState.cutsceneActive,waveState:gameState.waveState,phase:boss.phase},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4A'})}).catch(()=>{});
-    // #endregion
-    
     boss.aiTimer = 0;
     boss.abilityCooldowns[ability] = ABILITY_COOLDOWNS[ability];
     

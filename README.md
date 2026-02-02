@@ -60,7 +60,7 @@ Arenas teach mechanics progressively with **tiered wave counts** for faster earl
 
 | Arena | Waves | New Mechanic | What You Learn |
 |-------|-------|--------------|----------------|
-| 1 - Training Grounds | 3 | Flat ground | Move, shoot, dodge |
+| 1 - Training Grounds | 7 | Flat ground | Move, shoot, dodge (3 segments with boss phases) |
 | 2 - Obstacle Field | 5 | Pillars & cover | Cover management |
 | 3 - Vertical Loop | 6 | Platforms & ramps | Z-axis awareness |
 | 4 - Platform Gardens | 8 | Multi-level terrain | Height advantage |
