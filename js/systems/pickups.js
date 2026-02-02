@@ -1,6 +1,6 @@
 import { scene } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
-import { xpGems, hearts, tempVec3, obstacles, getArenaPortal, setArenaPortal } from '../core/entities.js';
+import { xpGems, hearts, tempVec3, obstacles, getArenaPortal, setArenaPortal, getBossEntrancePortal, setBossEntrancePortal } from '../core/entities.js';
 import { player } from '../entities/player.js';
 import { HEART_TTL, XP_GEM_TTL, WAVE_STATE } from '../config/constants.js';
 import { spawnParticle } from '../effects/particles.js';
@@ -375,6 +375,9 @@ export function clearArenaPortal() {
  * Trigger the portal transition effect and set wave state
  */
 function triggerPortalTransition() {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:378',message:'PORTAL TRANSITION TRIGGERED - Moving to next arena!',data:{currentWaveState:gameState.waveState,currentArena:gameState.currentArena},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     // Visual feedback
     triggerSlowMo(30, 0.3);
     triggerScreenFlash(0x00ffff, 20);
@@ -392,4 +395,261 @@ function triggerPortalTransition() {
     // Set wave state to arena transition
     gameState.waveState = WAVE_STATE.ARENA_TRANSITION;
     gameState.waveTimer = 0;
+}
+
+// ==================== BOSS ENTRANCE PORTAL SYSTEM ====================
+// Portal spawns before boss, boss emerges from it, then it freezes until boss is defeated
+// Uses shader-based vortex effect matching the main menu portal
+
+// Vortex Shader - same swirling portal effect as main menu
+const VortexShader = {
+    uniforms: {
+        time: { value: 0 },
+        aspect: { value: 1 },
+        turns: { value: 2.8 },
+        tightness: { value: 10.0 },
+        speed: { value: 1.2 },
+        core: { value: 2.2 },
+        ringWidth: { value: 0.35 },
+        frozen: { value: 0.0 },  // 0 = active, 1 = frozen (greyed out)
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float time;
+        uniform float aspect;
+        uniform float turns;
+        uniform float tightness;
+        uniform float speed;
+        uniform float core;
+        uniform float ringWidth;
+        uniform float frozen;
+
+        varying vec2 vUv;
+
+        float hash(vec2 p) {
+            p = fract(p * vec2(123.34, 345.45));
+            p += dot(p, p + 34.345);
+            return fract(p.x * p.y);
+        }
+
+        float smoothBand(float x, float w) {
+            return smoothstep(0.5 - w, 0.5, x) * (1.0 - smoothstep(0.5, 0.5 + w, x));
+        }
+
+        void main() {
+            vec2 p = vUv * 2.0 - 1.0;
+            p.x *= aspect;
+
+            float r = length(p);
+            float a = atan(p.y, p.x);
+
+            float outer = smoothstep(1.05, 0.25, r);
+            float inner = smoothstep(0.02, 0.18, r);
+            float mask = outer * inner;
+
+            // Slow down animation when frozen
+            float effectiveSpeed = speed * (1.0 - frozen * 0.9);
+            float s = a * turns + r * tightness - time * effectiveSpeed;
+
+            float bands1 = 0.5 + 0.5 * sin(s * 2.0);
+            float bands2 = 0.5 + 0.5 * sin(s * 4.5 + 1.2);
+            float band = smoothBand(bands1, 0.18) * 0.75 + smoothBand(bands2, 0.10) * 0.45;
+
+            float n = hash(p * 4.0 + time * 0.05);
+            band *= (0.85 + 0.30 * n);
+
+            // Color: cyan/magenta when active, grey when frozen
+            vec3 cyan = vec3(0.15, 0.95, 1.00);
+            vec3 mag = vec3(0.95, 0.20, 1.00);
+            vec3 grey = vec3(0.4, 0.4, 0.5);
+            
+            float t = smoothstep(0.15, 0.85, r);
+            vec3 activeCol = mix(cyan, mag, t);
+            vec3 col = mix(activeCol, grey, frozen);
+
+            float rim = smoothstep(0.55 + ringWidth, 0.45 + ringWidth, r) - smoothstep(0.95, 0.90, r);
+            col += mix(cyan, grey, frozen) * rim * 1.2;
+
+            float coreGlow = pow(smoothstep(0.55, 0.0, r), 2.2) * core * (1.0 - frozen * 0.7);
+
+            float intensity = band * 2.0 + coreGlow * 0.6;  // Boost bands, reduce core glow
+            // Dim when frozen
+            intensity *= (1.0 - frozen * 0.6);
+            
+            vec3 finalCol = col * intensity;
+            float alpha = mask * smoothstep(0.05, 1.2, intensity);
+
+            gl_FragColor = vec4(finalCol, alpha);
+        }
+    `
+};
+
+/**
+ * Spawn a boss entrance portal at the given position
+ * Uses shader-based vortex effect matching main menu portal
+ */
+export function spawnBossEntrancePortal(position) {
+    // Clear any existing entrance portal
+    clearBossEntrancePortal();
+    
+    const portal = new THREE.Group();
+    portal.position.copy(position);
+    portal.position.y = 3;  // Portal elevated above ground (boss size height)
+    
+    // Create vortex planes (same as main menu)
+    portal.vortexPlanes = [];
+    
+    const createVortexPlane = (size, params = {}) => {
+        const mat = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                aspect: { value: 1 },
+                turns: { value: params.turns || 2.8 },
+                tightness: { value: params.tightness || 10.0 },
+                speed: { value: params.speed || 1.2 },
+                core: { value: params.core || 1.0 },  // Reduced from 2.2 - less blinding without bloom
+                ringWidth: { value: params.ringWidth || 0.35 },
+                frozen: { value: 0.0 },
+            },
+            vertexShader: VortexShader.vertexShader,
+            fragmentShader: VortexShader.fragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        
+        const geo = new THREE.PlaneGeometry(size, size);
+        const mesh = new THREE.Mesh(geo, mat);
+        return mesh;
+    };
+    
+    // Create 3 stacked vortex planes for depth (SAME AS MAIN MENU)
+    const v1 = createVortexPlane(8, { turns: 2.8, tightness: 10.0, speed: 1.2 });
+    const v2 = createVortexPlane(7.5, { turns: 3.2, tightness: 11.5, speed: 1.0 });
+    const v3 = createVortexPlane(7, { turns: 2.4, tightness: 9.0, speed: 1.4 });
+    
+    // Stack them on Z axis (facing player) - NO X rotation, planes are vertical by default
+    v1.position.z = -0.30;
+    v2.position.z = -0.20;
+    v3.position.z = -0.10;
+    
+    portal.add(v1, v2, v3);
+    portal.vortexPlanes.push(v1, v2, v3);
+    
+    // Match main menu: rotate spiral pattern and scale up
+    portal.rotation.y = Math.PI;      // Face toward player (portal is at back wall looking toward center)
+    portal.rotation.z = Math.PI / 2;  // Rotate spiral pattern (same as main menu)
+    portal.scale.setScalar(1.8);      // Scale for visibility (same as main menu)
+    
+    // Store references
+    portal.spawnTime = Date.now();
+    portal.isEntrancePortal = true;
+    portal.isFrozen = false;
+    portal.freezeTransition = 0;
+    
+    scene.add(portal);
+    setBossEntrancePortal(portal);
+    
+    return portal;
+}
+
+/**
+ * Freeze the boss entrance portal (visual grey-out effect via shader)
+ * Called after boss emerges from the portal
+ */
+export function freezeBossEntrancePortal() {
+    const portal = getBossEntrancePortal();
+    if (!portal || portal.isFrozen) return;
+    
+    portal.isFrozen = true;
+    portal.freezeTransition = 0;
+}
+
+/**
+ * Unfreeze the boss entrance portal (restore active state)
+ * Called when boss is defeated - portal becomes usable for progression
+ */
+export function unfreezeBossEntrancePortal() {
+    const portal = getBossEntrancePortal();
+    if (!portal || !portal.isFrozen) return;
+    
+    portal.isFrozen = false;
+    portal.freezeTransition = 1;  // Will animate back to active
+    
+    // Flash effect to indicate unfreezing
+    triggerScreenFlash(0x00ffff, 15);
+}
+
+/**
+ * Update boss entrance portal animation (shader-based vortex)
+ */
+export function updateBossEntrancePortal() {
+    const portal = getBossEntrancePortal();
+    if (!portal) return false;
+    
+    const time = Date.now() * 0.001;
+    
+    // Animate freeze transition
+    if (portal.isFrozen && portal.freezeTransition < 1) {
+        portal.freezeTransition = Math.min(1, portal.freezeTransition + 0.02);
+    } else if (!portal.isFrozen && portal.freezeTransition > 0) {
+        portal.freezeTransition = Math.max(0, portal.freezeTransition - 0.03);
+    }
+    
+    // Update vortex shader uniforms (same as main menu)
+    if (portal.vortexPlanes) {
+        for (const plane of portal.vortexPlanes) {
+            plane.material.uniforms.time.value = time;
+            plane.material.uniforms.aspect.value = window.innerWidth / window.innerHeight;
+            plane.material.uniforms.frozen.value = portal.freezeTransition;
+        }
+    }
+    
+    // Subtle bob of the portal (same as main menu)
+    portal.position.y = 3 + Math.sin(time * 0.8) * 0.2;
+    
+    // Check player collision (only when not frozen AND boss is defeated)
+    // CRITICAL: Must check waveState to prevent premature transition during BOSS_INTRO
+    const VORTEX_COLLISION_RADIUS = 3;  // Collision radius for vortex portal
+    const canEnterPortal = !portal.isFrozen && gameState.waveState === WAVE_STATE.BOSS_DEFEATED;
+    if (canEnterPortal && player && player.position) {
+        const dist = player.position.distanceTo(new THREE.Vector3(portal.position.x, player.position.y, portal.position.z));
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:560',message:'Portal collision check',data:{isFrozen:portal.isFrozen,waveState:gameState.waveState,canEnter:canEnterPortal,playerDist:dist,threshold:VORTEX_COLLISION_RADIUS},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A',runId:'post-fix'})}).catch(()=>{});
+        // #endregion
+        if (dist < VORTEX_COLLISION_RADIUS) {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:564',message:'TRIGGERING PORTAL TRANSITION',data:{playerPos:{x:player.position.x,z:player.position.z},portalPos:{x:portal.position.x,z:portal.position.z}},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A',runId:'post-fix'})}).catch(()=>{});
+            // #endregion
+            // Player entered unfrozen portal - trigger transition
+            triggerPortalTransition();
+            clearBossEntrancePortal();
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Clear the boss entrance portal
+ */
+export function clearBossEntrancePortal() {
+    const portal = getBossEntrancePortal();
+    if (!portal) return;
+    
+    portal.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+    });
+    
+    scene.remove(portal);
+    setBossEntrancePortal(null);
 }

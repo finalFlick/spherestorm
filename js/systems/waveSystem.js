@@ -3,7 +3,7 @@ import { enemies, getCurrentBoss } from '../core/entities.js';
 import { player } from '../entities/player.js';
 import { spawnWaveEnemy } from '../entities/enemies.js';
 import { spawnBoss, spawnIntroMinions, triggerDemoAbility, endDemoMode, prepareBossForCutscene, endCutsceneAndRepositionPlayer } from '../entities/boss.js';
-import { clearAllPickups, updateArenaPortal, clearArenaPortal } from './pickups.js';
+import { clearAllPickups, updateArenaPortal, clearArenaPortal, spawnBossEntrancePortal, freezeBossEntrancePortal, updateBossEntrancePortal } from './pickups.js';
 import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
@@ -388,6 +388,24 @@ function handleBossIntro() {
     }
     gameState.waveTimer++;
     
+    // Spawn entrance portal 3 seconds before boss (180 frames)
+    const PORTAL_SPAWN_FRAMES = BOSS_INTRO_FRAMES - 180;
+    if (gameState.waveTimer === PORTAL_SPAWN_FRAMES) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'waveSystem.js:395',message:'Spawning entrance portal',data:{waveTimer:gameState.waveTimer,portalSpawnFrames:PORTAL_SPAWN_FRAMES,bossIntroFrames:BOSS_INTRO_FRAMES},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        // Spawn entrance portal near the wall (original boss spawn location)
+        spawnBossEntrancePortal(new THREE.Vector3(0, 0, -35));
+    }
+    
+    // Update entrance portal animation during intro
+    if (gameState.waveTimer > PORTAL_SPAWN_FRAMES && gameState.waveTimer <= BOSS_INTRO_FRAMES) {
+        // #region agent log
+        if (gameState.waveTimer === PORTAL_SPAWN_FRAMES + 1) fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'waveSystem.js:402',message:'First portal update (NOT YET FROZEN)',data:{waveTimer:gameState.waveTimer},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        updateBossEntrancePortal();
+    }
+    
     // Phase 1: Wait for announcement, then spawn boss
     if (gameState.waveTimer === BOSS_INTRO_FRAMES) {
         // Clear any remaining pickups before boss fight
@@ -397,10 +415,31 @@ function handleBossIntro() {
         gameState.currentBossRef = boss;  // Store reference for demo sequence
         hideBossAnnouncement();
         
+        // Freeze the entrance portal now that boss has emerged
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'waveSystem.js:415',message:'Freezing entrance portal',data:{waveTimer:gameState.waveTimer},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        freezeBossEntrancePortal();
+        
         // Trigger cinematic camera focus on boss
         if (boss) {
-            // Prepare boss for cutscene (disable AI, ensure safe positioning)
-            prepareBossForCutscene(boss);
+            // Player visible and controllable for interactive dodge tutorial (Arena 1)
+            // Still invincible during demo via cutsceneInvincible flag
+            if (player) {
+                player.visible = true;  // Player participates in dodge tutorial
+            }
+            
+            // Phase 1 intro: Use intro_showcase state (stays at spawn, actively prowls)
+            // Other bosses: Use prepareBossForCutscene (moves to safe position, idle)
+            if (gameState.currentArena === 1) {
+                // Set cutscene state manually (don't call prepareBossForCutscene - it moves the boss)
+                gameState.cutsceneActive = true;
+                gameState.cutsceneInvincible = true;
+                boss.aiState = 'intro_showcase';  // New active showcase state
+                boss.showcaseTimer = 0;
+            } else {
+                prepareBossForCutscene(boss);
+            }
             
             // Extended cinematic duration for Arena 1 demo sequence
             const cinematicDuration = (gameState.currentArena === 1) 
@@ -411,43 +450,60 @@ function handleBossIntro() {
         }
     }
     
-    // Boss 1 (Arena 1) Demo Sequence - spawn minions, then demo charge
+    // Boss 1 (Arena 1) Extended Demo Sequence - teach charge pattern with 3 demos
+    // Boss prowls continuously in intro_showcase state between demos
     if (gameState.currentArena === 1 && gameState.waveTimer > BOSS_INTRO_FRAMES) {
         const framesSinceSpawn = gameState.waveTimer - BOSS_INTRO_FRAMES;
         const boss = gameState.currentBossRef || getCurrentBoss();
         
-        // Demo Phase 1: Spawn intro minions
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.MINION_SPAWN_DELAY && boss) {
-            gameState.introMinions = spawnIntroMinions(boss, 3);
-            showTutorialCallout('introSummon', 'The boss can summon minions!', 2000);
+        // Check if boss is currently in a demo ability (don't interrupt)
+        const inDemoAbility = boss && (
+            boss.aiState === 'demo_dodge_wait' ||
+            boss.aiState === 'wind_up' ||
+            boss.aiState === 'charging' ||
+            boss.aiState === 'wall_impact' ||
+            boss.aiState === 'wall_recovery' ||
+            boss.aiState === 'cooldown'
+        );
+        
+        // Demo charge #1 (slow, with slow-mo for readability) - 6 seconds
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_1 && boss && !inDemoAbility) {
+            triggerSlowMo(BOSS1_INTRO_DEMO.CHARGE_1_SLOWMO_DURATION, BOSS1_INTRO_DEMO.CHARGE_1_SLOWMO_SCALE);
+            triggerDemoAbility(boss, 'charge');
             gameState.bossIntroDemoPhase = 1;
         }
         
-        // Demo Phase 2: Despawn intro minions (they fade out)
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.MINION_DESPAWN_DELAY) {
-            // Remove intro minions from scene
-            if (gameState.introMinions && gameState.introMinions.length > 0) {
-                for (const minion of gameState.introMinions) {
-                    if (minion && minion.parent) {
-                        scene.remove(minion);
-                        // Also remove from enemies array
-                        const idx = enemies.indexOf(minion);
-                        if (idx !== -1) enemies.splice(idx, 1);
-                    }
-                }
-                gameState.introMinions = [];
-            }
+        // Teaching text (after first demo so player sees pattern first) - 10 seconds
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.TEXT_LESSON && boss) {
+            showTutorialCallout('introLesson', 'Watch the wind-up → dodge the dash → punish recovery', 3000);
             gameState.bossIntroDemoPhase = 2;
         }
         
-        // Demo Phase 3: Trigger demo charge
-        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_DELAY && boss) {
+        // Demo charge #2 (normal speed, same tells) - 15 seconds
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_2 && boss && !inDemoAbility) {
             triggerDemoAbility(boss, 'charge');
-            showTutorialCallout('introCharge', 'Watch for the charge telegraph - dodge sideways!', 2500);
             gameState.bossIntroDemoPhase = 3;
         }
         
-        // Demo Complete: Transition to combat
+        // Demo charge #3 (shows pattern repeats) - 20 seconds
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_3 && boss && !inDemoAbility) {
+            triggerDemoAbility(boss, 'charge');
+            gameState.bossIntroDemoPhase = 4;
+        }
+        
+        // Demo charge #4 (reinforces pattern) - 24 seconds
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.CHARGE_DEMO_4 && boss && !inDemoAbility) {
+            triggerDemoAbility(boss, 'charge');
+            gameState.bossIntroDemoPhase = 5;
+        }
+        
+        // "FIGHT!" text - 28 seconds
+        if (framesSinceSpawn === BOSS1_INTRO_DEMO.TEXT_FIGHT && boss) {
+            showTutorialCallout('introFight', 'FIGHT!', 1500);
+            gameState.bossIntroDemoPhase = 6;
+        }
+        
+        // Demo Complete: Transition to combat - 30 seconds
         if (framesSinceSpawn >= BOSS1_INTRO_DEMO.SEQUENCE_END) {
             if (boss) {
                 endDemoMode(boss);
@@ -478,6 +534,9 @@ function handleBossIntro() {
 }
 
 function handleBossActive() {
+    // Update entrance portal animation (frozen state)
+    updateBossEntrancePortal();
+    
     if (!getCurrentBoss() || !gameState.bossActive) {
         gameState.waveState = WAVE_STATE.BOSS_DEFEATED;
         gameState.waveTimer = 0;
@@ -507,11 +566,14 @@ function handleBossDefeated() {
     }
     
     // Other arenas: Wait for player to enter portal
-    // Portal is spawned in killBoss() with a delay
-    // updateArenaPortal() handles collision detection and triggers ARENA_TRANSITION
+    // Entrance portal unfreezes when boss dies (called from killBoss)
+    // updateBossEntrancePortal() handles collision detection and triggers ARENA_TRANSITION
     if (!isFinalBoss && gameState.waveTimer > BOSS_DEFEATED_FRAMES) {
-        // Update portal animation and check for player entry
+        // Update entrance portal animation (now unfrozen) and check for player entry
         // triggerPortalTransition() in pickups.js sets waveState to ARENA_TRANSITION
+        updateBossEntrancePortal();
+        
+        // Also update arena portal if it exists (fallback for older boss death flow)
         updateArenaPortal();
     }
 }

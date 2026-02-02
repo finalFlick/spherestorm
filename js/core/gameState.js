@@ -52,6 +52,18 @@ export const gameState = {
     // Cutscene state - prevents damage and boss AI during transitions
     cutsceneActive: false,
     cutsceneInvincible: false,
+    
+    // Boss intro/cutscene tracking
+    bossIntroDemoPhase: 0,
+    introMinions: [],
+    currentBossRef: null,
+    
+    // Frame-based post-defeat timers (run even after boss removed)
+    portalSpawnTimer: 0,
+    portalSpawnPos: null,
+    victoryParticleWave: undefined,  // undefined = not active, 0-2 = active waves
+    victoryParticleTimer: 0,
+    victoryParticlePos: null,
     combatStats: {
         damageDealt: 0,
         damageTaken: 0,
@@ -90,7 +102,17 @@ export function resetGameState() {
         waveState: WAVE_STATE.WAVE_INTRO,
         waveTimer: 0,
         bossActive: false,
-        pendingLevelUps: 0
+        pendingLevelUps: 0,
+        // Boss intro/cutscene tracking
+        bossIntroDemoPhase: 0,
+        introMinions: [],
+        currentBossRef: null,
+        // Frame-based post-defeat timers
+        portalSpawnTimer: 0,
+        portalSpawnPos: null,
+        victoryParticleWave: undefined,
+        victoryParticleTimer: 0,
+        victoryParticlePos: null
     });
     gameState.unlockedMechanics = {
         pillars: false,

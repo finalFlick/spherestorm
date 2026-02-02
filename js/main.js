@@ -1,7 +1,7 @@
 // Main entry point - coordinates all modules
 import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer, camera } from './core/scene.js';
-import { initInput, resetInput } from './core/input.js';
+import { initInput, resetInput, checkCutsceneSkip } from './core/input.js';
 import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
 import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE, VERSION } from './config/constants.js';
 
@@ -465,6 +465,31 @@ function animate(currentTime) {
             
             // Skip combat updates during announcement pause (but allow wave timer to tick)
             if (gameState.announcementPaused) {
+                // Check for cutscene skip input (hold Space/Enter to skip)
+                if (gameState.cutsceneActive) {
+                    checkCutsceneSkip();
+                }
+                
+                // During boss cutscene: still update boss for demo abilities (inflation, charge, particles)
+                if (gameState.cutsceneActive && currentBoss) {
+                    updateBoss();
+                    
+                    // CRITICAL: Allow player movement during interactive dodge tutorial
+                    // Player must be able to move out of the danger zone during demo_dodge_wait
+                    // #region agent log
+                    if (currentBoss.aiState === 'demo_dodge_wait') {
+                        fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:479',message:'Calling updatePlayer during demo_dodge_wait',data:{bossState:currentBoss.aiState},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'PLAYER'})}).catch(()=>{});
+                        updatePlayer(clampedDelta);
+                    }
+                    // #endregion
+                    
+                    // Update cinematic camera during cutscene
+                    // EXCEPTION: Use player camera during interactive dodge tutorial
+                    if (cinematicActive && currentBoss.aiState !== 'demo_dodge_wait') {
+                        updateCinematic(camera, player);
+                    }
+                }
+                
                 // Only update particles and UI during announcements
                 updateParticles(clampedDelta);
                 const now = Date.now();

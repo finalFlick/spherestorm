@@ -181,17 +181,60 @@ export const BOSS_INTRO_SLOWMO_SCALE = 0.4;        // 40% speed
 
 // Boss intro cutscene timing (frames at 60fps)
 export const BOSS_INTRO_MINION_COUNT = 3;          // Number of minions to spawn during intro
-export const BOSS_INTRO_TOTAL_DURATION = 420;      // 7 seconds total intro demo (after spawn)
+export const BOSS_INTRO_TOTAL_DURATION = 1800;     // 30 seconds total intro demo (after spawn)
 
 // Boss 1 intro demo sequence timing (frames after boss spawn)
+// Extended showcase: Title -> Charge x4 (with text) -> Fight
+// Boss prowls continuously in intro_showcase state
+// Can be skipped by holding Space or Enter
 export const BOSS1_INTRO_DEMO = {
-    MINION_SPAWN_DELAY: 60,      // 1 second after spawn - spawn demo minions
-    MINION_DESPAWN_DELAY: 180,   // 3 seconds after spawn - despawn demo minions
-    CHARGE_DEMO_DELAY: 240,      // 4 seconds after spawn - start demo charge
-    SEQUENCE_END: 420            // 7 seconds after spawn - end demo, start combat
+    // Title phase (boss spawns, starts prowling)
+    TITLE_CARD: 0,               // "THE GATEKEEPER AWAKENS" appears at spawn
+    
+    // Demo charge #1 (slow-mo, full telegraph)
+    CHARGE_DEMO_1: 360,          // First demo charge (6s mark)
+    CHARGE_1_SLOWMO_DURATION: 90,
+    CHARGE_1_SLOWMO_SCALE: 0.4,  // 40% speed for readability
+    
+    // Teaching text (after first demo so player sees it first)
+    TEXT_LESSON: 600,            // "Watch the wind-up -> dodge -> punish" (10s mark)
+    
+    // Demo charge #2 (normal speed, same tells)
+    CHARGE_DEMO_2: 900,          // Second demo charge (15s mark)
+    
+    // Demo charge #3 (shows pattern repeats)
+    CHARGE_DEMO_3: 1200,         // Third demo charge (20s mark)
+    
+    // Demo charge #4 (reinforces pattern)
+    CHARGE_DEMO_4: 1440,         // Fourth demo charge (24s mark)
+    
+    // End sequence
+    TEXT_FIGHT: 1680,            // "FIGHT!" (28s mark)
+    SEQUENCE_END: 1800           // 30 seconds total
 };
 
-// Phase transition demo timing
+// Phase 2 cutscene timing (frames at 60fps) - Teach shield + minion dependency
+export const PHASE2_CUTSCENE = {
+    TOTAL_DURATION: 720,         // 12 seconds
+    TEXT_PHASE: 60,              // "PHASE 2" text appears (1s)
+    SHIELD_MANIFEST: 120,        // Shield becomes visible (2s)
+    MINION_SPAWN: 180,           // Tethered minions appear (3s)
+    TEXT_EXPLAIN: 300,           // "Kill tethered minions to break the shield!" (5s)
+    DEMO_KILL: 420,              // Scripted minion death demonstration (7s)
+    TEXT_READY: 600              // "Now you try!" (10s)
+};
+
+// Phase 3 cutscene timing (frames at 60fps) - Teach shielded chase twist
+export const PHASE3_CUTSCENE = {
+    TOTAL_DURATION: 600,         // 10 seconds
+    TEXT_PHASE: 60,              // "FINAL PHASE" text appears (1s)
+    SHIELD_REASSERT: 120,        // Shield turns red/aggressive (2s)
+    DEMO_CHASE: 180,             // Boss briefly moves toward player (3s)
+    DEMO_CHARGE: 300,            // Demo charge with slow-mo (5s)
+    TEXT_SURVIVE: 480            // "Shield rule still applies - survive the chase!" (8s)
+};
+
+// Legacy phase transition timing (kept for backward compatibility)
 export const PHASE_DEMO_DURATION = 90;             // 1.5 seconds for ability demo
 export const ENERGY_TRANSFER_DURATION = 90;        // 1.5 seconds for energy transfer VFX
 export const PHASE_DEMO_DELAY = 500;               // 0.5 second delay before demo starts (ms)

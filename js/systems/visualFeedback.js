@@ -1075,68 +1075,174 @@ export function updateExposedVFX(shimmer, timer) {
 }
 
 // ==================== CHARGE PATH TELEGRAPH ====================
+// Enhanced danger zone system with animated flow lines
 // Used by: boss.js (charge wind-up state)
 
 export function createChargePathMarker(startPos, direction, length = 15) {
     const group = new THREE.Group();
+    const width = 5;  // Width of danger zone (wider than boss for hitbox visibility)
     
-    // Main path indicator (rectangle on ground) - use cached geometry
-    const pathGeom = getPlaneGeometry(length, 2);
-    const pathMat = new THREE.MeshBasicMaterial({
-        color: VISUAL_COLORS.DANGER_RED,
+    // ==================== 1. BASE DANGER ZONE ====================
+    // Main ground plane showing the full charge path
+    // PlaneGeometry(width, height) - after X rotation, width stays in X, height goes to Z
+    const dangerZoneGeom = getPlaneGeometry(width, length);  // width in X, length in Z
+    const dangerZoneMat = new THREE.MeshBasicMaterial({
+        color: 0x660000,  // Deep red base
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.4,
         side: THREE.DoubleSide
     });
-    const pathMesh = new THREE.Mesh(pathGeom, pathMat);
-    pathMesh.rotation.x = -Math.PI / 2;
-    pathMesh.position.y = 0.1;
-    pathMesh.position.z = length / 2;
-    group.add(pathMesh);
+    const dangerZone = new THREE.Mesh(dangerZoneGeom, dangerZoneMat);
+    dangerZone.rotation.x = -Math.PI / 2;
+    dangerZone.position.y = 0.05;  // Slightly above ground
+    dangerZone.position.z = length / 2;  // Center of rectangle at midpoint of charge
+    dangerZone.name = 'dangerZone';
+    group.add(dangerZone);
     
-    // Arrow head - use cached geometry
-    const arrowGeom = getConeGeometry(1.5, 3, 4);
-    const arrowMat = new THREE.MeshBasicMaterial({
-        color: VISUAL_COLORS.DANGER_RED,
+    // ==================== 2. EDGE GLOW EFFECT ====================
+    // Bright glowing borders on both sides
+    const edgeWidth = 0.3;
+    const edgeGeom = getPlaneGeometry(edgeWidth, length);  // Thin strip along charge direction
+    
+    // Left edge
+    const leftEdgeMat = new THREE.MeshBasicMaterial({
+        color: 0xff4400,  // Bright orange-red
         transparent: true,
-        opacity: 0.7
+        opacity: 0.6,
+        side: THREE.DoubleSide
     });
-    const arrow = new THREE.Mesh(arrowGeom, arrowMat);
-    arrow.rotation.x = Math.PI / 2;
-    arrow.position.z = length + 1.5;
-    arrow.position.y = 0.5;
-    group.add(arrow);
+    const leftEdge = new THREE.Mesh(edgeGeom, leftEdgeMat);
+    leftEdge.rotation.x = -Math.PI / 2;
+    leftEdge.position.set(-width / 2 + edgeWidth / 2, 0.06, length / 2);
+    leftEdge.name = 'leftEdge';
+    group.add(leftEdge);
     
-    // Chevron lines along path - cache chevron geometry
-    const chevronGeom = getCachedGeometry('chargeChevron', () => {
-        const geom = new THREE.BufferGeometry();
-        const points = [
-            new THREE.Vector3(-0.8, 0.15, 0),
-            new THREE.Vector3(0, 0.15, 0.8),
-            new THREE.Vector3(0.8, 0.15, 0)
-        ];
-        geom.setFromPoints(points);
-        return geom;
+    // Right edge
+    const rightEdgeMat = new THREE.MeshBasicMaterial({
+        color: 0xff4400,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
     });
+    const rightEdge = new THREE.Mesh(edgeGeom, rightEdgeMat);
+    rightEdge.rotation.x = -Math.PI / 2;
+    rightEdge.position.set(width / 2 - edgeWidth / 2, 0.06, length / 2);
+    rightEdge.name = 'rightEdge';
+    group.add(rightEdge);
     
-    for (let i = 0; i < 3; i++) {
-        const chevron = new THREE.Line(chevronGeom, new THREE.LineBasicMaterial({
-            color: VISUAL_COLORS.DANGER_RED,
-            transparent: true,
-            opacity: 0.8
-        }));
-        chevron.position.z = 3 + i * 4;
-        group.add(chevron);
+    // ==================== 3. ANIMATED FLOW LINES ====================
+    // 4 parallel lines that scroll toward destination (chevron arrows)
+    const flowLineCount = 4;
+    const flowLineSpacing = width / (flowLineCount + 1);
+    
+    // Scale segment spacing based on length (larger gaps for longer charges)
+    const segmentLength = 3;
+    const segmentGap = Math.max(5, length / 10);  // At least 5 units gap
+    
+    for (let i = 0; i < flowLineCount; i++) {
+        const lineGroup = new THREE.Group();
+        lineGroup.name = `flowLine_${i}`;
+        
+        const xOffset = -width / 2 + flowLineSpacing * (i + 1);
+        const segmentCount = Math.ceil(length / (segmentLength + segmentGap)) + 2;
+        
+        for (let j = 0; j < segmentCount; j++) {
+            // Create chevron pointing in charge direction
+            const chevronGeom = new THREE.BufferGeometry();
+            const points = [
+                new THREE.Vector3(-0.5, 0, 0),
+                new THREE.Vector3(0, 0, 1.5),
+                new THREE.Vector3(0.5, 0, 0)
+            ];
+            chevronGeom.setFromPoints(points);
+            
+            const segMat = new THREE.LineBasicMaterial({
+                color: 0xff2222,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            const segment = new THREE.Line(chevronGeom, segMat);
+            segment.position.set(xOffset, 0.08, j * (segmentLength + segmentGap));
+            lineGroup.add(segment);
+        }
+        
+        group.add(lineGroup);
     }
     
-    // Position and rotate to face direction
+    // ==================== 4. DESTINATION MARKER ====================
+    // Pulsing ring at charge endpoint
+    const destRingGeom = getRingGeometry(1.5, 2.0, 32);
+    const destRingMat = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    const destRing = new THREE.Mesh(destRingGeom, destRingMat);
+    destRing.rotation.x = -Math.PI / 2;
+    destRing.position.set(0, 0.07, length);
+    destRing.name = 'destRing';
+    group.add(destRing);
+    
+    // Inner crosshairs at destination
+    const crosshairMat = new THREE.LineBasicMaterial({
+        color: 0xff4444,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    const crosshairSize = 1.2;
+    const hLineGeom = new THREE.BufferGeometry();
+    hLineGeom.setFromPoints([
+        new THREE.Vector3(-crosshairSize, 0.08, length),
+        new THREE.Vector3(crosshairSize, 0.08, length)
+    ]);
+    const hLine = new THREE.Line(hLineGeom, crosshairMat);
+    hLine.name = 'crosshairH';
+    group.add(hLine);
+    
+    const vLineGeom = new THREE.BufferGeometry();
+    vLineGeom.setFromPoints([
+        new THREE.Vector3(0, 0.08, length - crosshairSize),
+        new THREE.Vector3(0, 0.08, length + crosshairSize)
+    ]);
+    const vLine = new THREE.Line(vLineGeom, crosshairMat);
+    vLine.name = 'crosshairV';
+    group.add(vLine);
+    
+    // ==================== 5. PROGRESS FILL WAVE ====================
+    // Darker wave that sweeps from start to end showing timing
+    // Width spans the danger zone, thin in charge direction
+    const fillWaveGeom = getPlaneGeometry(width - 0.5, 2);  // Wide strip perpendicular to charge
+    const fillWaveMat = new THREE.MeshBasicMaterial({
+        color: 0xaa0000,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+    });
+    const fillWave = new THREE.Mesh(fillWaveGeom, fillWaveMat);
+    fillWave.rotation.x = -Math.PI / 2;
+    fillWave.position.set(0, 0.09, 0);
+    fillWave.name = 'fillWave';
+    group.add(fillWave);
+    
+    // ==================== POSITION AND ORIENTATION ====================
     group.position.copy(startPos);
     group.position.y = 0;
     const angle = Math.atan2(direction.x, direction.z);
     group.rotation.y = angle;
     
+    // Store animation state
+    group.userData = {
+        flowOffset: 0,
+        length: length,
+        width: width,
+        createdAt: Date.now()
+    };
+    
     group.createdAt = Date.now();
-    group.lifespan = 1000; // 1 second
+    group.lifespan = 2000;
     
     scene.add(group);
     return group;
@@ -1145,11 +1251,100 @@ export function createChargePathMarker(startPos, direction, length = 15) {
 export function updateChargePathMarker(marker, progress = 0) {
     if (!marker) return;
     
-    // Pulse opacity
-    const pulse = 0.5 + Math.sin(Date.now() * 0.01) * 0.3;
+    const time = Date.now() * 0.001;  // Time in seconds
+    const length = marker.userData.length || 15;
+    const width = marker.userData.width || 5;
+    
+    // ==================== 1. ANIMATE FLOW LINES ====================
+    // Speed increases with progress (urgency)
+    const flowSpeed = 0.5 + progress * 2.0;  // 0.5 to 2.5
+    marker.userData.flowOffset = (marker.userData.flowOffset || 0) + flowSpeed * 0.15;
+    
+    // Segment cycle scales with length
+    const segmentCycle = 3 + Math.max(5, length / 10);  // Matches creation logic
+    if (marker.userData.flowOffset > segmentCycle) {
+        marker.userData.flowOffset -= segmentCycle;
+    }
+    
     marker.children.forEach(child => {
-        if (child.material) {
-            child.material.opacity = pulse * (1 - progress * 0.5);
+        if (child.name && child.name.startsWith('flowLine_')) {
+            // Move each chevron in the flow line toward destination
+            child.children.forEach((segment, idx) => {
+                const baseZ = idx * segmentCycle + marker.userData.flowOffset;
+                segment.position.z = baseZ;
+                
+                // Fade segments at edges
+                if (segment.material) {
+                    let opacity = 0.8;
+                    if (baseZ < 2) opacity *= Math.max(0, baseZ / 2);
+                    if (baseZ > length - 3) opacity *= Math.max(0, (length - baseZ) / 3);
+                    segment.material.opacity = opacity;
+                }
+            });
+        }
+    });
+    
+    // ==================== 2. ANIMATE EDGE GLOW ====================
+    // Pulse faster as progress increases
+    const pulseSpeed = 5 + progress * 10;  // 5 to 15 Hz
+    const edgePulse = 0.4 + Math.sin(time * pulseSpeed) * 0.3;
+    const edgeIntensity = 0.3 + progress * 0.7;  // 0.3 to 1.0
+    
+    marker.children.forEach(child => {
+        if (child.name === 'leftEdge' || child.name === 'rightEdge') {
+            if (child.material) {
+                child.material.opacity = edgePulse * edgeIntensity;
+            }
+        }
+    });
+    
+    // ==================== 3. ANIMATE DANGER ZONE ====================
+    // Brighten as danger approaches
+    const zoneOpacity = 0.3 + progress * 0.4;  // 0.3 to 0.7
+    marker.children.forEach(child => {
+        if (child.name === 'dangerZone') {
+            if (child.material) {
+                child.material.opacity = zoneOpacity;
+            }
+        }
+    });
+    
+    // ==================== 4. ANIMATE DESTINATION MARKER ====================
+    // Pulsing ring that grows near execution
+    const destPulse = 1 + Math.sin(time * 8) * 0.2;
+    const destScale = 0.7 + progress * 0.8;  // 0.7 to 1.5
+    
+    marker.children.forEach(child => {
+        if (child.name === 'destRing') {
+            child.scale.setScalar(destScale * destPulse);
+            if (child.material) {
+                child.material.opacity = 0.5 + progress * 0.4;
+            }
+        }
+        if (child.name === 'crosshairH' || child.name === 'crosshairV') {
+            if (child.material) {
+                child.material.opacity = 0.6 + progress * 0.4;
+            }
+        }
+    });
+    
+    // ==================== 5. ANIMATE FILL WAVE ====================
+    // Sweeps from start toward destination
+    marker.children.forEach(child => {
+        if (child.name === 'fillWave') {
+            // Position: moves from 0 to length based on progress
+            const wavePos = progress * length;
+            child.position.z = wavePos;
+            
+            // Thickness in Z direction: starts thin, expands
+            const waveThickness = 0.5 + progress * 1.5;
+            child.scale.y = waveThickness;  // Y becomes Z after rotation
+            
+            // Opacity: pulses
+            if (child.material) {
+                const wavePulse = 0.6 + Math.sin(time * 12) * 0.2;
+                child.material.opacity = wavePulse * (0.4 + progress * 0.4);
+            }
         }
     });
 }
@@ -2616,6 +2811,113 @@ export function updateChargeTrailSegment(trail) {
     
     // Slight scale up as it fades
     trail.scale.setScalar(1 + progress * 0.3);
+    
+    return false;
+}
+
+// ==================== WALL IMPACT VFX ====================
+
+/**
+ * Creates wall impact VFX when boss crashes into arena wall
+ * @param {THREE.Vector3} position - Impact position
+ * @param {THREE.Vector3} wallNormal - Direction from wall toward arena center
+ * @param {number} color - Impact color
+ * @returns {THREE.Group} The impact VFX group
+ */
+export function createWallImpactVFX(position, wallNormal, color = 0xff4444) {
+    const group = new THREE.Group();
+    group.position.copy(position);
+    group.position.y = 2;
+    
+    // Shockwave ring expanding from impact point
+    const ringGeom = getRingGeometry(0.5, 1, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.name = 'impactRing';
+    group.add(ring);
+    
+    // Debris particles flying outward
+    const particleCount = 12;
+    for (let i = 0; i < particleCount; i++) {
+        const angle = (i / particleCount) * Math.PI - Math.PI / 2; // Spread in front of wall
+        const particleGeom = getBoxGeometry(0.3, 0.3, 0.3);
+        const particleMat = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.8
+        });
+        const particle = new THREE.Mesh(particleGeom, particleMat);
+        
+        // Calculate velocity - mostly along wall normal, with some spread
+        const speed = 0.3 + Math.random() * 0.2;
+        particle.userData.velocity = new THREE.Vector3(
+            wallNormal.x * speed + Math.sin(angle) * 0.15,
+            0.2 + Math.random() * 0.1,
+            wallNormal.z * speed + Math.cos(angle) * 0.15
+        );
+        particle.name = 'debris';
+        group.add(particle);
+    }
+    
+    // Flash at impact point
+    const flashGeom = getSphereGeometry(3, 8);
+    const flashMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.8
+    });
+    const flash = new THREE.Mesh(flashGeom, flashMat);
+    flash.name = 'flash';
+    group.add(flash);
+    
+    group.createdTime = Date.now();
+    group.duration = 500; // 0.5 seconds
+    group.isWallImpact = true;
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates wall impact VFX
+ * @param {THREE.Group} vfx - The impact VFX group
+ * @returns {boolean} true if VFX should be removed
+ */
+export function updateWallImpactVFX(vfx) {
+    if (!vfx || !vfx.isWallImpact) return true;
+    
+    const age = Date.now() - vfx.createdTime;
+    if (age > vfx.duration) return true;
+    
+    const progress = age / vfx.duration;
+    
+    vfx.children.forEach(child => {
+        if (child.name === 'impactRing') {
+            // Expand and fade
+            child.scale.setScalar(1 + progress * 8);
+            child.material.opacity = 0.9 * (1 - progress);
+        } else if (child.name === 'debris') {
+            // Move outward and fall
+            if (child.userData.velocity) {
+                child.position.add(child.userData.velocity);
+                child.userData.velocity.y -= 0.02; // Gravity
+            }
+            child.material.opacity = 0.8 * (1 - progress);
+            child.rotation.x += 0.1;
+            child.rotation.z += 0.15;
+        } else if (child.name === 'flash') {
+            // Quick flash then fade
+            const flashProgress = Math.min(1, progress * 4);
+            child.material.opacity = 0.8 * (1 - flashProgress);
+            child.scale.setScalar(1 + flashProgress * 2);
+        }
+    });
     
     return false;
 }
