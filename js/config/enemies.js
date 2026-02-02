@@ -6,15 +6,16 @@
 export const ENEMY_TYPES = {
     grunt: {
         name: 'Red Puffer',
-        size: 0.50,          // Standard
+        size: 0.65,          // Standard - noticeably bigger than tiny
         health: 12,
         speed: 0.055,        // Faster (+57%)
         damage: 10,
-        color: 0xff2222,     // Bright red - basic threat
+        color: 0xff4444,     // Mid-red - between pink tiny and dark big
         xpValue: 1,
         behavior: 'chase',
         spawnWeight: 40,
         arenaIntro: 1,       // Introduced in Arena 1
+        minWave: 2,          // Only spawns Wave 2+ (Wave 1 is Tiny only)
         usePorcupinefishMesh: true,  // Uses mini porcupinefish visual (like Boss 1)
         // Roster display fields
         tagline: 'Spawn of the King',
@@ -29,6 +30,59 @@ export const ENEMY_TYPES = {
         movementSignature: 'sway',
         telegraph: null,
         deathVfx: { color: 0xff2222, count: 12, type: 'burst' }
+    },
+    gruntTiny: {
+        name: 'Tiny Puffer',
+        size: 0.35,          // Small but visible - baseline reference size
+        health: 4,           // 1-shot at base damage (10)
+        speed: 0.07,         // Faster than standard grunt
+        damage: 5,           // Less threatening individually
+        color: 0xffaaaa,     // Pink - clearly different from standard
+        xpValue: 0.5,
+        behavior: 'chase',
+        spawnWeight: 35,     // Higher weight - dominant in early waves
+        arenaIntro: 1,       // Available in Arena 1
+        usePorcupinefishMesh: true,  // Same visual style, just smaller
+        // Roster display fields
+        tagline: 'Spawn of the Spawn',
+        description: 'The smallest of the Red Puffer brood. These hyperactive fry dart around in swarms, individually weak but overwhelming in numbers. One shot dispatches them, but can you hit them all?',
+        behaviorText: 'Chases rapidly; dies in one shot',
+        // Visual profile: slightly brighter glow for visibility at small size
+        visualProfile: {
+            type: 'glow',
+            glowIntensity: 0.5,
+            pulseSpeed: 0.1
+        },
+        movementSignature: 'sway',
+        telegraph: null,
+        deathVfx: { color: 0xffaaaa, count: 6, type: 'burst' }
+    },
+    gruntBig: {
+        name: 'Big Puffer',
+        size: 1.1,           // Heavy - VERY large and intimidating
+        health: 30,          // 3-shot at base damage (10)
+        speed: 0.04,         // Slower than standard (0.055)
+        damage: 15,          // More threatening
+        color: 0x991111,     // Dark red - intimidating, clearly different
+        xpValue: 3,
+        behavior: 'chase',
+        spawnWeight: 15,     // Less common - pressure element
+        arenaIntro: 1,       // Available in Arena 1
+        minWave: 3,          // Only spawns Wave 3+ (pressure test)
+        usePorcupinefishMesh: true,  // Same visual style, larger
+        // Roster display fields
+        tagline: 'The Elder Spawn',
+        description: 'A mature Red Puffer that has grown larger and more resilient. Slower but more dangerous, these elders anchor the swarm with their bulk.',
+        behaviorText: 'Chases steadily; takes 3 hits to kill',
+        // Visual profile: deeper glow for ominous presence
+        visualProfile: {
+            type: 'glow',
+            glowIntensity: 0.6,
+            pulseSpeed: 0.05
+        },
+        movementSignature: 'sway',
+        telegraph: null,
+        deathVfx: { color: 0xcc0000, count: 16, type: 'burst' }
     },
     shooter: {
         name: 'Shooter',

@@ -1,10 +1,16 @@
 // Progressive Arena Configuration with Lore and Tiered Waves
 
+// Arena 1 uses a special "Boss Chase" system:
+// - Segment 1: Waves 1-3 → Boss Phase 1 (retreats)
+// - Segment 2: Waves 4-5 → Boss Phase 2 (retreats)
+// - Segment 3: Waves 6-7 → Boss Phase 3 (final)
+// Total: 7 wave encounters before boss completion
+
 export const ARENA_CONFIG = {
     arenas: {
         1: {
             name: 'The Training Grounds',
-            waves: 3,  // Short intro
+            waves: 7,  // 3 segments: (3 waves + Boss P1) + (2 waves + Boss P2) + (2 waves + Boss P3)
             features: ['flat', 'landmarks'],
             color: 0x2a2a4a,
             lore: 'You are a new recruit learning the basics.',

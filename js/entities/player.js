@@ -7,6 +7,7 @@ import { spawnParticle } from '../effects/particles.js';
 import { spawnTrail, lastTrailPos, setLastTrailPos } from '../effects/trail.js';
 import { takeDamage } from '../systems/damage.js';
 import { triggerSlowMo, triggerScreenFlash } from '../systems/visualFeedback.js';
+import { getLastShot, getFireRate } from '../systems/projectiles.js';
 
 export let player = null;
 export let isDashing = false;
@@ -22,6 +23,73 @@ let dashStrikeProgress = 0;
 // Lean animation state
 let currentLeanX = 0;  // forward/back lean (W/S)
 let currentLeanZ = 0;  // left/right lean (A/D)
+
+// Charge ring shader
+const ChargeRingShader = {
+    uniforms: {
+        uProgress: { value: 0.0 },
+        uColorStart: { value: new THREE.Color(0x44aaff) },  // Blue
+        uColorEnd: { value: new THREE.Color(0xffdd44) },    // Yellow
+        uPulse: { value: 0.0 },
+        uDashCount: { value: 8.0 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float uProgress;
+        uniform vec3 uColorStart;
+        uniform vec3 uColorEnd;
+        uniform float uPulse;
+        uniform float uDashCount;
+        varying vec2 vUv;
+        
+        #define TAU 6.28318530718
+        
+        void main() {
+            // Center coordinates
+            vec2 centered = vUv - 0.5;
+            float dist = length(centered);
+            float angle = atan(centered.y, centered.x);
+            
+            // Normalize angle to 0-1 range, starting from top (rotating clockwise)
+            float normalizedAngle = mod(angle / TAU + 0.75, 1.0);
+            
+            // Ring mask - proportionally adjusted for narrower ring
+            float innerRadius = 0.32;
+            float outerRadius = 0.46;
+            float ringMask = smoothstep(innerRadius - 0.02, innerRadius, dist) * 
+                             (1.0 - smoothstep(outerRadius, outerRadius + 0.02, dist));
+            
+            // Create dashed segments - gaps shrink as progress increases
+            float segmentSize = 1.0 / uDashCount;
+            float dashPhase = mod(normalizedAngle, segmentSize);
+            float gapSize = segmentSize * 0.25 * (1.0 - uProgress);  // Gaps close when fully charged
+            float dashMask = smoothstep(gapSize - 0.01, gapSize + 0.01, dashPhase);
+            
+            // Fill based on progress
+            float fillMask = smoothstep(uProgress - 0.02, uProgress + 0.02, normalizedAngle);
+            fillMask = 1.0 - fillMask;  // Invert so filled area is where angle < progress
+            
+            // Combine masks - ring is always visible at base opacity
+            float baseAlpha = ringMask * 0.3;  // Dim unfilled ring always visible
+            float filledAlpha = ringMask * dashMask * fillMask * 0.9;  // Bright filled portion
+            float alpha = max(baseAlpha, filledAlpha);
+            
+            // Color lerp based on progress
+            vec3 color = mix(uColorStart, uColorEnd, uProgress);
+            
+            // Add pulse glow when ready (boosts entire ring)
+            alpha = min(1.0, alpha + uPulse * 0.5);
+            
+            gl_FragColor = vec4(color, alpha);
+        }
+    `
+};
 
 export function createPlayer() {
     player = new THREE.Group();
@@ -117,6 +185,49 @@ export function createPlayer() {
     attackEdge.position.y = 0.01;  // Slightly above arc
     attackIndicator.add(attackEdge);
     
+    // Charge ring (cooldown indicator) - above ground, under player
+    const chargeRingGeo = new THREE.RingGeometry(1.0, 1.4, 64);  // 0.4 width (50% of 0.8)
+    const chargeRingMat = new THREE.ShaderMaterial({
+        uniforms: ChargeRingShader.uniforms,
+        vertexShader: ChargeRingShader.vertexShader,
+        fragmentShader: ChargeRingShader.fragmentShader,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    const chargeRing = new THREE.Mesh(chargeRingGeo, chargeRingMat);
+    chargeRing.rotation.x = -Math.PI / 2;  // Lay flat
+    player.add(chargeRing);  // Child of player (follows automatically)
+    chargeRing.position.y = -0.4;  // Below player center, 0.6 above ground
+    player.chargeRing = chargeRing;
+    player.chargeRingMat = chargeRingMat;
+    player.chargePulseTimer = 0;
+    player.wasFullyCharged = false;  // Track state change for pulse trigger
+    player.lastKnownShot = 0;  // Track last shot timestamp we've seen
+    player.chargeVisualProgress = 0;  // Visual progress (only resets on actual shot)
+    
+    // Enemy behind indicators - halo of arrows around player
+    const enemyIndicatorGroup = new THREE.Group();
+    scene.add(enemyIndicatorGroup);  // Scene child, not player (avoid lean rotation)
+    player.enemyIndicatorGroup = enemyIndicatorGroup;
+    player.enemyIndicators = [];
+    
+    // Create 3 arrow meshes (reusable pool)
+    const arrowGeo = new THREE.ConeGeometry(0.15, 0.4, 3);  // Small triangle
+    const arrowMat = new THREE.MeshBasicMaterial({
+        color: 0xff4444,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    for (let i = 0; i < 3; i++) {
+        const arrow = new THREE.Mesh(arrowGeo, arrowMat.clone());
+        arrow.visible = false;
+        arrow.rotation.x = Math.PI / 2;  // Point outward from center
+        enemyIndicatorGroup.add(arrow);
+        player.enemyIndicators.push(arrow);
+    }
+    
     player.position.y = 1;
     scene.add(player);
     
@@ -142,8 +253,7 @@ export function updatePlayer(delta) {
     // 2. Chase mode after initial dramatic pause (36 frames = 0.6s)
     const inChaseIntro = gameState.arena1ChaseState?.enabled && 
                          gameState.waveState === WAVE_STATE.BOSS_INTRO;
-    const allowMovementDuringCutscene = gameState.interactiveDodgeTutorial === true ||
-        (inChaseIntro && gameState.waveTimer > 36);
+    const allowMovementDuringCutscene = (inChaseIntro && gameState.waveTimer > 36);
     
     if (gameState.cutsceneActive && !allowMovementDuringCutscene) {
         // Heavy movement dampening - decay any existing velocity
@@ -417,6 +527,92 @@ export function updatePlayer(delta) {
         player.attackIndicator.rotation.y = cameraAngleX;
     }
     
+    // Update charge ring
+    if (player.chargeRingMat) {
+        const now = Date.now();
+        const lastShot = getLastShot();
+        const fireRate = getFireRate();
+        
+        // Detect actual shot fired (lastShot changed)
+        if (lastShot !== player.lastKnownShot) {
+            player.lastKnownShot = lastShot;
+            player.chargeVisualProgress = 0;  // Reset visual on shot
+            player.wasFullyCharged = false;
+        }
+        
+        // Calculate time-based progress since last shot
+        const timeSinceShot = now - lastShot;
+        const progress = Math.min(1, timeSinceShot / fireRate);
+        
+        // Visual progress only increases, never decreases (stays yellow until shot)
+        player.chargeVisualProgress = Math.max(player.chargeVisualProgress, progress);
+        
+        player.chargeRingMat.uniforms.uProgress.value = player.chargeVisualProgress;
+        
+        // Trigger pulse when becoming fully charged
+        if (player.chargeVisualProgress >= 1 && !player.wasFullyCharged) {
+            player.chargePulseTimer = 1.0;
+            player.wasFullyCharged = true;
+        }
+        
+        // Decay pulse
+        if (player.chargePulseTimer > 0) {
+            player.chargePulseTimer -= 0.05;  // ~20 frame pulse
+            player.chargeRingMat.uniforms.uPulse.value = player.chargePulseTimer;
+        }
+    }
+    
+    // Update enemy behind indicators
+    if (player.enemyIndicatorGroup && player.enemyIndicators) {
+        // Position halo at player location
+        player.enemyIndicatorGroup.position.copy(player.position);
+        player.enemyIndicatorGroup.position.y = 0.8;  // Slightly below player center
+        
+        // Player forward direction
+        const forwardX = -Math.sin(cameraAngleX);
+        const forwardZ = -Math.cos(cameraAngleX);
+        
+        // Find enemies behind player (dot product < 0)
+        const behindEnemies = [];
+        for (const enemy of enemies) {
+            const dx = enemy.position.x - player.position.x;
+            const dz = enemy.position.z - player.position.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < 1) continue;  // Skip very close enemies
+            
+            const dot = (dx * forwardX + dz * forwardZ) / dist;
+            if (dot < -0.2) {  // Behind player (with small buffer)
+                behindEnemies.push({ enemy, dist, dx, dz });
+            }
+        }
+        
+        // Sort by distance, take nearest 3
+        behindEnemies.sort((a, b) => a.dist - b.dist);
+        const nearest = behindEnemies.slice(0, 3);
+        
+        // Position arrows
+        const haloRadius = 2.0;  // Distance from player center
+        for (let i = 0; i < 3; i++) {
+            const arrow = player.enemyIndicators[i];
+            if (i < nearest.length) {
+                const { dx, dz, dist } = nearest[i];
+                // Angle to enemy
+                const angle = Math.atan2(dx, dz);
+                // Position on halo circle
+                arrow.position.x = Math.sin(angle) * haloRadius;
+                arrow.position.z = Math.cos(angle) * haloRadius;
+                arrow.position.y = 0;
+                // Rotate to point outward toward enemy
+                arrow.rotation.y = -angle;
+                // Fade based on distance (closer = more opaque)
+                arrow.material.opacity = Math.max(0.4, 0.9 - dist * 0.02);
+                arrow.visible = true;
+            } else {
+                arrow.visible = false;
+            }
+        }
+    }
+    
     // Camera follow
     camera.position.x = player.position.x + Math.sin(cameraAngleX) * 8;
     camera.position.z = player.position.z + Math.cos(cameraAngleX) * 8;
@@ -446,6 +642,23 @@ export function resetPlayer() {
             player.bodyMaterial.opacity = 1;
             player.bodyMaterial.transparent = false;
             player.bodyMaterial.needsUpdate = true;
+        }
+        
+        // Reset charge ring state
+        player.chargePulseTimer = 0;
+        player.wasFullyCharged = false;
+        player.lastKnownShot = 0;
+        player.chargeVisualProgress = 0;
+        if (player.chargeRingMat) {
+            player.chargeRingMat.uniforms.uProgress.value = 0;
+            player.chargeRingMat.uniforms.uPulse.value = 0;
+        }
+        
+        // Reset enemy indicators
+        if (player.enemyIndicators) {
+            for (const arrow of player.enemyIndicators) {
+                arrow.visible = false;
+            }
         }
     }
     isDashing = false;
@@ -478,7 +691,8 @@ function startDashStrike(direction) {
     // Calculate target position based on dash distance
     const distance = gameState.dashStrikeConfig.distance || 8;
     dashStrikeTargetPos.copy(player.position);
-    dashStrikeTargetPos.add(direction.clone().normalize().multiplyScalar(distance));
+    // Direction is already normalized from getWorldDirection
+    dashStrikeTargetPos.add(tempVec3_4.copy(direction).multiplyScalar(distance));
     
     // Clamp to arena bounds
     dashStrikeTargetPos.x = Math.max(-42, Math.min(42, dashStrikeTargetPos.x));

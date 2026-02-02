@@ -268,6 +268,35 @@
         #close-roster { margin-top: 30px; padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; }
         #close-roster:hover { border-color: #ffdd44; color: #ffdd44; }
         
+        /* Modules Screen */
+        #modules-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: none; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 50px; z-index: 350; color: white; overflow-y: auto; }
+        #modules-screen h2 { font-size: 36px; color: #00ffff; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 3px; }
+        #modules-content { width: 90%; max-width: 1000px; margin-bottom: 30px; }
+        .modules-section { margin-bottom: 40px; }
+        .modules-section h3 { font-size: 20px; color: #ffdd44; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; }
+        .section-subtitle { font-size: 14px; color: #888; margin-bottom: 15px; }
+        #core-upgrades-grid, #unlockable-modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; }
+        .module-card { background: rgba(20, 20, 40, 0.8); border: 2px solid #444; border-radius: 10px; padding: 20px; text-align: center; position: relative; transition: all 0.3s ease; cursor: pointer; }
+        .module-card:hover { border-color: #00ffff; transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0, 255, 255, 0.3); }
+        .module-card.locked { opacity: 0.4; border-color: #333; }
+        .module-card.locked:hover { opacity: 0.6; border-color: #666; }
+        .module-icon { font-size: 48px; margin-bottom: 10px; }
+        .module-card.locked .module-icon { filter: grayscale(100%); }
+        .module-name { font-size: 16px; font-weight: bold; color: #00ffff; margin-bottom: 8px; }
+        .module-card.locked .module-name { color: #666; }
+        .module-status { font-size: 14px; color: #44ff88; margin-bottom: 5px; }
+        .module-card.locked .module-status { color: #888; }
+        .mastery-indicator { display: inline-block; padding: 4px 12px; background: rgba(0, 255, 255, 0.2); border-radius: 12px; font-size: 12px; font-weight: bold; color: #00ffff; }
+        .module-card.locked .mastery-indicator { background: rgba(100, 100, 100, 0.2); color: #666; }
+        .module-progress { font-size: 11px; color: #888; margin-top: 5px; }
+        .module-tooltip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.95); border: 2px solid #00ffff; border-radius: 8px; padding: 10px 15px; font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; z-index: 1000; margin-bottom: 10px; }
+        .module-card:hover .module-tooltip { opacity: 1; }
+        .tooltip-unlock-req { color: #ffdd44; font-weight: bold; }
+        .tooltip-progress { color: #888; margin-top: 5px; }
+        .tooltip-next-level { color: #00ffff; margin-top: 5px; }
+        #close-modules { padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; margin-bottom: 30px; }
+        #close-modules:hover { border-color: #00ffff; color: #00ffff; }
+        
         /* Pause menu buttons */
         #pause-roster-btn, #pause-main-menu-btn, #pause-debug-btn { margin-top: 20px; padding: 10px 25px; font-size: 14px; background: transparent; border: 2px solid #666; border-radius: 8px; cursor: pointer; color: #aaa; transition: all 0.3s ease; margin-left: 10px; }
         #pause-roster-btn:hover, #pause-main-menu-btn:hover, #pause-debug-btn:hover { border-color: #ffdd44; color: #ffdd44; }
@@ -278,9 +307,47 @@
         
         /* Version Display (debug only) */
         #version-display { position: fixed; bottom: 10px; right: 10px; font-size: 12px; color: rgba(255, 255, 255, 0.4); font-family: monospace; z-index: 1000; pointer-events: none; display: none; }
+        
+        /* Loading Screen */
+        #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a1a; display: flex; justify-content: center; align-items: center; z-index: 9999; transition: opacity 0.5s ease; }
+        #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+        .loading-content { text-align: center; color: #888; }
+        .loading-content p { margin-top: 20px; font-size: 18px; letter-spacing: 2px; }
+        .loading-spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #ffdd44; border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* GPU Warning */
+        .gpu-warning { margin-top: 20px; padding: 15px 20px; background: rgba(255, 136, 68, 0.2); border: 1px solid rgba(255, 136, 68, 0.5); border-radius: 8px; color: #ffaa44; text-align: center; }
+        .gpu-warning .warning-title { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+        .gpu-warning .warning-text { font-size: 14px; color: #ccc; }
+        .gpu-warning .warning-hint { font-size: 12px; color: #888; margin-top: 8px; }
+        
+        /* GPU Warning Buttons */
+        .warning-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 15px; }
+        .warning-btn { padding: 12px 24px; font-size: 14px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s ease; min-width: 140px; }
+        .warning-btn-primary { background: linear-gradient(135deg, #ffdd44, #ffaa00); color: #000; }
+        .warning-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(255, 221, 68, 0.4); }
+        .warning-btn-secondary { background: rgba(255, 255, 255, 0.1); color: #ccc; border: 1px solid rgba(255, 255, 255, 0.3); }
+        .warning-btn-secondary:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.5); }
+        
+        /* GPU Help Content */
+        .gpu-help-content { margin-top: 20px; padding: 20px; background: rgba(0, 0, 0, 0.8); border: 1px solid rgba(255, 221, 68, 0.5); border-radius: 8px; color: #ccc; text-align: left; max-height: 400px; overflow-y: auto; }
+        .help-instructions { margin: 15px 0; }
+        .help-section { margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; }
+        .help-section strong { color: #ffdd44; font-size: 15px; display: block; margin-bottom: 8px; }
+        .help-section ol, .help-section ul { margin: 8px 0 0 20px; padding: 0; }
+        .help-section li { margin: 4px 0; line-height: 1.5; }
     </style>
 </head>
 <body>
+    <!-- Loading Screen (shows while Three.js initializes) -->
+    <div id="loading-screen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+    
     <div id="game-container">
         <div id="damage-flash"></div>
         <div id="version-display"></div>
@@ -474,6 +541,13 @@
                 </div>
             </div>
             
+            <div class="debug-section">
+                <h3>GPU Information</h3>
+                <div id="debug-gpu-info" class="debug-controls" style="flex-direction: column; gap: 5px;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+            
             <button id="close-debug">Close</button>
         </div>
         
@@ -500,6 +574,24 @@
             <button id="close-roster">Close</button>
         </div>
         
+        <!-- Modules Screen -->
+        <div id="modules-screen">
+            <h2>MODULES</h2>
+            <div id="modules-content">
+                <div class="modules-section">
+                    <h3>Core Upgrades</h3>
+                    <p class="section-subtitle">Always available in level-up choices</p>
+                    <div id="core-upgrades-grid"></div>
+                </div>
+                <div class="modules-section">
+                    <h3>Unlockable Modules</h3>
+                    <p class="section-subtitle">Earn through gameplay achievements</p>
+                    <div id="unlockable-modules-grid"></div>
+                </div>
+            </div>
+            <button id="close-modules">Close</button>
+        </div>
+        
         <!-- Start Screen -->
         <div id="start-screen">
             <div id="start-screen-content">
@@ -515,6 +607,7 @@
                 <div class="start-buttons">
                     <button id="leaderboard-btn" class="secondary-btn">Leaderboard</button>
                     <button id="badges-btn" class="secondary-btn">Badges</button>
+                    <button id="modules-btn" class="secondary-btn">Modules</button>
                     <button id="roster-btn" class="secondary-btn">Roster</button>
                 </div>
                 <div id="mastery-panel"></div>

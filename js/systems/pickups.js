@@ -1,11 +1,13 @@
 import { scene } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
-import { xpGems, hearts, tempVec3, obstacles, getArenaPortal, setArenaPortal, getBossEntrancePortal, setBossEntrancePortal } from '../core/entities.js';
+import { xpGems, hearts, tempVec3, obstacles, modulePickups, getArenaPortal, setArenaPortal, getBossEntrancePortal, setBossEntrancePortal } from '../core/entities.js';
 import { player } from '../entities/player.js';
 import { HEART_TTL, XP_GEM_TTL, WAVE_STATE } from '../config/constants.js';
 import { spawnParticle } from '../effects/particles.js';
 import { levelUp } from '../ui/menus.js';
 import { triggerSlowMo, triggerScreenFlash } from './visualFeedback.js';
+import { incrementModuleCounter, tryLevelUpModule, getModuleLevel, isModuleUnlocked } from './moduleProgress.js';
+import { showModuleUnlockBanner } from '../ui/hud.js';
 
 // Get the surface height at a given X/Z position (checks platforms/obstacles)
 function getSurfaceHeight(x, z) {
@@ -643,4 +645,170 @@ export function clearBossEntrancePortal() {
     
     scene.remove(portal);
     setBossEntrancePortal(null);
+}
+
+// ==================== MODULE PICKUPS ====================
+// Hidden pickups that unlock modules (Speed Module in Arena 1)
+
+// Arena 1 hidden pickup positions (one is chosen randomly each run)
+const ARENA1_MODULE_POSITIONS = [
+    { x: -35, z: -35 },  // Far corner
+    { x: 35, z: -35 },   // Far corner
+    { x: 0, z: -38 },    // Far edge center
+];
+
+/**
+ * Spawn the Arena 1 hidden Speed Module pickup
+ * - Guaranteed spawn until first find
+ * - After first find: 50% spawn chance
+ */
+export function spawnArena1ModulePickup() {
+    // Only spawn in Arena 1
+    if (gameState.currentArena !== 1) return;
+    
+    // Check spawn chance (50% after first find)
+    const hasFoundBefore = isModuleUnlocked('speedModule');
+    if (hasFoundBefore && Math.random() > 0.5) {
+        return; // Skip spawn this run
+    }
+    
+    // Choose random position from preset locations
+    const posIndex = Math.floor(Math.random() * ARENA1_MODULE_POSITIONS.length);
+    const pos = ARENA1_MODULE_POSITIONS[posIndex];
+    
+    spawnModulePickup('speedModule', pos.x, pos.z);
+}
+
+/**
+ * Spawn a module pickup at a specific location
+ */
+export function spawnModulePickup(moduleId, x, z) {
+    // Create glowing pickup mesh
+    const group = new THREE.Group();
+    
+    // Main orb (pulsing)
+    const orbGeom = new THREE.SphereGeometry(0.5, 16, 16);
+    const orbMat = new THREE.MeshStandardMaterial({
+        color: 0x00ffff,      // Cyan glow
+        emissive: 0x00ffff,
+        emissiveIntensity: 0.5,
+        transparent: true,
+        opacity: 0.8
+    });
+    const orb = new THREE.Mesh(orbGeom, orbMat);
+    group.add(orb);
+    
+    // Inner core (brighter)
+    const coreGeom = new THREE.SphereGeometry(0.25, 12, 12);
+    const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.9
+    });
+    const core = new THREE.Mesh(coreGeom, coreMat);
+    group.add(core);
+    
+    // Outer ring (rotating)
+    const ringGeom = new THREE.TorusGeometry(0.7, 0.05, 8, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.6
+    });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.rotation.x = Math.PI / 2;
+    group.add(ring);
+    
+    // Position
+    group.position.set(x, 1.5, z);  // Floating height
+    
+    // Metadata
+    group.moduleId = moduleId;
+    group.spawnTime = Date.now();
+    group.orb = orb;
+    group.core = core;
+    group.ring = ring;
+    
+    scene.add(group);
+    modulePickups.push(group);
+}
+
+/**
+ * Update all module pickups (animation + collection)
+ */
+export function updateModulePickups() {
+    const time = Date.now() * 0.001;
+    const COLLECTION_RADIUS = 2.0;
+    
+    for (let i = modulePickups.length - 1; i >= 0; i--) {
+        const pickup = modulePickups[i];
+        
+        // Pulsing animation
+        const pulse = Math.sin(time * 3) * 0.1 + 1;
+        pickup.orb.scale.setScalar(pulse);
+        pickup.core.scale.setScalar(pulse * 0.8);
+        
+        // Ring rotation
+        pickup.ring.rotation.z = time * 2;
+        pickup.ring.rotation.x = Math.PI / 2 + Math.sin(time) * 0.2;
+        
+        // Bob up and down
+        pickup.position.y = 1.5 + Math.sin(time * 2) * 0.3;
+        
+        // Emissive pulse
+        pickup.orb.material.emissiveIntensity = 0.3 + Math.sin(time * 4) * 0.2;
+        
+        // Check player collection
+        if (player && player.position) {
+            const dist = player.position.distanceTo(pickup.position);
+            if (dist < COLLECTION_RADIUS) {
+                collectModulePickup(pickup, i);
+            }
+        }
+    }
+}
+
+/**
+ * Handle collection of a module pickup
+ */
+function collectModulePickup(pickup, index) {
+    const moduleId = pickup.moduleId;
+    
+    // Update module progress
+    const previousLevel = getModuleLevel(moduleId);
+    incrementModuleCounter(moduleId, 'finds');
+    const newLevel = tryLevelUpModule(moduleId);
+    
+    // Show unlock/upgrade banner
+    if (newLevel > 0) {
+        const isUnlock = previousLevel === 0;
+        showModuleUnlockBanner(moduleId, newLevel, isUnlock);
+    }
+    
+    // Collection VFX
+    spawnParticle(pickup.position, 0x00ffff, 15);
+    triggerScreenFlash(0x00ffff, 0.3);
+    triggerSlowMo(30, 0.5);  // Brief slow-mo for drama
+    
+    // Cleanup
+    pickup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+    });
+    scene.remove(pickup);
+    modulePickups.splice(index, 1);
+}
+
+/**
+ * Clear all module pickups (on arena change/restart)
+ */
+export function clearModulePickups() {
+    for (const pickup of modulePickups) {
+        pickup.traverse(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        });
+        scene.remove(pickup);
+    }
+    modulePickups.length = 0;
 }

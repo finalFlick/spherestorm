@@ -4,6 +4,7 @@ import { ARENA_CONFIG } from '../config/arenas.js';
 import { cachePillarPositions } from '../entities/enemies.js';
 import { initAmbience, cleanupAmbience } from '../systems/ambience.js';
 import { clearAllPickups } from '../systems/pickups.js';
+import { initArena1ChaseState, resetArena1ChaseState } from '../core/gameState.js';
 
 // Arena landmarks (visual-only, no collision)
 const arenaLandmarks = [];
@@ -42,6 +43,13 @@ export function generateArena(arenaNumber) {
     
     // Initialize underwater ambience (bubbles, kelp, fish)
     initAmbience();
+    
+    // Initialize Arena 1 boss chase state (boss appears multiple times)
+    if (arenaNum === 1) {
+        initArena1ChaseState();
+    } else {
+        resetArena1ChaseState();  // Clear chase state for other arenas
+    }
 }
 
 export function clearArenaGeometry() {

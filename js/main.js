@@ -59,6 +59,7 @@ import {
     hideBadgeCollection
 } from './ui/leaderboardUI.js';
 
+import { showModulesScreen, hideModulesScreen } from './ui/modulesUI.js';
 import { initRosterUI } from './ui/rosterUI.js';
 import { MenuScene } from './ui/menuScene.js';
 
@@ -329,6 +330,20 @@ async function init() {
     const closeBadgesBtn = document.getElementById('close-badges');
     if (closeBadgesBtn) {
         addTrackedListener(closeBadgesBtn, 'click', hideBadgeCollection);
+    }
+    
+    // Modules button
+    const modulesBtn = document.getElementById('modules-btn');
+    if (modulesBtn) {
+        addTrackedListener(modulesBtn, 'click', () => {
+            showModulesScreen();
+        });
+    }
+    
+    // Close modules button
+    const closeModulesBtn = document.getElementById('close-modules');
+    if (closeModulesBtn) {
+        addTrackedListener(closeModulesBtn, 'click', hideModulesScreen);
     }
     
     // Initialize character roster UI

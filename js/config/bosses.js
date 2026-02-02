@@ -8,7 +8,7 @@ export const BOSS_CONFIG = {
         health: 1250,  // Reduced for better pacing
         damage: 25, 
         size: 2.0,  // Reduced for better player/boss scale ratio
-        color: 0xff2222, 
+        color: 0x880000,  // Deep dark red - darkest of all puffers
         speed: 0.06,
         
         // Shield configuration (75% DR with loud ricochet feedback)
@@ -44,7 +44,7 @@ export const BOSS_CONFIG = {
         
         // Recovery windows after charge (in frames)
         chargeRecovery: {
-            phase1: 90,   // 1.5 seconds - long punish window
+            phase1: 120,  // 2.0 seconds - extended punish window for P1 duration target
             phase2: 0,    // No charge in Phase 2
             phase3: 45    // 0.75 seconds - shorter window under pressure
         },
@@ -66,8 +66,8 @@ export const BOSS_CONFIG = {
         },
         // Ability weights per phase (higher = more likely to use)
         abilityWeights: {
-            charge: [1.0, 0.0, 1.5],   // Phase 1: active, Phase 2: disabled, Phase 3: high
-            summon: [0.0, 1.0, 0.6]    // Phase 1: disabled, Phase 2: primary, Phase 3: secondary
+            charge: [1.0, 0.0, 2.0],   // Phase 1: active, Phase 2: disabled, Phase 3: very high for duration target
+            summon: [0.0, 1.0, 0.5]    // Phase 1: disabled, Phase 2: primary, Phase 3: occasional
         },
         // Phase-specific combos: [ability1, ability2, ...]
         phaseCombos: {

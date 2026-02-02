@@ -6,6 +6,7 @@ import { ENEMY_TYPES } from '../config/enemies.js';
 import { THREAT_BUDGET, WAVE_MODIFIERS } from '../config/constants.js';
 import { getHudBadges, getMasteryBadges, updateStatBadges } from '../systems/badges.js';
 import { getRecentDamage, getDeathTip } from '../systems/damage.js';
+import { MODULE_CONFIG } from '../config/modules.js';
 
 export let gameStartTime = 0;
 
@@ -204,30 +205,45 @@ function calculateThreatLevel(isLessonWave, isExamWave) {
 }
 
 export function hideWaveAnnouncement() {
-    document.getElementById('wave-announcement').classList.remove('visible');
+    const el = document.getElementById('wave-announcement');
+    if (el) el.classList.remove('visible');
 }
 
 export function showBossAnnouncement() {
     const el = document.getElementById('wave-announcement');
-    el.querySelector('.wave-text').textContent = 'BOSS INCOMING';
-    el.querySelector('.arena-text').textContent = BOSS_CONFIG[Math.min(gameState.currentArena, 6)].name;
+    if (!el) return;
+    
+    const waveText = el.querySelector('.wave-text');
+    const arenaText = el.querySelector('.arena-text');
+    if (waveText) waveText.textContent = 'BOSS INCOMING';
+    if (arenaText) arenaText.textContent = BOSS_CONFIG[Math.min(gameState.currentArena, 6)].name;
     
     // Hide wave preview for boss announcement
-    document.getElementById('wave-preview').style.display = 'none';
+    const preview = document.getElementById('wave-preview');
+    if (preview) preview.style.display = 'none';
     el.classList.add('visible');
 }
 
 export function hideBossAnnouncement() {
-    document.getElementById('wave-announcement').classList.remove('visible');
+    const el = document.getElementById('wave-announcement');
+    if (el) el.classList.remove('visible');
 }
 
 export function showBossHealthBar(name) {
-    document.getElementById('boss-name').textContent = name;
-    document.getElementById('boss-health-container').style.display = 'block';
-    document.getElementById('boss-phase').textContent = 'PHASE I';
-    document.getElementById('boss-phase').className = '';
-    document.getElementById('boss-shield-container').style.display = 'none';
-    document.getElementById('boss-exposed').style.display = 'none';
+    const nameEl = document.getElementById('boss-name');
+    const containerEl = document.getElementById('boss-health-container');
+    const phaseEl = document.getElementById('boss-phase');
+    const shieldEl = document.getElementById('boss-shield-container');
+    const exposedEl = document.getElementById('boss-exposed');
+    
+    if (nameEl) nameEl.textContent = name;
+    if (containerEl) containerEl.style.display = 'block';
+    if (phaseEl) {
+        phaseEl.textContent = 'PHASE I';
+        phaseEl.className = '';
+    }
+    if (shieldEl) shieldEl.style.display = 'none';
+    if (exposedEl) exposedEl.style.display = 'none';
 }
 
 export function updateBossHealthBar() {
@@ -293,7 +309,8 @@ export function updateBossHealthBar() {
 }
 
 export function hideBossHealthBar() {
-    document.getElementById('boss-health-container').style.display = 'none';
+    const el = document.getElementById('boss-health-container');
+    if (el) el.style.display = 'none';
     // Also hide chain indicator
     const chainEl = document.getElementById('boss-combo-indicator');
     if (chainEl) chainEl.style.display = 'none';
@@ -434,6 +451,51 @@ export function showPhaseAnnouncement(phase, bossName) {
         el.classList.remove('visible');
         el.style.background = '';
     }, 1500);
+}
+
+// ==================== MODULE UNLOCK BANNER ====================
+// Shows when a module is unlocked or upgraded (mastery level up)
+
+/**
+ * Show module unlock/upgrade banner
+ * @param {string} moduleId - The module ID (e.g., 'dashStrike', 'speedModule')
+ * @param {number} level - The new mastery level (1-3)
+ * @param {boolean} isUnlock - True if this is the first unlock (L1), false if upgrade
+ */
+export function showModuleUnlockBanner(moduleId, level, isUnlock = false) {
+    const el = document.getElementById('unlock-notification');
+    if (!el) return;
+    
+    // Get module config for display name
+    const config = MODULE_CONFIG.unlockable[moduleId];
+    const moduleName = config?.name || moduleId;
+    const moduleIcon = config?.icon || '📦';
+    
+    // Build banner text
+    let text;
+    if (isUnlock) {
+        text = `${moduleIcon} ${moduleName.toUpperCase()} UNLOCKED!`;
+    } else {
+        text = `${moduleIcon} ${moduleName.toUpperCase()} - MASTERY L${level}`;
+    }
+    
+    document.getElementById('unlock-text').textContent = text;
+    
+    // Cyan/teal gradient for module unlocks
+    el.style.background = isUnlock
+        ? 'linear-gradient(135deg, rgba(0, 255, 255, 0.9), rgba(0, 180, 200, 0.9))'
+        : 'linear-gradient(135deg, rgba(100, 255, 255, 0.9), rgba(0, 200, 220, 0.9))';
+    el.style.color = '#000';
+    
+    el.classList.add('visible');
+    
+    // Longer display time for unlocks
+    const duration = isUnlock ? 2500 : 2000;
+    setTimeout(() => {
+        el.classList.remove('visible');
+        el.style.background = '';
+        el.style.color = '';
+    }, duration);
 }
 
 // ==================== BOSS 6 CYCLE INDICATOR ====================
@@ -642,23 +704,28 @@ function calculatePerformanceGrade(stats) {
 }
 
 export function hideGameOver() {
-    document.getElementById('game-over').style.display = 'none';
+    const el = document.getElementById('game-over');
+    if (el) el.style.display = 'none';
 }
 
 export function showPauseIndicator() {
-    document.getElementById('pause-indicator').style.display = 'block';
+    const el = document.getElementById('pause-indicator');
+    if (el) el.style.display = 'block';
 }
 
 export function hidePauseIndicator() {
-    document.getElementById('pause-indicator').style.display = 'none';
+    const el = document.getElementById('pause-indicator');
+    if (el) el.style.display = 'none';
 }
 
 export function hideStartScreen() {
-    document.getElementById('start-screen').style.display = 'none';
+    const el = document.getElementById('start-screen');
+    if (el) el.style.display = 'none';
 }
 
 export function showStartScreen() {
-    document.getElementById('start-screen').style.display = 'flex';
+    const el = document.getElementById('start-screen');
+    if (el) el.style.display = 'flex';
 }
 
 // Get elapsed time in seconds
@@ -676,7 +743,7 @@ export function showArenaSelect() {
     grid.innerHTML = '';
     
     const arenas = [
-        { num: 1, name: 'The Training Grounds', level: 1, waves: 3, desc: 'Learn the basics' },
+        { num: 1, name: 'The Training Grounds', level: 1, waves: 7, desc: 'Learn the basics' },
         { num: 2, name: 'Shields & Cover', level: 4, waves: 5, desc: 'Master shield mechanics' },
         { num: 3, name: 'Vertical Loop', level: 7, waves: 6, desc: 'Conquer verticality' },
         { num: 4, name: 'Platform Gardens', level: 10, waves: 8, desc: 'Multi-level combat' },
@@ -706,14 +773,17 @@ export function showArenaSelect() {
 }
 
 export function hideArenaSelect() {
-    document.getElementById('arena-select-screen').style.display = 'none';
+    const el = document.getElementById('arena-select-screen');
+    if (el) el.style.display = 'none';
 }
 
 // Debug menu functions
 export function showDebugMenu() {
-    document.getElementById('debug-screen').style.display = 'flex';
+    const el = document.getElementById('debug-screen');
+    if (el) el.style.display = 'flex';
 }
 
 export function hideDebugMenu() {
-    document.getElementById('debug-screen').style.display = 'none';
+    const el = document.getElementById('debug-screen');
+    if (el) el.style.display = 'none';
 }

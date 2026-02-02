@@ -36,9 +36,9 @@ export const gameState = {
     },
     stats: {
         damage: 10,
-        attackSpeed: 1,
+        attackSpeed: 0.2,  // 3x slower initial fire rate - emphasizes positioning
         projectileCount: 1,
-        projectileSpeed: 0.8,
+        projectileSpeed: 0.5,  // Reduced from 0.8 - slower bullets early game
         moveSpeed: 0.15,
         maxHealth: 100,
         pickupRange: 3,
@@ -49,6 +49,13 @@ export const gameState = {
         noEnemies: false,
         invincible: false
     },
+    
+    // Dash Strike ability state (unlocked via Boss 1 module)
+    dashStrikeEnabled: false,
+    dashStrikeLevel: 0,
+    dashStrikeConfig: null,  // { distance, cooldown, damage }
+    dashStrikeCooldownTimer: 0,
+    
     // Cutscene state - prevents damage and boss AI during transitions
     cutsceneActive: false,
     cutsceneInvincible: false,
@@ -81,6 +88,9 @@ export const gameState = {
         ambienceKelp: true,         // Sub-toggle: decorative kelp
         ambienceFish: true,         // Sub-toggle: distant fish silhouettes
     },
+    
+    // Frame counter for cooldown tracking
+    frameCount: 0,
     
     // Arena 1 Boss Chase state - boss appears multiple times across waves
     arena1ChaseState: null  // Initialized when Arena 1 starts
@@ -131,9 +141,9 @@ export function resetGameState() {
     };
     gameState.stats = {
         damage: 10,
-        attackSpeed: 1,
+        attackSpeed: 0.2,  // 3x slower initial fire rate - emphasizes positioning
         projectileCount: 1,
-        projectileSpeed: 0.8,
+        projectileSpeed: 0.5,  // Reduced from 0.8 - slower bullets early game
         moveSpeed: 0.15,
         maxHealth: 100,
         pickupRange: 3,
@@ -144,6 +154,13 @@ export function resetGameState() {
         noEnemies: false,
         invincible: false
     };
+    
+    // Reset Dash Strike ability state
+    gameState.dashStrikeEnabled = false;
+    gameState.dashStrikeLevel = 0;
+    gameState.dashStrikeConfig = null;
+    gameState.dashStrikeCooldownTimer = 0;
+    
     gameState.combatStats = {
         damageDealt: 0,
         damageTaken: 0,
@@ -153,10 +170,17 @@ export function resetGameState() {
         bossesDefeated: 0
     };
     gameState.shownModifiers = {};
+    gameState.frameCount = 0;
     gameState.arena1ChaseState = null;
 }
 
 // Initialize Arena 1 boss chase state
+// 
+// IMPORTANT: Arena 1 has 7 total waves (not 3) divided into 3 segments:
+// - segmentWaves defines waves per segment: {1:3, 2:2, 3:2} = 7 total
+// - currentWave increments globally (1→7)
+// - segment tracks which boss encounter group we're in (1→3)
+// - bossEncounterCount tracks completed boss fights (0→3)
 export function initArena1ChaseState() {
     gameState.arena1ChaseState = {
         enabled: true,
