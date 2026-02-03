@@ -209,6 +209,34 @@ function testSetup() {
     console.log('Missing configuration. Add Script Properties.');
   }
 }
+
+// Test Discord embed (run manually to see how the embed looks)
+function testDiscordEmbed() {
+  const webhook = PropertiesService.getScriptProperties().getProperty('DISCORD_WEBHOOK');
+  if (!webhook) {
+    console.log('DISCORD_WEBHOOK not set. Add it as a Script Property first.');
+    return;
+  }
+  
+  // Sample test data
+  const testData = {
+    version: '0.2.3',
+    score: '29502381',
+    arena: '1',
+    time: '5:53',
+    q1: '3',
+    q2: 'Great',
+    q3: 'Always',
+    q4: 'Just Right',
+    q5: 'Definitely',
+    openFeedback: 'no',
+    testerName: 'finalFlick'
+  };
+  
+  console.log('Sending test Discord notification...');
+  sendDiscordNotification(testData);
+  console.log('Test notification sent! Check your Discord channel.');
+}
 ```
 
 ### Step 5: Configure GitHub Secrets (5 min)
