@@ -1,0 +1,10 @@
+{
+  "name": "spherestorm",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "dev": "echo 'Open index.html directly for dev'"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  }
+}
