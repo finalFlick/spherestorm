@@ -8,6 +8,11 @@ import { safeFlashMaterial } from './materialUtils.js';
 const RECOVERY_DURATION = 90;  // 1.5 seconds at 60fps
 const KNOCKBACK_STRENGTH = 0.3;
 
+// Frame-based collision damage cooldown (replaces Date.now() for pause safety)
+export let damageCooldownFrames = 0;
+const DAMAGE_COOLDOWN_FRAMES = 30;  // 500ms at 60fps (matches DAMAGE_COOLDOWN)
+
+// Legacy timestamp export kept for backwards compatibility (UI logging only)
 export let lastDamageTime = 0;
 let playerRef = null;
 
@@ -21,6 +26,21 @@ export function setPlayerRef(player) {
 
 export function setLastDamageTime(time) {
     lastDamageTime = time;
+}
+
+// Frame-based damage cooldown functions
+export function tickDamageCooldown() {
+    if (damageCooldownFrames > 0) {
+        damageCooldownFrames--;
+    }
+}
+
+export function canTakeCollisionDamage() {
+    return damageCooldownFrames <= 0;
+}
+
+export function resetDamageCooldown() {
+    damageCooldownFrames = DAMAGE_COOLDOWN_FRAMES;
 }
 
 // Get recent damage for death recap
@@ -133,4 +153,5 @@ export function takeDamage(amount, source = 'Unknown', sourceType = 'enemy', sou
 
 export function resetDamageTime() {
     lastDamageTime = 0;
+    damageCooldownFrames = 0;  // Also reset frame-based cooldown
 }

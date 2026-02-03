@@ -4,11 +4,11 @@ import { enemies, obstacles, hazardZones, tempVec3, getCurrentBoss, setCurrentBo
 import { player } from './player.js';
 import { spawnSpecificEnemy, spawnSplitEnemy } from './enemies.js';
 import { BOSS_CONFIG, ABILITY_COOLDOWNS, ABILITY_TELLS } from '../config/bosses.js';
-import { DAMAGE_COOLDOWN, HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES, GAME_TITLE, PHASE2_CUTSCENE, PHASE3_CUTSCENE, WAVE_STATE } from '../config/constants.js';
+import { HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES, GAME_TITLE, PHASE2_CUTSCENE, PHASE3_CUTSCENE, WAVE_STATE } from '../config/constants.js';
 import { spawnParticle, spawnShieldBreakVFX, spawnBubbleParticle } from '../effects/particles.js';
 import { spawnXpGem, spawnHeart, spawnArenaPortal, unfreezeBossEntrancePortal } from '../systems/pickups.js';
 import { createHazardZone } from '../arena/generator.js';
-import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
+import { takeDamage, canTakeCollisionDamage, resetDamageCooldown } from '../systems/damage.js';
 import { showBossHealthBar, updateBossHealthBar, hideBossHealthBar, showExposedBanner, showPhaseAnnouncement, showBoss6CycleAnnouncement, updateBoss6CycleIndicator, hideBoss6CycleIndicator, showTutorialCallout, showChainIndicator, hideChainIndicator, showBoss6SequencePreview, hideBoss6SequencePreview } from '../ui/hud.js';
 import { markBossEncountered } from '../ui/rosterUI.js';
 import { createShieldBubble, createExposedVFX, updateExposedVFX, cleanupVFX, createSlamMarker, updateSlamMarker, createTeleportOriginVFX, createTeleportDestinationVFX, updateTeleportDestinationVFX, createEmergeWarningVFX, updateEmergeWarningVFX, createBurrowStartVFX, updateBurrowStartVFX, triggerSlowMo, triggerScreenFlash, createChargePathMarker, updateChargePathMarker, createHazardPreviewCircle, updateHazardPreviewCircle, createLaneWallPreview, updateLaneWallPreview, createPerchChargeVFX, updatePerchChargeVFX, createGrowthIndicator, updateGrowthIndicator, createSplitWarningVFX, updateSplitWarningVFX, createComboTether, updateComboTether, createComboLockInMarker, updateComboLockInMarker, createMinionTether, updateMinionTethers, createTetherSnapVFX, updateTetherSnapVFX, createChargeTrailSegment, updateChargeTrailSegment, createDetonationWarningVFX, updateDetonationWarningVFX, createTeleportDecoy, updateTeleportDecoy, createBlinkBarrageMarker, updateBlinkBarrageMarker, createVineZone, updateVineZone, createBurrowPath, updateBurrowPath, createFakeEmergeMarker, updateFakeEmergeMarker, createEnergyTransferVFX, createWallImpactVFX, updateWallImpactVFX } from '../systems/visualFeedback.js';
@@ -553,7 +553,7 @@ export function spawnBoss(arenaNumber) {
         boss.summonedMinions = [];
         boss.minionTethers = [];      // Visible tethers from boss to minions
         boss.tetherSnapVFXList = [];  // Active snap VFX animations
-        boss.shieldStartTime = 0;     // Track when shield was activated for failsafe timeout
+        boss.shieldFrames = 0;        // Frame counter for shield duration (failsafe timeout)
     }
     
     if (config.exposedConfig) {
@@ -981,22 +981,23 @@ export function updateBoss() {
         }
     }
     
-    // Shield system with stuck assist + failsafe
+    // Shield system with stuck assist + failsafe (frame-based timing)
     if (boss.shieldActive && boss.shieldConfig && boss.shieldConfig.failsafeTimeout) {
-        const shieldDuration = (Date.now() - boss.shieldStartTime) / 1000;
+        boss.shieldFrames++;  // Increment frame counter
+        const shieldDurationSeconds = boss.shieldFrames / 60;  // Convert to seconds for comparison
         
         // Stuck assist: Shield flickers at 7s to signal it's weakening
         // (Helps player understand shield will break soon even if struggling)
-        if (shieldDuration >= 7.0 && shieldDuration < boss.shieldConfig.failsafeTimeout) {
+        if (shieldDurationSeconds >= 7.0 && shieldDurationSeconds < boss.shieldConfig.failsafeTimeout) {
             if (boss.shieldMesh) {
                 // Flicker shield opacity (every 10 frames)
-                const flickerFrame = Math.floor(shieldDuration * 60) % 10;
+                const flickerFrame = boss.shieldFrames % 10;
                 boss.shieldMesh.material.opacity = flickerFrame < 5 ? 0.3 : 0.15;
             }
         }
         
         // Failsafe timeout - auto-break shield if taking too long
-        if (shieldDuration >= boss.shieldConfig.failsafeTimeout) {
+        if (shieldDurationSeconds >= boss.shieldConfig.failsafeTimeout) {
             // Auto-break shield with special message
             boss.shieldActive = false;
             boss.isExposed = true;
@@ -1086,7 +1087,7 @@ export function updateBoss() {
             const config = BOSS_CONFIG[gameState.currentArena];
             if (gameState.currentArena === 1 && boss.phase === 3 && config.phaseBehavior?.[3]?.canShield) {
                 boss.shieldActive = true;
-                boss.shieldStartTime = Date.now();
+                boss.shieldFrames = 0;  // Reset frame counter for failsafe timeout
                 if (boss.shieldMesh) {
                     boss.shieldMesh.visible = true;
                 }
@@ -1100,25 +1101,31 @@ export function updateBoss() {
     // Update combo VFX
     updateComboVFX(boss);
     
-    // Update minion enrage (speed boost after 8s to prevent kiting)
+    // Update minion enrage (speed boost after 8s to prevent kiting) - frame-based
     if (boss.summonedMinions && boss.summonedMinions.length > 0) {
-        const now = Date.now();
         for (const minion of boss.summonedMinions) {
             if (!minion || !minion.parent) continue;  // Skip dead/removed minions
             
-            if (minion.enrageStartTime) {
-                const elapsed = now - minion.enrageStartTime;
-                if (elapsed > minion.enrageDelay) {
-                    // Calculate enrage boost: +5%/sec after delay, capped at 40%
-                    const enrageTime = (elapsed - minion.enrageDelay) / 1000;
-                    const boost = Math.min(minion.enrageCap, enrageTime * minion.enrageRate);
-                    minion.speed = minion.baseSpeed * (1 + boost);
-                    
-                    // Visual feedback: increase emissive intensity as enrage builds
-                    if (minion.baseMaterial || minion.material) {
-                        const mat = minion.baseMaterial || minion.material;
-                        mat.emissiveIntensity = 0.4 + boost * 0.8;  // Max 0.72 intensity
-                    }
+            // Initialize frame counter if not set
+            if (minion.enrageFrames === undefined) {
+                minion.enrageFrames = 0;
+            }
+            minion.enrageFrames++;
+            
+            // Convert delay from ms to frames (60fps = 16.67ms/frame)
+            const delayFrames = (minion.enrageDelay || 8000) / 16.67;
+            
+            if (minion.enrageFrames > delayFrames) {
+                // Calculate enrage boost: +5%/sec after delay, capped at 40%
+                const enrageFrames = minion.enrageFrames - delayFrames;
+                const enrageTime = enrageFrames / 60;  // Convert to seconds
+                const boost = Math.min(minion.enrageCap || 0.4, enrageTime * (minion.enrageRate || 0.05));
+                minion.speed = minion.baseSpeed * (1 + boost);
+                
+                // Visual feedback: increase emissive intensity as enrage builds
+                if (minion.baseMaterial || minion.material) {
+                    const mat = minion.baseMaterial || minion.material;
+                    mat.emissiveIntensity = 0.4 + boost * 0.8;  // Max 0.72 intensity
                 }
             }
         }
@@ -1151,10 +1158,9 @@ export function updateBoss() {
             if (!shouldRemove && trail.isDamageZone) {
                 const distToPlayer = trail.position.distanceTo(player.position);
                 if (distToPlayer < trail.damageRadius + 0.5) {
-                    const now = Date.now();
-                    if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+                    if (canTakeCollisionDamage()) {
                         takeDamage(trail.damage, 'Charge Trail', 'hazard');
-                        setLastDamageTime(now);
+                        resetDamageCooldown();
                     }
                 }
             }
@@ -1176,12 +1182,12 @@ export function updateBoss() {
             if (!shouldRemove && zone.isDamageZone) {
                 const distToPlayer = zone.position.distanceTo(player.position);
                 if (distToPlayer < zone.radius) {
-                    // Apply DOT damage (2 DPS = ~0.033 per frame at 60fps)
-                    const now = Date.now();
-                    if (!zone.lastDamageTime || now - zone.lastDamageTime > 500) {
+                    // Apply DOT damage every 30 frames (~0.5 seconds at 60fps)
+                    zone.damageTickFrames = (zone.damageTickFrames || 0) + 1;
+                    if (zone.damageTickFrames >= 30) {
                         // Deal damage every 0.5 seconds while in zone
                         takeDamage(zone.damagePerSecond * 0.5, 'Vine Zone', 'hazard');
-                        zone.lastDamageTime = now;
+                        zone.damageTickFrames = 0;
                     }
                     
                     // Apply slow effect
@@ -1214,11 +1220,10 @@ export function updateBoss() {
         const distToPlayer = boss.position.distanceTo(player.position);
         const effectiveSize = boss.size * boss.growthScale * boss.scale.x;
         if (distToPlayer < effectiveSize + 0.5) {
-            const now = Date.now();
-            if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+            if (canTakeCollisionDamage()) {
                 const config = BOSS_CONFIG[gameState.currentArena];
                 takeDamage(boss.damage, config?.name || 'Boss', 'boss');
-                setLastDamageTime(now);
+                resetDamageCooldown();
             }
         }
     }
@@ -2588,7 +2593,7 @@ function continueCurrentAbility(boss) {
                 // Activate shield if configured
                 if (boss.shieldConfig && boss.shieldConfig.activateOnSummon) {
                     boss.shieldActive = true;
-                    boss.shieldStartTime = Date.now();  // Track for failsafe timeout
+                    boss.shieldFrames = 0;  // Reset frame counter for failsafe timeout  // Track for failsafe timeout
                     if (boss.shieldMesh) {
                         boss.shieldMesh.visible = true;
                     }
@@ -2669,9 +2674,9 @@ function continueCurrentAbility(boss) {
                             minion.maxHealth *= 0.7;
                         }
                         
-                        // Enrage timer: +5% speed/sec after 8 seconds, capped at +40%
-                        minion.enrageStartTime = Date.now();
-                        minion.enrageDelay = 8000;   // 8 seconds before enrage starts
+                        // Enrage timer: +5% speed/sec after 8 seconds, capped at +40% (frame-based)
+                        minion.enrageFrames = 0;     // Frame counter (incremented in updateBoss)
+                        minion.enrageDelay = 8000;   // 8 seconds before enrage starts (ms, converted to frames in update)
                         minion.enrageRate = 0.05;    // 5% per second
                         minion.enrageCap = 0.4;      // Max 40% speed boost
                         minion.baseSpeed = minion.speed;
@@ -2869,10 +2874,9 @@ function continueCurrentAbility(boss) {
                                 // Check player collision with expanded radius
                                 const distToPlayer = hazard.position.distanceTo(player.position);
                                 if (distToPlayer < expandedRadius) {
-                                    const now = Date.now();
-                                    if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+                                    if (canTakeCollisionDamage()) {
                                         takeDamage(1.5, 'Hazard Detonation', 'hazard');
-                                        setLastDamageTime(now);
+                                        resetDamageCooldown();
                                     }
                                 }
                                 
@@ -3588,7 +3592,7 @@ function continueCurrentAbility(boss) {
             if (!boss.shieldActive && !boss.isExposed && boss.summonedMinions.length === 0) {
                 // Reactivate shield and prepare to summon again
                 boss.shieldActive = true;
-                boss.shieldStartTime = Date.now();
+                boss.shieldFrames = 0;  // Reset frame counter for failsafe timeout
                 if (boss.shieldMesh) {
                     boss.shieldMesh.visible = true;
                 }
@@ -3696,7 +3700,7 @@ function continueCurrentAbility(boss) {
             // Frame 120: Shield manifests with VFX
             if (boss.cutsceneTimer === PHASE2_CUTSCENE.SHIELD_MANIFEST) {
                 boss.shieldActive = true;
-                boss.shieldStartTime = Date.now();
+                boss.shieldFrames = 0;  // Reset frame counter for failsafe timeout
                 if (boss.shieldMesh) {
                     boss.shieldMesh.visible = true;
                 }
@@ -3757,7 +3761,7 @@ function continueCurrentAbility(boss) {
             if (boss.cutsceneTimer === PHASE3_CUTSCENE.SHIELD_REASSERT) {
                 if (!boss.shieldActive) {
                     boss.shieldActive = true;
-                    boss.shieldStartTime = Date.now();
+                    boss.shieldFrames = 0;  // Reset frame counter for failsafe timeout
                 }
                 if (boss.shieldMesh) {
                     boss.shieldMesh.visible = true;
@@ -4655,7 +4659,7 @@ function activatePhase2Shield(boss) {
     if (!boss || boss.health <= 0) return;
     
     boss.shieldActive = true;
-    boss.shieldStartTime = Date.now();
+    boss.shieldFrames = 0;  // Reset frame counter for failsafe timeout
     if (boss.shieldMesh) {
         boss.shieldMesh.visible = true;
     }

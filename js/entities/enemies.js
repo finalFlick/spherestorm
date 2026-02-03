@@ -3,10 +3,10 @@ import { gameState } from '../core/gameState.js';
 import { enemies, obstacles, hazardZones, tempVec3 } from '../core/entities.js';
 import { player } from './player.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
-import { DAMAGE_COOLDOWN, ENEMY_CAPS, WAVE_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, THREAT_BUDGET, SPLITLING_SPAWN_STUN_FRAMES, SCHOOL_CONFIG, SPAWN_CHOREOGRAPHY } from '../config/constants.js';
+import { ENEMY_CAPS, WAVE_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, THREAT_BUDGET, SPLITLING_SPAWN_STUN_FRAMES, SCHOOL_CONFIG, SPAWN_CHOREOGRAPHY } from '../config/constants.js';
 import { spawnParticle, spawnEnemyDeathVfx } from '../effects/particles.js';
 import { createHazardZone } from '../arena/generator.js';
-import { takeDamage, lastDamageTime, setLastDamageTime } from '../systems/damage.js';
+import { takeDamage, canTakeCollisionDamage, resetDamageCooldown, tickDamageCooldown } from '../systems/damage.js';
 import { createShieldBubble, updateShieldVisual, createRushTelegraph, updateRushTelegraph, cleanupVFX } from '../systems/visualFeedback.js';
 import { showTutorialCallout } from '../ui/hud.js';
 import { PulseMusic } from '../systems/pulseMusic.js';
@@ -1313,7 +1313,8 @@ export function spawnPillarPoliceOnAllPillars() {
 }
 
 export function updateEnemies(delta) {
-    const now = Date.now();
+    // Tick frame-based damage cooldown
+    tickDamageCooldown();
     
     // ==================== ENEMY-ENEMY SEPARATION ====================
     // Push overlapping enemies apart to prevent stacking
@@ -1489,13 +1490,13 @@ export function updateEnemies(delta) {
             enemy.rotation.y += 0.04;
         }
         
-        // Player collision
+        // Player collision (using frame-based damage cooldown)
         const scaledSize = enemy.baseSize * enemy.scale.x;
         if (enemy.position.distanceTo(player.position) < scaledSize + 0.5) {
-            if (now - lastDamageTime > DAMAGE_COOLDOWN) {
+            if (canTakeCollisionDamage()) {
                 const typeName = ENEMY_TYPES[enemy.enemyType]?.name || enemy.enemyType || 'Enemy';
                 takeDamage(enemy.damage, typeName, 'enemy');
-                setLastDamageTime(now);
+                resetDamageCooldown();
             }
             tempVec3.subVectors(enemy.position, player.position).normalize();
             enemy.position.add(tempVec3.multiplyScalar(0.5));
@@ -1970,24 +1971,26 @@ function updatePillarHopperEnemy(enemy) {
     // Check if player is on a pillar every frame
     const playerPillar = getPlayerPillar();
     
-    // Track grace period for pillar landing
+    // Track grace period for pillar landing (frame-based for pause safety)
     if (playerPillar) {
-        if (!player.pillarLandTime) {
-            player.pillarLandTime = Date.now();
+        if (player.pillarLandFrames === undefined || player.pillarLandFrames === null) {
+            player.pillarLandFrames = 0;
+        } else {
+            player.pillarLandFrames++;
         }
     } else {
-        player.pillarLandTime = null;
+        player.pillarLandFrames = null;
     }
     
     switch (enemy.hopState) {
         case 'idle':
             // PRIORITY: If player is on a pillar (not ours), hunt them after grace period
             if (playerPillar && playerPillar !== enemy.currentPillar) {
-                const gracePeriod = 1500;  // 1.5 seconds grace after landing
-                const timeSinceLanding = player.pillarLandTime ? Date.now() - player.pillarLandTime : 0;
+                const gracePeriodFrames = 90;  // 1.5 seconds at 60fps (was 1500ms)
+                const framesSinceLanding = player.pillarLandFrames || 0;
                 
                 // Only hunt if grace period has passed
-                if (timeSinceLanding >= gracePeriod) {
+                if (framesSinceLanding >= gracePeriodFrames) {
                     enemy.targetPillar = playerPillar;
                     enemy.isHunting = true;
                     enemy.hopState = 'windup';
