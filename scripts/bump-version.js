@@ -25,6 +25,7 @@ function setVersion(version) {
 function updateIndexHtml(version) {
     let content = fs.readFileSync(INDEX_FILE, 'utf8');
     content = content.replace(/<div id="version-display">v[^<]+<\/div>/, `<div id="version-display">v${version}</div>`);
+    content = content.replace(/src="dist\/bundle\.js[^"]*"/, `src="dist/bundle.js?v=${version}"`);
     fs.writeFileSync(INDEX_FILE, content);
     console.log('  ✓ index.html');
 }
