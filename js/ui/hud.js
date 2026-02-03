@@ -10,6 +10,9 @@ import { MODULE_CONFIG } from '../config/modules.js';
 
 export let gameStartTime = 0;
 
+// Module-local state (replaces window globals for cleaner namespace)
+let boss6SequenceTooltipShown = false;
+
 export function setGameStartTime(time) {
     gameStartTime = time;
 }
@@ -408,13 +411,14 @@ export function showBoss6SequencePreview(abilities) {
         container.appendChild(icon);
     });
     
-    // First-time tooltip
-    if (!window.boss6SequenceShown) {
-        window.boss6SequenceShown = true;
+    // First-time tooltip (uses module-local state instead of window global)
+    if (!boss6SequenceTooltipShown) {
+        boss6SequenceTooltipShown = true;
         const tooltip = document.createElement('div');
         tooltip.className = 'sequence-tooltip';
         tooltip.textContent = 'INCOMING ATTACKS →';
         container.insertBefore(tooltip, container.firstChild);
+        // UI-only setTimeout is acceptable - doesn't affect game logic/timing
         setTimeout(() => tooltip.remove(), 3000);
     }
 }
@@ -786,4 +790,26 @@ export function showDebugMenu() {
 export function hideDebugMenu() {
     const el = document.getElementById('debug-screen');
     if (el) el.style.display = 'none';
+}
+
+// Play Again Prompt functions
+export function showPlayAgainPrompt() {
+    const el = document.getElementById('play-again-prompt');
+    if (el) el.classList.add('visible');
+}
+
+export function hidePlayAgainPrompt() {
+    const el = document.getElementById('play-again-prompt');
+    if (el) el.classList.remove('visible');
+}
+
+// Feedback Overlay functions (re-exported from playtestFeedback.js for convenience)
+export function showFeedbackOverlayFromHud() {
+    const el = document.getElementById('feedback-overlay');
+    if (el) el.classList.add('visible');
+}
+
+export function hideFeedbackOverlayFromHud() {
+    const el = document.getElementById('feedback-overlay');
+    if (el) el.classList.remove('visible');
 }
