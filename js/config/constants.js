@@ -13,11 +13,22 @@ export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_'
 /* global ENV_DEBUG_SECRET, ENV_PLAYTEST_URL, ENV_PLAYTEST_TOKEN */
 // Build-injected globals (exist when bundled)
 // Falls back to window.__DEV_MODE__ for unbundled dev
-const DEBUG_SECRET = typeof ENV_DEBUG_SECRET !== 'undefined' 
-    ? ENV_DEBUG_SECRET 
-    : (typeof window !== 'undefined' && window.__DEV_MODE__) || false;
-const PLAYTEST_URL = typeof ENV_PLAYTEST_URL !== 'undefined' ? ENV_PLAYTEST_URL : '';
-const PLAYTEST_TOKEN = typeof ENV_PLAYTEST_TOKEN !== 'undefined' ? ENV_PLAYTEST_TOKEN : '';
+const RUNTIME_CONFIG = (typeof window !== 'undefined' && window.__RUNTIME_CONFIG__) || null;
+
+// Debug is disabled by default unless explicitly enabled:
+// Priority: 1) runtime (Docker) config, 2) build-time injected flag, 3) unbundled dev mode.
+const DEBUG_SECRET =
+    (RUNTIME_CONFIG && RUNTIME_CONFIG.debug === true) ||
+    (typeof ENV_DEBUG_SECRET !== 'undefined' ? ENV_DEBUG_SECRET : false) ||
+    ((typeof window !== 'undefined' && window.__DEV_MODE__) || false);
+
+// Playtest config can be overridden at runtime (Docker env) or at build time (.env -> esbuild define)
+const PLAYTEST_URL =
+    (RUNTIME_CONFIG && typeof RUNTIME_CONFIG.playtestUrl === 'string' && RUNTIME_CONFIG.playtestUrl) ||
+    (typeof ENV_PLAYTEST_URL !== 'undefined' ? ENV_PLAYTEST_URL : '');
+const PLAYTEST_TOKEN =
+    (RUNTIME_CONFIG && typeof RUNTIME_CONFIG.playtestToken === 'string' && RUNTIME_CONFIG.playtestToken) ||
+    (typeof ENV_PLAYTEST_TOKEN !== 'undefined' ? ENV_PLAYTEST_TOKEN : '');
 
 // Playtest feedback configuration (from .env)
 export const PLAYTEST_CONFIG = PLAYTEST_URL ? {
