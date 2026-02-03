@@ -8,10 +8,12 @@ import { spawnTrail, lastTrailPos, setLastTrailPos } from '../effects/trail.js';
 import { takeDamage } from '../systems/damage.js';
 import { triggerSlowMo, triggerScreenFlash } from '../systems/visualFeedback.js';
 import { getLastShot, getFireRate } from '../systems/projectiles.js';
+import { safeFlashMaterial } from '../systems/materialUtils.js';
 
 export let player = null;
 export let isDashing = false;
-export let lastDash = 0;
+let dashCooldownFrames = 0;  // Frame-based cooldown (60 frames = 1 second)
+let dashActiveFrames = 0;     // Frame counter for dash duration
 const dashDirection = new THREE.Vector3();
 
 // Dash Strike state (active ability from Boss 1 module)
@@ -279,11 +281,12 @@ export function updatePlayer(delta) {
     if (keys['KeyD']) moveDir.add(tempVec3_5.copy(right).multiplyScalar(0.5));  // Reduced strafe - use mouse to turn
     moveDir.normalize();
     
-    const now = Date.now();
-    
-    // Decrement Dash Strike cooldown (frame-based)
+    // Frame-based cooldown timers
     if (gameState.dashStrikeCooldownTimer > 0) {
         gameState.dashStrikeCooldownTimer--;
+    }
+    if (dashCooldownFrames > 0) {
+        dashCooldownFrames--;
     }
     
     // Check for dash/Dash Strike input
@@ -292,10 +295,11 @@ export function updatePlayer(delta) {
         if (gameState.dashStrikeEnabled && gameState.dashStrikeCooldownTimer <= 0) {
             startDashStrike(moveDir);
         }
-        // Otherwise, regular dash (if available)
-        else if (!gameState.dashStrikeEnabled && now - lastDash > 1000) {
+        // Otherwise, regular dash (if available) - 60 frame cooldown (1 second)
+        else if (!gameState.dashStrikeEnabled && dashCooldownFrames <= 0) {
             isDashing = true;
-            lastDash = now;
+            dashCooldownFrames = 60;  // 1 second cooldown
+            dashActiveFrames = 0;     // Reset dash duration counter
             dashDirection.copy(moveDir);
         }
     }
@@ -321,9 +325,10 @@ export function updatePlayer(delta) {
             }
         }
     }
-    // Handle regular dash
+    // Handle regular dash (frame-based duration: 12 frames = ~200ms)
     else if (isDashing) {
-        if (now - lastDash < 200) {
+        dashActiveFrames++;
+        if (dashActiveFrames < 12) {
             player.position.add(dashDirection.clone().multiplyScalar(0.5));
         } else {
             isDashing = false;
@@ -662,7 +667,8 @@ export function resetPlayer() {
     isDashing = false;
     isDashStriking = false;
     dashStrikeProgress = 0;
-    lastDash = 0;
+    dashCooldownFrames = 0;
+    dashActiveFrames = 0;
     currentLeanX = 0;
     currentLeanZ = 0;
 }
@@ -733,16 +739,16 @@ function completeDashStrike() {
             // Spawn hit VFX
             spawnParticle(enemy.position.clone(), 0x00ffff, 5);
             
-            // Flash enemy
+            // Flash enemy (frame-based timing via safeFlashMaterial)
             if (enemy.baseMaterial) {
-                enemy.baseMaterial.emissive.setHex(0x00ffff);
-                enemy.baseMaterial.emissiveIntensity = 1;
-                setTimeout(() => {
-                    if (enemy.baseMaterial) {
-                        enemy.baseMaterial.emissive.setHex(enemy.baseColor || 0xff4444);
-                        enemy.baseMaterial.emissiveIntensity = 0.3;
-                    }
-                }, 100);
+                safeFlashMaterial(
+                    enemy.baseMaterial, 
+                    enemy, 
+                    0x00ffff,  // Flash color
+                    enemy.baseColor || 0xff4444,  // Reset color
+                    0.3,  // Reset emissive intensity
+                    100  // Duration (converted to frames internally)
+                );
             }
         }
     }

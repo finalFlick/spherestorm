@@ -14,17 +14,19 @@ import { handleEnemyDeath } from '../entities/enemies.js';
 import { killBoss, checkBossRetreat } from '../entities/boss.js';
 import { spawnParticle, spawnShieldHitVFX, spawnShieldBreakVFX } from '../effects/particles.js';
 import { spawnXpGem, spawnHeart } from './pickups.js';
-import { takeDamage, lastDamageTime, setLastDamageTime } from './damage.js';
-import { DAMAGE_COOLDOWN, HEART_DROP_CHANCE, HEART_HEAL } from '../config/constants.js';
+import { takeDamage, canTakeCollisionDamage, resetDamageCooldown } from './damage.js';
+import { HEART_DROP_CHANCE, HEART_HEAL } from '../config/constants.js';
 import { triggerSlowMo, triggerScreenFlash, createExposedVFX, createTetherSnapVFX, cleanupVFX } from './visualFeedback.js';
 import { showTutorialCallout } from '../ui/hud.js';
 import { PulseMusic } from './pulseMusic.js';
 import { safeFlashMaterial } from './materialUtils.js';
 
-let lastShot = 0;
+let lastShot = 0;  // Kept for UI charge ring (visual only)
+let shotCooldownFrames = 0;  // Frame-based cooldown counter
 
 export function resetLastShot() {
     lastShot = 0;
+    shotCooldownFrames = 0;
 }
 
 export function getLastShot() {
@@ -33,6 +35,12 @@ export function getLastShot() {
 
 export function getFireRate() {
     return 500 / gameState.stats.attackSpeed;
+}
+
+// Get fire rate in frames (for game logic)
+export function getFireRateFrames() {
+    // Base 500ms at attackSpeed 1.0, converted to frames (60fps = 16.67ms/frame)
+    return Math.floor((500 / gameState.stats.attackSpeed) / 16.67);
 }
 
 // Player max shoot range
@@ -184,20 +192,21 @@ export function shootProjectile() {
     // Block attacks during hit recovery (invulnerability frames)
     if (player.isRecovering) return;
     
-    const now = Date.now();
-    const fireRate = 500 / gameState.stats.attackSpeed;
-    const timeSinceLastShot = now - lastShot;
-    const canShoot = timeSinceLastShot >= fireRate;
+    // Frame-based cooldown (respects slow-mo and pause)
+    const fireRateInFrames = getFireRateFrames();
+    shotCooldownFrames++;
     
-    if (!canShoot) return;
+    if (shotCooldownFrames < fireRateInFrames) return;
     
-    // Check for targets BEFORE updating lastShot
+    // Check for targets BEFORE resetting cooldown
     // This ensures the charge indicator only resets when an actual shot fires
     const projectileCount = Math.floor(gameState.stats.projectileCount);
     const targets = getNearestEnemies(projectileCount);
     if (targets.length === 0) return;  // No targets = no shot = don't reset timer
     
-    lastShot = now;  // Only update after confirming we have targets
+    // Reset frame counter and update lastShot for UI charge ring
+    shotCooldownFrames = 0;
+    lastShot = Date.now();  // Kept for UI visual only (charge ring uses wall-clock)
     
     for (let i = 0; i < projectileCount; i++) {
         const target = targets[i % targets.length];
@@ -443,12 +452,11 @@ export function updateProjectiles(delta) {
         proj.position.add(proj.velocity);
         proj.life--;
         
-        // Check player hit
+        // Check player hit (using frame-based damage cooldown)
         if (proj.position.distanceTo(player.position) < 1) {
-            const now = Date.now();
-            if (now - lastDamageTime > DAMAGE_COOLDOWN * 0.5) {
+            if (canTakeCollisionDamage()) {
                 takeDamage(proj.damage, 'Enemy Projectile', 'projectile');
-                setLastDamageTime(now);
+                resetDamageCooldown();
             }
             returnProjectileToPool(proj);
             enemyProjectiles.splice(i, 1);

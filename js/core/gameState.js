@@ -20,7 +20,8 @@ export const gameState = {
     waveTimer: 0,
     enemiesToSpawn: 0,
     waveEnemiesRemaining: 0,
-    lastWaveSpawn: 0,
+    waveSpawnTimer: 0,  // Frame-based spawn cooldown counter
+    waveFrameCounter: 0,  // Frames since wave start (for speed bonus)
     bossActive: false,
     unlockedMechanics: {
         pillars: false,
