@@ -925,31 +925,41 @@ git push origin vX.Y.Z
 
 2. **PRs always target version branch**, never main
 
-3. **Suggest PR to main (release) when**:
-   - Planned milestone complete (e.g., "Arena 2 done")
-   - Significant feature set ready for players
-   - 10+ commits accumulated on version branch
-   - Bug fixes ready for production
-   - User asks "is it time to release?"
+3. **Suggest PR to main (release) when** (any trigger):
+   - Task/feature explicitly requested is complete
+   - Natural stopping point (end of session, context switch)
+   - 5+ commits accumulated on version branch
+   - Need to merge before starting dependent work
+   - User asks "is it ready?" or "should we release?"
+   - Stability checkpoint (bugs fixed, before new features)
 
-4. **Release suggestion format**:
+4. **Do NOT suggest PR for**:
+   - Every single commit
+   - Minor doc fixes (batch them)
+   - Work-in-progress that isn't testable
+
+5. **Release suggestion format**:
    ```
-   🚀 **Ready to release?**
+   🚀 **PR to main suggested**
    
-   Branch: 0.3.x → main
-   Commits: X since last release
-   Highlights: [list key changes]
+   Branch: 0.3.x
+   Changes since last release:
+   - feat: [description]
+   - fix: [description]
+   - docs: [description]
    
-   This will:
-   1. Merge 0.3.x → main
-   2. Tag v0.3.0  
-   3. Archive 0.3.x → archive/0.3.x
-   4. Create 0.4.x for next work
+   Version bump: 0.2.4 → 0.3.0 (MINOR - new feature)
    
-   Release now? [Yes / Not yet]
+   Create PR now? [Yes / Not yet / What's missing?]
    ```
 
-5. **After release**: Remind that new work targets the NEW version branch
+6. **If approved**, use GitHub CLI:
+   ```bash
+   gh pr create --base main --head 0.3.x --title "Release v0.3.0" --body "..."
+   ```
+   User reviews/approves on GitHub, then AI tags and creates next branch.
+
+7. **After release**: Remind that new work targets the NEW version branch
 
 #### Version History
 
