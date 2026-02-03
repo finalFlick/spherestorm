@@ -1,0 +1,36 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Check JavaScript syntax
+        run: |
+          # Verify all JS files have valid syntax
+          find js -name "*.js" -exec node --check {} \;
+      
+      - name: Check for common issues
+        run: |
+          # Fail if TODO/FIXME/STUB found (per project rules)
+          if grep -rn "TODO\|FIXME\|STUB" js/ --include="*.js"; then
+            echo "::error::Found TODO/FIXME/STUB markers. Resolve before merging."
+            exit 1
+          fi
+      
+      - name: Verify critical files exist
+        run: |
+          test -f index.html
+          test -f js/main.js
+          test -f js/core/gameState.js
