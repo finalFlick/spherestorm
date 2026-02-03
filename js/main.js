@@ -127,9 +127,6 @@ function unlockMechanicsForArena(arenaNumber) {
 }
 
 async function init() {
-    // #region agent log - unconditional console for production debugging
-    console.log('[INIT] init() called, THREE loaded:', typeof THREE !== 'undefined');
-    // #endregion
     // Guard against double initialization (would leak event listeners)
     if (window.__mantaSphereInitialized) {
         console.warn('init() called twice - skipping to prevent listener leaks');
@@ -138,10 +135,6 @@ async function init() {
     window.__mantaSphereInitialized = true;
     
     // Try to enable secure debug mode (requires localhost + debug.local.js)
-    // NON-BLOCKING: Don't await - prevents slow 404 from blocking loading screen
-    // #region agent log
-    console.log('[INIT] Starting non-blocking debug.local.js import');
-    // #endregion
     import('/js/config/debug.local.js')
         .then(({ DEBUG_SECRET }) => {
             if (DEBUG_SECRET === true) {
@@ -149,12 +142,7 @@ async function init() {
                 console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Enabled (debug.local.js loaded)');
             }
         })
-        .catch(() => {
-            // debug.local.js doesn't exist - debug stays off (production behavior)
-            // #region agent log
-            console.log('[INIT] debug.local.js not found (expected in production)');
-            // #endregion
-        });
+        .catch(() => {});
     
     // Initialize debug logger
     setGameStateRef(gameState);
@@ -188,15 +176,9 @@ async function init() {
     
     // Initialize animated menu background
     const startScreen = document.getElementById('start-screen');
-    // #region agent log
-    console.log('[INIT] About to init MenuScene, startScreen exists:', !!startScreen);
-    // #endregion
     if (startScreen) {
         MenuScene.init(startScreen);
     }
-    // #region agent log
-    console.log('[INIT] MenuScene.init complete');
-    // #endregion
     
     // Check for software rendering and show warning if needed
     const loadingScreen = document.getElementById('loading-screen');
@@ -312,18 +294,12 @@ async function init() {
         }
     }
     
-    // Hide loading screen after MenuScene is initialized and warning shown
-    // #region agent log
-    console.log('[INIT] About to hide loading screen, exists:', !!loadingScreen);
-    // #endregion
+    // Hide loading screen after MenuScene is initialized
     if (loadingScreen) {
         loadingScreen.classList.add('fade-out');
         setTimeout(() => {
             loadingScreen.style.display = 'none';
-            // #region agent log
-            console.log('[INIT] Loading screen hidden');
-            // #endregion
-        }, 500);  // Match transition duration
+        }, 500);
     }
     
     initInput(renderer.domElement);
@@ -1087,8 +1063,4 @@ function debugUnlockAllMechanics() {
     if (DEBUG) console.log('[DEBUG] All mechanics unlocked');
 }
 
-// Initialize when DOM is ready
-// #region agent log
-console.log('[INIT] main.js module loaded, setting up window.onload');
-// #endregion
 window.onload = init;
