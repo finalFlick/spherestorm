@@ -85,7 +85,7 @@ jobs:
             exit 0
           fi
 
-          # Discord webhook expects JSON. Use python to escape newlines/quotes safely.
+          # Discord webhook expects JSON. Use an embed for nicer formatting + color.
           python - <<'PY' > payload.json
           import json, os
           repo = os.environ.get("REPO", "")
@@ -98,25 +98,32 @@ jobs:
           image = os.environ.get("IMAGE", "")
           tags = os.environ.get("TAGS", "").strip()
 
-          lines = [
-              "Docker build+push succeeded.",
-              f"repo: {repo}",
-              f"ref: {ref_type}/{ref_name}",
-              f"commit: {short_sha}",
-              f"image: {image}",
-          ]
-          if tags:
-              lines.append("tags:")
-              # Keep message reasonably short; Discord has limits.
-              tag_lines = tags.splitlines()
-              for t in tag_lines[:10]:
-                  lines.append(f"- {t}")
-              if len(tag_lines) > 10:
-                  lines.append(f"- (+{len(tag_lines)-10} more)")
-          lines.append(f"run: {run_url}")
-          lines.append(f"by: {actor}")
+          # Discord embed colors: green=3066993
+          color = 3066993
 
-          payload = {"content": "\\n".join(lines)}
+          tag_lines = [t for t in tags.splitlines() if t.strip()] if tags else []
+          tag_lines = tag_lines[:10]
+          tags_value = "\n".join(f"- {t}" for t in tag_lines) if tag_lines else "(none)"
+          if tags and len(tags.splitlines()) > 10:
+              tags_value += f"\n- (+{len(tags.splitlines())-10} more)"
+
+          payload = {
+              "embeds": [
+                  {
+                      "title": "Docker build+push succeeded",
+                      "color": color,
+                      "url": run_url,
+                      "fields": [
+                          {"name": "Repo", "value": repo or "(unknown)", "inline": True},
+                          {"name": "Ref", "value": f"{ref_type}/{ref_name}" if ref_type and ref_name else "(unknown)", "inline": True},
+                          {"name": "Commit", "value": f"`{short_sha}`" if short_sha else "(unknown)", "inline": True},
+                          {"name": "Image", "value": f"`{image}`" if image else "(unknown)", "inline": False},
+                          {"name": "Tags", "value": tags_value, "inline": False},
+                      ],
+                      "footer": {"text": f"by {actor}" if actor else "by (unknown)"},
+                  }
+              ]
+          }
           print(json.dumps(payload))
           PY
 
@@ -154,16 +161,24 @@ jobs:
           run_url = os.environ.get("RUN_URL", "")
           image = os.environ.get("IMAGE", "")
 
+          # Discord embed colors: red=15158332
+          color = 15158332
+
           payload = {
-              "content": "\\n".join([
-                  "Docker build+push failed.",
-                  f"repo: {repo}",
-                  f"ref: {ref_type}/{ref_name}",
-                  f"commit: {short_sha}",
-                  f"image: {image}",
-                  f"run: {run_url}",
-                  f"by: {actor}",
-              ])
+              "embeds": [
+                  {
+                      "title": "Docker build+push failed",
+                      "color": color,
+                      "url": run_url,
+                      "fields": [
+                          {"name": "Repo", "value": repo or "(unknown)", "inline": True},
+                          {"name": "Ref", "value": f"{ref_type}/{ref_name}" if ref_type and ref_name else "(unknown)", "inline": True},
+                          {"name": "Commit", "value": f"`{short_sha}`" if short_sha else "(unknown)", "inline": True},
+                          {"name": "Image", "value": f"`{image}`" if image else "(unknown)", "inline": False},
+                      ],
+                      "footer": {"text": f"by {actor}" if actor else "by (unknown)"},
+                  }
+              ]
           }
           print(json.dumps(payload))
           PY
