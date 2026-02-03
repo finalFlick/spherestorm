@@ -15,7 +15,14 @@
  *   assert(hp > 0, 'BOSS', 'hp_positive', { hp });
  */
 
-import { DEBUG_CONFIG } from '../config/constants.js';
+// Import with fallback for cache compatibility
+let DEBUG_CONFIG;
+try {
+    const constants = await import('../config/constants.js');
+    DEBUG_CONFIG = constants.DEBUG_CONFIG || { level: 'silent', tags: {} };
+} catch {
+    DEBUG_CONFIG = { level: 'silent', tags: {} };
+}
 
 // State for throttling and deduplication
 const loggedOnceKeys = new Set();
