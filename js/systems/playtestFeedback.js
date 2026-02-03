@@ -371,7 +371,10 @@ async function handleSubmit() {
             // Wait a moment then close
             setTimeout(() => {
                 hideFeedbackOverlay();
-                showPlayAgainPrompt();
+                // Only show play-again prompt after actual gameplay (boss defeat or death), not from menu/pause
+                if (feedbackContext === 'boss1' || feedbackContext === 'death') {
+                    showPlayAgainPrompt();
+                }
             }, 1500);
         } else {
             // HTTP error (4xx, 5xx)
@@ -424,7 +427,10 @@ async function handleSubmit() {
  */
 function handleSkip() {
     hideFeedbackOverlay();
-    showPlayAgainPrompt();
+    // Only show play-again prompt after actual gameplay (boss defeat or death), not from menu/pause
+    if (feedbackContext === 'boss1' || feedbackContext === 'death') {
+        showPlayAgainPrompt();
+    }
 }
 
 // ============================================================================
