@@ -1,2 +1,5 @@
 .cursor/
 todo.txt
+
+# Local debug config (never commit - enables debug mode on localhost)
+js/config/debug.local.js

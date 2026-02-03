@@ -3,67 +3,53 @@ export const GAME_TITLE = 'Manta Sphere';
 export const VERSION = '0.2.2';  // Semantic versioning - see VERSION file and .cursorrules
 export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_';
 
-// ==================== DEBUG MODE DETECTION ====================
-// Enable debug via:
-//   1. URL param: ?debug=true (temporary, this session)
-//   2. localStorage: localStorage.setItem('mantasphere_debug', 'true') (persistent)
-//   3. Console: window.enableDebug() / window.disableDebug()
-// Production default: off
-function isDebugEnabled() {
-    // Check URL param first (highest priority)
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('debug') === 'true') return true;
-    if (urlParams.get('debug') === 'false') return false;
-    
-    // Check localStorage (persistent dev setting)
-    try {
-        return localStorage.getItem('mantasphere_debug') === 'true';
-    } catch {
-        return false;
-    }
+// ==================== SECURE DEBUG MODE ====================
+// Debug requires BOTH conditions (unhackable in production):
+//   1. Running on localhost/127.0.0.1
+//   2. js/config/debug.local.js file exists (gitignored)
+// To enable: copy debug.local.example.js to debug.local.js
+let DEBUG_ENABLED = false;
+
+// Synchronous localhost check (debug.local.js import happens async in main.js)
+function isLocalhost() {
+    if (typeof window === 'undefined') return false;
+    const host = window.location.hostname;
+    return host === 'localhost' || host === '127.0.0.1';
 }
 
-const DEBUG_ENABLED = isDebugEnabled();
+// Export function to enable debug after async import succeeds
+export function enableDebugMode() {
+    if (!isLocalhost()) return false;
+    DEBUG_ENABLED = true;
+    DEBUG_CONFIG.level = 'info';
+    DEBUG_CONFIG.tags.WAVE = true;
+    DEBUG_CONFIG.tags.SPAWN = true;
+    DEBUG_CONFIG.tags.BOSS = true;
+    DEBUG_CONFIG.tags.SCORE = true;
+    DEBUG_CONFIG.tags.STATE = true;
+    DEBUG_CONFIG.tags.SAFETY = true;
+    console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Secure debug enabled (localhost + debug.local.js)');
+    return true;
+}
 
 // Debug Logging Configuration
 // Level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
 // Tags: Enable/disable logging per category
 export const DEBUG_CONFIG = {
-    level: DEBUG_ENABLED ? 'info' : 'silent',
+    level: 'silent',  // Default: off (enableDebugMode() turns on if conditions met)
     tags: {
-        WAVE: DEBUG_ENABLED,
-        SPAWN: DEBUG_ENABLED,
-        BOSS: DEBUG_ENABLED,
-        SCORE: DEBUG_ENABLED,
-        STATE: DEBUG_ENABLED,
-        SAFETY: DEBUG_ENABLED,
-        PERF: false  // Always off by default (very noisy)
+        WAVE: false,
+        SPAWN: false,
+        BOSS: false,
+        SCORE: false,
+        STATE: false,
+        SAFETY: false,
+        PERF: false
     }
 };
 
-// Backward compatibility alias
+// Backward compatibility alias (updated dynamically by enableDebugMode)
 export const DEBUG = DEBUG_CONFIG.level !== 'silent';
-
-// Console helpers for toggling debug at runtime (requires page refresh)
-if (typeof window !== 'undefined') {
-    window.enableDebug = () => {
-        localStorage.setItem('mantasphere_debug', 'true');
-        console.log('Debug enabled. Refresh page to apply.');
-    };
-    window.disableDebug = () => {
-        localStorage.removeItem('mantasphere_debug');
-        console.log('Debug disabled. Refresh page to apply.');
-    };
-    window.debugStatus = () => {
-        console.log('Debug:', DEBUG_ENABLED ? 'ON' : 'OFF');
-        console.log('Enable: ?debug=true in URL or window.enableDebug()');
-    };
-    
-    // Log debug status on load if enabled
-    if (DEBUG_ENABLED) {
-        console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Logging enabled. window.disableDebug() to turn off.');
-    }
-}
 
 // Game constants
 export const DAMAGE_COOLDOWN = 500;

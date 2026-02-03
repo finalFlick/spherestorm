@@ -3,7 +3,7 @@ import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer, camera } from './core/scene.js';
 import { initInput, resetInput, checkCutsceneSkip, cleanupInput } from './core/input.js';
 import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
-import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE, VERSION } from './config/constants.js';
+import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE, VERSION, enableDebugMode } from './config/constants.js';
 
 import { createPlayer, updatePlayer, resetPlayer, player } from './entities/player.js';
 import { updateEnemies, clearEnemyGeometryCache } from './entities/enemies.js';
@@ -133,6 +133,16 @@ async function init() {
         return;
     }
     window.__mantaSphereInitialized = true;
+    
+    // Try to enable secure debug mode (requires localhost + debug.local.js)
+    try {
+        const { DEBUG_SECRET } = await import('./config/debug.local.js');
+        if (DEBUG_SECRET === true) {
+            enableDebugMode();
+        }
+    } catch {
+        // debug.local.js doesn't exist - debug stays off (production behavior)
+    }
     
     // Initialize debug logger
     setGameStateRef(gameState);
