@@ -316,6 +316,7 @@
         .loading-content p { margin-top: 20px; font-size: 18px; letter-spacing: 2px; }
         .loading-spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #ffdd44; border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-version { position: absolute; bottom: 20px; right: 20px; font-size: 12px; color: #444; font-family: monospace; }
         
         /* GPU Warning */
         .gpu-warning { margin-top: 20px; padding: 15px 20px; background: rgba(255, 136, 68, 0.2); border: 1px solid rgba(255, 136, 68, 0.5); border-radius: 8px; color: #ffaa44; text-align: center; }
@@ -347,6 +348,7 @@
             <div class="loading-spinner"></div>
             <p>Loading...</p>
         </div>
+        <div class="loading-version">v0.2.2</div>
     </div>
     
     <div id="game-container">
@@ -639,6 +641,6 @@
     <!-- loglevel for debug logging (1.4KB) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/loglevel/1.9.2/loglevel.min.js"></script>
     
-    <script type="module" src="js/main.js?v=20260201a"></script>
+    <script type="module" src="js/main.js?v=20260201b"></script>
 </body>
 </html>
