@@ -153,30 +153,45 @@ function sendDiscordNotification(data) {
   feedback = feedback
     .replace(/@(everyone|here)/gi, '[mention]')
     .replace(/<@!?\d+>/g, '[user]')
-    .replace(/\S+@\S+\.\S+/g, '[email]')
-    .replace(/\n/g, ' ');
-  if (feedback.length > 140) {
-    feedback = feedback.substring(0, 137) + '...';
+    .replace(/\S+@\S+\.\S+/g, '[email]');
+  if (feedback.length > 1024) {
+    feedback = feedback.substring(0, 1021) + '...';
   }
   
-  // Build message
-  let message = `📋 **Playtest v${data.version || '?'}** | Score ${data.score || '?'} | Arena ${data.arena || '?'} | ${data.time || '?'}\n`;
-  message += `Fun: ${data.q1 || '?'}/5 | Controls: ${data.q2 || '?'} | Clarity: ${data.q3 || '?'}\n`;
-  message += `Difficulty: ${data.q4 || '?'} | Play Again: ${data.q5 || '?'}`;
+  // Build embed fields
+  const fields = [
+    { name: 'Score', value: String(data.score || '?'), inline: true },
+    { name: 'Arena', value: String(data.arena || '?'), inline: true },
+    { name: 'Time', value: String(data.time || '?'), inline: true },
+    { name: 'Fun', value: `${data.q1 || '?'}/5`, inline: true },
+    { name: 'Controls', value: String(data.q2 || '?'), inline: true },
+    { name: 'Clarity', value: String(data.q3 || '?'), inline: true },
+    { name: 'Difficulty', value: String(data.q4 || '?'), inline: true },
+    { name: 'Play Again', value: String(data.q5 || '?'), inline: true }
+  ];
   
+  // Build embed
+  const embed = {
+    title: `Playtest v${data.version || '?'}`,
+    color: 5793266, // Discord Blurple
+    fields: fields
+  };
+  
+  // Add description if feedback exists
   if (feedback) {
-    message += `\n💬 "${feedback}"`;
+    embed.description = `"${feedback}"`;
   }
   
+  // Add footer if tester name exists
   if (data.testerName) {
-    message += `\n👤 ${data.testerName}`;
+    embed.footer = { text: data.testerName };
   }
   
   // Send to Discord
   UrlFetchApp.fetch(webhookUrl, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify({ content: message })
+    payload: JSON.stringify({ embeds: [embed] })
   });
 }
 
