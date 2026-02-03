@@ -998,8 +998,8 @@ function handleBossDefeated() {
     
     // PLAYTEST LOCKDOWN: After Boss 1 defeat, show feedback overlay and end the run
     const isPlaytestEnd = gameState.currentArena === 1;
-    if (isPlaytestEnd && gameState.waveTimer > BOSS_DEFEATED_FRAMES) {
-        // Stop the game and show feedback overlay
+    if (isPlaytestEnd && gameState.waveTimer > BOSS_DEFEATED_FRAMES && isFeedbackEnabled()) {
+        // Stop the game and show feedback overlay (only if feedback system configured)
         gameState.running = false;
         gameState.paused = true;
         showFeedbackOverlay('boss1');
