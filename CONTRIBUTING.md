@@ -35,6 +35,42 @@ See [README.md](README.md) for full setup instructions.
 
 ---
 
+## Branching Strategy
+
+### Protected Main Branch
+
+The `main` branch is protected. You cannot push directly to it.
+
+**All changes must:**
+1. Be made on a feature branch
+2. Go through a Pull Request
+3. Receive 1 approving review
+4. Pass CI checks
+
+### Workflow
+
+1. Create a branch from main:
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b feat/123-my-feature
+   ```
+
+2. Make your changes and commit
+
+3. Push your branch:
+   ```bash
+   git push -u origin feat/123-my-feature
+   ```
+
+4. Open a Pull Request on GitHub
+
+5. Request review, address feedback
+
+6. Merge after approval and CI passes
+
+---
+
 ## Tech Stack Rules
 
 **Critical constraints** — violating these will break the game:
@@ -270,12 +306,14 @@ if (DEBUG) console.log('[System] Message');
 When shipping a new version:
 
 1. **Close all issues** in the milestone
-2. **Update CHANGELOG.md** with changes under the new version
-3. **Bump version** using `node scripts/bump-version.js X.Y.Z`
-4. **Commit** with `chore: bump version to X.Y.Z`
-5. **Push** to main
-6. **Close the milestone** on GitHub
-7. **Create GitHub Release** with notes from CHANGELOG.md
+2. **Create a release branch:** `git checkout -b chore/release-X.Y.Z`
+3. **Update CHANGELOG.md** with changes under the new version
+4. **Bump version** using `node scripts/bump-version.js X.Y.Z`
+5. **Commit** with `chore: bump version to X.Y.Z`
+6. **Push branch and open PR**
+7. **Merge after approval**
+8. **Close the milestone** on GitHub
+9. **Create GitHub Release** with notes from CHANGELOG.md
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 

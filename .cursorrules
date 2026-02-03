@@ -208,11 +208,14 @@ python -m http.server 8000
 | `js/core/gameState.js` | Central state |
 | `js/systems/badges.js` | Badge tracking |
 | `js/systems/leaderboard.js` | Score persistence |
+| `js/systems/playtestFeedback.js` | In-game feedback form |
 | `js/systems/pulseMusic.js` | Adaptive music system |
 | `js/systems/waveSystem.js` | Wave/arena progression |
 | `js/ui/hud.js` | HUD updates |
 | `js/ui/leaderboardUI.js` | Leaderboard display |
 | `js/ui/rosterUI.js` | Character roster (reads from enemy/boss configs) |
+| `scripts/feedback-sync.js` | GitHub Action: sync feedback to issues |
+| `.github/workflows/feedback-sync.yml` | Daily feedback sync workflow |
 
 ### 10. Documentation
 
@@ -223,6 +226,7 @@ python -m http.server 8000
 | `docs/ENEMIES.md` | Enemy roster - all enemy types, behaviors, spawn mechanics |
 | `docs/ARENA.md` | Arena progression - wave system, geometry, unlocks |
 | `docs/PULSE_MUSIC_SYSTEM.md` | Adaptive music system design |
+| `docs/PLAYTEST_FORM_GUIDE.md` | Playtest feedback system setup |
 | `PROMPTS.md` | Designer personas for feature design |
 | `CONTRIBUTING.md` | Contribution guidelines and workflow |
 
@@ -230,22 +234,35 @@ python -m http.server 8000
 
 When working on **feature design** (not just bug fixes), follow this workflow:
 
-1. **Load the designer persona** from `PROMPTS.md` for the feature area
-2. **Read current state** from the corresponding documentation
-3. **Apply persona principles** to your design decisions
+1. **Start as Game Director** - Triage the request and decide how to handle it
+2. **Route to specialist** (or handle directly if it's high-level/cross-system)
+3. **Read current state** from the corresponding documentation
+4. **Apply persona principles** to your design decisions
 
-| Feature Area | Persona | State Doc |
-|--------------|---------|-----------|
-| Boss fights | Boss Designer | `docs/BOSS.md` |
-| Enemy types | Enemy Designer | `docs/ENEMIES.md` |
-| Arena design | Arena Designer | `docs/ARENA.md` |
-| Music/Audio | Audio Designer | `docs/PULSE_MUSIC_SYSTEM.md` |
+| Request Type | Persona | First Action |
+|--------------|---------|--------------|
+| **Any design question** | Game Director (first) | Triage and route |
+| High-level / cross-system | Game Director | Answer directly |
+| Boss fights / abilities | Boss Designer | Read `docs/BOSS.md` |
+| Enemy types / waves | Enemy Designer | Read `docs/ENEMIES.md` |
+| Arena layout / geometry | Arena Designer | Read `docs/ARENA.md` |
+| Music / SFX / audio | Audio Designer | Read `docs/PULSE_MUSIC_SYSTEM.md` |
+| Playtest feedback | Playtest Feedback Evaluator | Review feedback + docs |
+| Code review / pre-commit | Code Review Auditor | Review code changes |
+| Backlog / issues | Technical PM | Check GitHub Issues |
 
 **Example:** When asked to design a new boss:
-1. Read `PROMPTS.md` -> Boss Designer section
-2. Adopt the persona (fair, readable, memorable design principles)
+1. Read `PROMPTS.md` -> **Game Director** section (triage first)
+2. Director routes to Boss Designer with context and constraints
 3. Read `docs/BOSS.md` for current boss implementations
-4. Apply the design framework to the new boss
+4. Adopt Boss Designer persona (fair, readable, memorable design principles)
+5. Apply the design framework to the new boss
+
+**Example:** When asked "Should we add a new game mode?":
+1. Read `PROMPTS.md` -> **Game Director** section
+2. Handle directly as Director (this is high-level / pillar question)
+3. Evaluate against game pillars, recommend implement/defer/reject
+4. If approved, route implementation details to appropriate specialists
 
 #### Documentation Maintenance Policy
 
@@ -364,7 +381,41 @@ When adding mechanics that need audio feedback:
 | Boss phase | Tempo boost, extra layers |
 | Kill rate | Micro tempo variations |
 
-### 13. Don'ts
+### 13. Playtest Feedback System
+
+The game includes an **in-game feedback collection system** for playtesting.
+
+**Full setup guide:** `docs/PLAYTEST_FORM_GUIDE.md`
+
+#### How It Works
+- **Boss 1 Lockdown**: Game ends after defeating Boss 1, shows feedback overlay
+- **Manual Access**: Feedback button in main menu, pause menu, and death screen
+- **Data Flow**: In-game form → Google Apps Script → Google Sheet + Discord ping
+- **Daily Sync**: GitHub Action reads sheet, posts summary comment to version thread
+
+#### Configuration
+Feedback requires `js/config/debug.local.js` with:
+```javascript
+export const PLAYTEST_CONFIG = {
+    url: 'https://script.google.com/...',
+    token: 'your-secret-token'
+};
+```
+
+#### Key Files
+| File | Purpose |
+|------|---------|
+| `js/systems/playtestFeedback.js` | Form UI and submission logic |
+| `scripts/feedback-sync.js` | GitHub Action sync script |
+| `.github/workflows/feedback-sync.yml` | Daily sync workflow |
+| `docs/playtests/*.md` | Auto-generated feedback summaries |
+
+#### GitHub Thread Model
+- **One issue per major.minor version** (e.g., `[Playtest] Feedback Thread - v0.2.x`)
+- **Daily comments** with aggregated stats (only if new feedback)
+- **Raw data** committed to `docs/playtests/YYYY-MM-DD.md`
+
+### 14. Don'ts (IMPORTANT)
 
 - **DON'T** add npm dependencies
 - **DON'T** add a build system
@@ -392,7 +443,7 @@ When adding mechanics that need audio feedback:
 - **DON'T** create caches without a clear function (memory grows unbounded across sessions)
 - **DON'T** expose debug UI without guarding with DEBUG flag
 
-### 14. Quick Commands
+### 15. Quick Commands
 
 ```bash
 # Start local server
@@ -404,7 +455,7 @@ git commit -m "feat: description"
 git push
 ```
 
-### 15. Bug Prevention Checklist
+### 16. Bug Prevention Checklist
 
 These rules prevent common issues discovered during code reviews.
 
@@ -704,7 +755,7 @@ function restartGame() {
 - **Use crossorigin="anonymous"** for CDN resources
 - **Document how to regenerate hashes** if library is updated
 
-### 16. Observability & Debug Logging
+### 17. Observability & Debug Logging
 
 The game uses **loglevel** (CDN) with a thin wrapper (`js/systems/debugLog.js`) for structured debug logging.
 
@@ -795,7 +846,7 @@ log('SPAWN', 'enemy_spawned', { type: 'grunt', pos: { x, z } });
 2. Check state machine transitions (should see `wave_clear`)
 3. Look for `[SAFETY]` warnings
 
-### 17. Version Management (Semantic Versioning)
+### 18. Version Management (Semantic Versioning)
 
 The project follows **Semantic Versioning 2.0.0** (MAJOR.MINOR.PATCH) tracked in the `VERSION` file.
 
@@ -856,7 +907,7 @@ git push
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
-### 18. Source of Truth Policy
+### 19. Source of Truth Policy
 
 **Work Items (tasks, bugs, features):**
 - GitHub Issues = ONLY source of truth
