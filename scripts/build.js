@@ -13,7 +13,8 @@ esbuild.buildSync({
     bundle: true,
     minify: true,
     outfile: 'dist/bundle.js',
-    format: 'esm'
+    format: 'esm',
+    external: ['/js/config/debug.local.js']
 });
 
 const stats = fs.statSync('dist/bundle.js');
