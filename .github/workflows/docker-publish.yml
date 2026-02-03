@@ -85,10 +85,8 @@ jobs:
             exit 0
           fi
 
-          SHORT_SHA="$(echo "$SHA" | cut -c1-7)"
-
           # Discord webhook expects JSON. Use python to escape newlines/quotes safely.
-          python - <<'PY'
+          python - <<'PY' > payload.json
           import json, os
           repo = os.environ.get("REPO", "")
           ref_type = os.environ.get("REF_TYPE", "")
@@ -120,7 +118,7 @@ jobs:
 
           payload = {"content": "\\n".join(lines)}
           print(json.dumps(payload))
-          PY > payload.json
+          PY
 
           curl -sS -X POST \
             -H "Content-Type: application/json" \
@@ -145,9 +143,7 @@ jobs:
             exit 0
           fi
 
-          SHORT_SHA="$(echo "$SHA" | cut -c1-7)"
-
-          python - <<'PY'
+          python - <<'PY' > payload.json
           import json, os
           repo = os.environ.get("REPO", "")
           ref_type = os.environ.get("REF_TYPE", "")
@@ -170,7 +166,7 @@ jobs:
               ])
           }
           print(json.dumps(payload))
-          PY > payload.json
+          PY
 
           curl -sS -X POST \
             -H "Content-Type: application/json" \
