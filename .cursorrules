@@ -903,6 +903,64 @@ git commit -m "chore: bump version to 0.2.0"
 git push
 ```
 
+#### Git Tagging Policy
+
+**ALWAYS create GitHub tags when VERSION file changes.**
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+#### Version Branch Workflow
+
+**ALL work goes to the current version branch.** No PRs to main directly.
+
+**AI Agent Rules**:
+
+1. **Before ANY work**: Find version branch, base work there
+   ```bash
+   git branch -r | grep -E 'origin/[0-9]+\.[0-9]+\.x$'
+   ```
+
+2. **PRs always target version branch**, never main
+
+3. **Suggest PR to main (release) when** (any trigger):
+   - Task/feature explicitly requested is complete
+   - Natural stopping point (end of session, context switch)
+   - 5+ commits accumulated on version branch
+   - Need to merge before starting dependent work
+   - User asks "is it ready?" or "should we release?"
+   - Stability checkpoint (bugs fixed, before new features)
+
+4. **Do NOT suggest PR for**:
+   - Every single commit
+   - Minor doc fixes (batch them)
+   - Work-in-progress that isn't testable
+
+5. **Release suggestion format**:
+   ```
+   🚀 **PR to main suggested**
+   
+   Branch: 0.3.x
+   Changes since last release:
+   - feat: [description]
+   - fix: [description]
+   - docs: [description]
+   
+   Version bump: 0.2.4 → 0.3.0 (MINOR - new feature)
+   
+   Create PR now? [Yes / Not yet / What's missing?]
+   ```
+
+6. **If approved**, use GitHub CLI:
+   ```bash
+   gh pr create --base main --head 0.3.x --title "Release v0.3.0" --body "..."
+   ```
+   User reviews/approves on GitHub, then AI tags and creates next branch.
+
+7. **After release**: Remind that new work targets the NEW version branch
+
 #### Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
