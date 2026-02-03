@@ -338,6 +338,53 @@
         .help-section strong { color: #ffdd44; font-size: 15px; display: block; margin-bottom: 8px; }
         .help-section ol, .help-section ul { margin: 8px 0 0 20px; padding: 0; }
         .help-section li { margin: 4px 0; line-height: 1.5; }
+        
+        /* Feedback Overlay */
+        #feedback-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 400; color: white; padding: 20px; overflow-y: auto; }
+        #feedback-overlay.visible { display: flex; }
+        .feedback-container { max-width: 500px; width: 100%; background: rgba(20, 20, 40, 0.9); border: 2px solid #00aaff; border-radius: 15px; padding: 30px; }
+        .feedback-title { font-size: 28px; color: #00aaff; text-align: center; margin-bottom: 5px; }
+        .feedback-version { font-size: 14px; color: #666; text-align: center; margin-bottom: 25px; }
+        .feedback-question { margin-bottom: 20px; }
+        .feedback-question-label { font-size: 16px; color: #fff; margin-bottom: 10px; display: block; }
+        .feedback-options { display: flex; flex-wrap: wrap; gap: 10px; }
+        .feedback-option { flex: 1 1 45%; min-width: 120px; padding: 12px 16px; background: rgba(255,255,255,0.05); border: 2px solid #444; border-radius: 8px; cursor: pointer; text-align: center; transition: all 0.2s ease; font-size: 14px; color: #aaa; }
+        .feedback-option:hover { border-color: #00aaff; color: #fff; }
+        .feedback-option.selected { border-color: #00aaff; background: rgba(0, 170, 255, 0.2); color: #00aaff; }
+        .feedback-rating { display: flex; gap: 10px; justify-content: center; }
+        .feedback-rating-btn { width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 2px solid #444; cursor: pointer; font-size: 18px; color: #888; transition: all 0.2s ease; }
+        .feedback-rating-btn:hover { border-color: #ffdd44; color: #ffdd44; }
+        .feedback-rating-btn.selected { border-color: #ffdd44; background: rgba(255, 221, 68, 0.2); color: #ffdd44; }
+        .feedback-textarea { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 2px solid #444; border-radius: 8px; color: #fff; font-size: 14px; font-family: inherit; resize: vertical; min-height: 80px; }
+        .feedback-textarea:focus { border-color: #00aaff; outline: none; }
+        .feedback-textarea::placeholder { color: #666; }
+        .feedback-input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 2px solid #444; border-radius: 8px; color: #fff; font-size: 14px; font-family: inherit; }
+        .feedback-input:focus { border-color: #00aaff; outline: none; }
+        .feedback-input::placeholder { color: #666; }
+        .feedback-buttons { display: flex; gap: 15px; margin-top: 25px; justify-content: center; }
+        #feedback-submit { padding: 15px 40px; font-size: 18px; background: linear-gradient(135deg, #00aaff, #0077cc); border: none; border-radius: 10px; cursor: pointer; color: white; font-weight: bold; transition: all 0.3s ease; }
+        #feedback-submit:hover { transform: scale(1.05); box-shadow: 0 5px 20px rgba(0, 170, 255, 0.4); }
+        #feedback-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        #feedback-skip { padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: #aaa; font-weight: bold; transition: all 0.3s ease; }
+        #feedback-skip:hover { border-color: #888; color: #fff; }
+        .feedback-status { text-align: center; margin-top: 15px; font-size: 14px; }
+        .feedback-status.success { color: #44ff44; }
+        .feedback-status.error { color: #ff4444; }
+        
+        /* Play Again Prompt */
+        #play-again-prompt { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.95); padding: 40px 60px; border-radius: 15px; border: 2px solid #44ff44; display: none; z-index: 280; text-align: center; color: white; }
+        #play-again-prompt.visible { display: block; }
+        #play-again-prompt h2 { color: #44ff44; font-size: 36px; margin-bottom: 15px; }
+        #play-again-prompt p { color: #888; margin-bottom: 25px; }
+        .play-again-buttons { display: flex; gap: 20px; justify-content: center; }
+        #play-again-yes { padding: 15px 40px; font-size: 18px; background: linear-gradient(135deg, #44ff44, #22aa22); border: none; border-radius: 10px; cursor: pointer; color: white; font-weight: bold; transition: all 0.3s ease; }
+        #play-again-yes:hover { transform: scale(1.05); }
+        #play-again-menu { padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: #aaa; font-weight: bold; transition: all 0.3s ease; }
+        #play-again-menu:hover { border-color: #ffdd44; color: #ffdd44; }
+        
+        /* Feedback button in menus */
+        #menu-feedback-btn, #pause-feedback-btn, #death-feedback-btn { margin-top: 10px; padding: 10px 25px; font-size: 14px; background: transparent; border: 2px solid #00aaff; border-radius: 8px; cursor: pointer; color: #00aaff; transition: all 0.3s ease; }
+        #menu-feedback-btn:hover, #pause-feedback-btn:hover, #death-feedback-btn:hover { background: rgba(0, 170, 255, 0.1); border-color: #44ccff; color: #44ccff; }
     </style>
     
 </head>
@@ -423,7 +470,7 @@
         </div>
         
         <!-- Menus -->
-        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button><button id="pause-debug-btn">Debug</button><button id="pause-main-menu-btn">Main Menu</button></div>
+        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button><button id="pause-feedback-btn">Feedback</button><button id="pause-debug-btn">Debug</button><button id="pause-main-menu-btn">Main Menu</button></div>
         
         <div id="upgrade-menu">
             <h2>LEVEL UP!</h2>
@@ -450,6 +497,7 @@
                 <div id="performance-grade"></div>
             </div>
             <button id="restart-btn">Play Again</button>
+            <button id="death-feedback-btn">Give Feedback</button>
         </div>
         
         <!-- Leaderboard Screen -->
@@ -543,6 +591,14 @@
             </div>
             
             <div class="debug-section">
+                <h3>Playtest Feedback</h3>
+                <div class="debug-controls">
+                    <button id="debug-test-feedback" class="debug-btn">Test Connection</button>
+                    <span id="debug-feedback-status" style="margin-left: 10px; color: #888;"></span>
+                </div>
+            </div>
+            
+            <div class="debug-section">
                 <h3>GPU Information</h3>
                 <div id="debug-gpu-info" class="debug-controls" style="flex-direction: column; gap: 5px;">
                     <!-- Populated by JS -->
@@ -573,6 +629,91 @@
             </div>
             <div id="roster-grid"></div>
             <button id="close-roster">Close</button>
+        </div>
+        
+        <!-- Feedback Overlay -->
+        <div id="feedback-overlay">
+            <div class="feedback-container">
+                <div class="feedback-title">Thanks for Playing!</div>
+                <div class="feedback-version" id="feedback-version">v0.2.3</div>
+                
+                <div class="feedback-question">
+                    <label class="feedback-question-label">1. How fun was this session?</label>
+                    <div class="feedback-rating" id="feedback-q1">
+                        <button class="feedback-rating-btn" data-value="1">1</button>
+                        <button class="feedback-rating-btn" data-value="2">2</button>
+                        <button class="feedback-rating-btn" data-value="3">3</button>
+                        <button class="feedback-rating-btn" data-value="4">4</button>
+                        <button class="feedback-rating-btn" data-value="5">5</button>
+                    </div>
+                </div>
+                
+                <div class="feedback-question">
+                    <label class="feedback-question-label">2. How did the controls feel?</label>
+                    <div class="feedback-options" id="feedback-q2">
+                        <div class="feedback-option" data-value="Great">Great</div>
+                        <div class="feedback-option" data-value="Okay">Okay</div>
+                        <div class="feedback-option" data-value="Clunky">Clunky</div>
+                        <div class="feedback-option" data-value="Confusing">Confusing</div>
+                    </div>
+                </div>
+                
+                <div class="feedback-question">
+                    <label class="feedback-question-label">3. Did you understand what to do?</label>
+                    <div class="feedback-options" id="feedback-q3">
+                        <div class="feedback-option" data-value="Always">Always</div>
+                        <div class="feedback-option" data-value="Mostly">Mostly</div>
+                        <div class="feedback-option" data-value="Sometimes">Sometimes</div>
+                        <div class="feedback-option" data-value="Rarely">Rarely</div>
+                    </div>
+                </div>
+                
+                <div class="feedback-question">
+                    <label class="feedback-question-label">4. How was the difficulty?</label>
+                    <div class="feedback-options" id="feedback-q4">
+                        <div class="feedback-option" data-value="Too Easy">Too Easy</div>
+                        <div class="feedback-option" data-value="Just Right">Just Right</div>
+                        <div class="feedback-option" data-value="Too Hard">Too Hard</div>
+                        <div class="feedback-option" data-value="Frustrating">Frustrating</div>
+                    </div>
+                </div>
+                
+                <div class="feedback-question">
+                    <label class="feedback-question-label">5. Would you play again?</label>
+                    <div class="feedback-options" id="feedback-q5">
+                        <div class="feedback-option" data-value="Definitely">Definitely</div>
+                        <div class="feedback-option" data-value="Probably">Probably</div>
+                        <div class="feedback-option" data-value="Maybe">Maybe</div>
+                        <div class="feedback-option" data-value="No">No</div>
+                    </div>
+                </div>
+                
+                <div class="feedback-question">
+                    <label class="feedback-question-label">Anything else? (optional)</label>
+                    <textarea class="feedback-textarea" id="feedback-open" placeholder="Share your thoughts, suggestions, or issues..." maxlength="500"></textarea>
+                </div>
+                
+                <div class="feedback-question">
+                    <label class="feedback-question-label">Name / Discord (optional)</label>
+                    <input type="text" class="feedback-input" id="feedback-name" placeholder="So we know who to thank!" maxlength="50">
+                </div>
+                
+                <div class="feedback-buttons">
+                    <button id="feedback-submit">Submit</button>
+                    <button id="feedback-skip">Skip</button>
+                </div>
+                <div class="feedback-status" id="feedback-status"></div>
+            </div>
+        </div>
+        
+        <!-- Play Again Prompt -->
+        <div id="play-again-prompt">
+            <h2>Victory!</h2>
+            <p>You defeated the boss. Want to play again?</p>
+            <div class="play-again-buttons">
+                <button id="play-again-yes">Play Again</button>
+                <button id="play-again-menu">Main Menu</button>
+            </div>
         </div>
         
         <!-- Modules Screen -->
@@ -610,6 +751,9 @@
                     <button id="badges-btn" class="secondary-btn">Badges</button>
                     <button id="modules-btn" class="secondary-btn">Modules</button>
                     <button id="roster-btn" class="secondary-btn">Roster</button>
+                </div>
+                <div class="start-buttons">
+                    <button id="menu-feedback-btn" class="secondary-btn">Feedback</button>
                 </div>
                 <div id="mastery-panel"></div>
                 <div class="controls-info">
