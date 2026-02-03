@@ -391,7 +391,7 @@ PRs may receive automated reviews from [Cursor Bugbot](https://cursor.com/dashbo
 
 ## Getting Help
 
-- **Design questions:** Read `PROMPTS.md` for design personas
+- **Design questions:** Read `AGENTS.md` for design personas
 - **System docs:** Read `docs/*.md` for system details
 - **Balance questions:** Check config files in `js/config/`
 - **Task tracking:** View [GitHub Issues](https://github.com/finalFlick/mantasphere/issues)

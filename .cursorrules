@@ -2,6 +2,11 @@
 
 This document provides guidance for AI agents and developers working on the MantaSphere codebase.
 
+## AI Agent Persona Entry Point
+
+- `AGENTS.md` is the entry point for persona-based behavior.
+- If the correct persona is unclear, **start with Director (Orchestrator)** and triage from there.
+
 ## Game Identity
 
 MantaSphere is an **arcade-style score runner** built on these pillars:
@@ -254,7 +259,7 @@ python -m http.server 8000
 | `docs/ARENA.md` | Arena progression - wave system, geometry, unlocks |
 | `docs/PULSE_MUSIC_SYSTEM.md` | Adaptive music system design |
 | `docs/PLAYTEST_FORM_GUIDE.md` | Playtest feedback system setup |
-| `PROMPTS.md` | Designer personas for feature design |
+| `AGENTS.md` | Designer personas for feature design |
 | `CONTRIBUTING.md` | Contribution guidelines and workflow |
 
 #### Design Prompt Workflow
@@ -279,14 +284,14 @@ When working on **feature design** (not just bug fixes), follow this workflow:
 | Backlog / issues | Technical PM | Check GitHub Issues |
 
 **Example:** When asked to design a new boss:
-1. Read `PROMPTS.md` -> **Game Director** section (triage first)
+1. Read `AGENTS.md` -> **Game Director** section (triage first)
 2. Director routes to Boss Designer with context and constraints
 3. Read `docs/BOSS.md` for current boss implementations
 4. Adopt Boss Designer persona (fair, readable, memorable design principles)
 5. Apply the design framework to the new boss
 
 **Example:** When asked "Should we add a new game mode?":
-1. Read `PROMPTS.md` -> **Game Director** section
+1. Read `AGENTS.md` -> **Game Director** section
 2. Handle directly as Director (this is high-level / pillar question)
 3. Evaluate against game pillars, recommend implement/defer/reject
 4. If approved, route implementation details to appropriate specialists

@@ -66,3 +66,113 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Discord notify (success)
+        if: ${{ success() }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "::warning::DISCORD_WEBHOOK_URL is not set; skipping Discord notification."
+            exit 0
+          fi
+
+          SHORT_SHA="$(echo "$SHA" | cut -c1-7)"
+
+          # Discord webhook expects JSON. Use python to escape newlines/quotes safely.
+          python - <<'PY'
+          import json, os
+          repo = os.environ.get("REPO", "")
+          ref_type = os.environ.get("REF_TYPE", "")
+          ref_name = os.environ.get("REF_NAME", "")
+          sha = os.environ.get("SHA", "")
+          short_sha = sha[:7] if sha else ""
+          actor = os.environ.get("ACTOR", "")
+          run_url = os.environ.get("RUN_URL", "")
+          image = os.environ.get("IMAGE", "")
+          tags = os.environ.get("TAGS", "").strip()
+
+          lines = [
+              "Docker build+push succeeded.",
+              f"repo: {repo}",
+              f"ref: {ref_type}/{ref_name}",
+              f"commit: {short_sha}",
+              f"image: {image}",
+          ]
+          if tags:
+              lines.append("tags:")
+              # Keep message reasonably short; Discord has limits.
+              tag_lines = tags.splitlines()
+              for t in tag_lines[:10]:
+                  lines.append(f"- {t}")
+              if len(tag_lines) > 10:
+                  lines.append(f"- (+{len(tag_lines)-10} more)")
+          lines.append(f"run: {run_url}")
+          lines.append(f"by: {actor}")
+
+          payload = {"content": "\\n".join(lines)}
+          print(json.dumps(payload))
+          PY > payload.json
+
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json \
+            "$DISCORD_WEBHOOK_URL"
+
+
+      - name: Discord notify (failure)
+        if: ${{ failure() }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "::warning::DISCORD_WEBHOOK_URL is not set; skipping Discord notification."
+            exit 0
+          fi
+
+          SHORT_SHA="$(echo "$SHA" | cut -c1-7)"
+
+          python - <<'PY'
+          import json, os
+          repo = os.environ.get("REPO", "")
+          ref_type = os.environ.get("REF_TYPE", "")
+          ref_name = os.environ.get("REF_NAME", "")
+          sha = os.environ.get("SHA", "")
+          short_sha = sha[:7] if sha else ""
+          actor = os.environ.get("ACTOR", "")
+          run_url = os.environ.get("RUN_URL", "")
+          image = os.environ.get("IMAGE", "")
+
+          payload = {
+              "content": "\\n".join([
+                  "Docker build+push failed.",
+                  f"repo: {repo}",
+                  f"ref: {ref_type}/{ref_name}",
+                  f"commit: {short_sha}",
+                  f"image: {image}",
+                  f"run: {run_url}",
+                  f"by: {actor}",
+              ])
+          }
+          print(json.dumps(payload))
+          PY > payload.json
+
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json \
+            "$DISCORD_WEBHOOK_URL"
