@@ -903,6 +903,54 @@ git commit -m "chore: bump version to 0.2.0"
 git push
 ```
 
+#### Git Tagging Policy
+
+**ALWAYS create GitHub tags when VERSION file changes.**
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+#### Version Branch Workflow
+
+**ALL work goes to the current version branch.** No PRs to main directly.
+
+**AI Agent Rules**:
+
+1. **Before ANY work**: Find version branch, base work there
+   ```bash
+   git branch -r | grep -E 'origin/[0-9]+\.[0-9]+\.x$'
+   ```
+
+2. **PRs always target version branch**, never main
+
+3. **Suggest PR to main (release) when**:
+   - Planned milestone complete (e.g., "Arena 2 done")
+   - Significant feature set ready for players
+   - 10+ commits accumulated on version branch
+   - Bug fixes ready for production
+   - User asks "is it time to release?"
+
+4. **Release suggestion format**:
+   ```
+   🚀 **Ready to release?**
+   
+   Branch: 0.3.x → main
+   Commits: X since last release
+   Highlights: [list key changes]
+   
+   This will:
+   1. Merge 0.3.x → main
+   2. Tag v0.3.0  
+   3. Archive 0.3.x → archive/0.3.x
+   4. Create 0.4.x for next work
+   
+   Release now? [Yes / Not yet]
+   ```
+
+5. **After release**: Remind that new work targets the NEW version branch
+
 #### Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.

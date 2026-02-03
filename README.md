@@ -217,6 +217,20 @@ No backend required. Deploy to any static host:
 - Game data (scores, badges) uses LocalStorage (client-side only)
 - No server-side persistence required
 
+## Contributing
+
+All work goes through the current version branch (e.g., `0.3.x`).
+
+```bash
+# Find current version branch
+git branch -r | grep -E 'origin/[0-9]+\.[0-9]+\.x$'
+
+# Branch from it
+git checkout 0.3.x && git checkout -b feat/your-feature
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full workflow.
+
 ## Browser Support
 
 - Chrome 61+

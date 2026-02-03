@@ -37,37 +37,77 @@ See [README.md](README.md) for full setup instructions.
 
 ## Branching Strategy
 
-### Protected Main Branch
+### The Rule
 
-The `main` branch is protected. You cannot push directly to it.
+**ALL work goes to the current version branch** (e.g., `0.3.x`). No exceptions.
 
-**All changes must:**
-1. Be made on a feature branch
-2. Go through a Pull Request
-3. Receive 1 approving review
-4. Pass CI checks
+| Work Type | Target |
+|-----------|--------|
+| Features | Version branch |
+| Bug fixes | Version branch |
+| Doc updates | Version branch |
+| Direct to main | **Never** |
+
+### Branch Types
+
+| Type | Pattern | Purpose |
+|------|---------|---------|
+| **main** | `main` | Production releases only |
+| **Version** | `0.3.x`, `0.4.x` | All active development |
+| **Feature/Fix** | `feat/name`, `fix/name` | Individual work items → version branch |
+| **Archive** | `archive/0.3.x` | Released version branches (read-only) |
 
 ### Workflow
 
-1. Create a branch from main:
-   ```bash
-   git checkout main
-   git pull origin main
-   git checkout -b feat/123-my-feature
-   ```
+```bash
+# 1. Find current version branch
+git fetch origin
+git branch -r | grep -E 'origin/[0-9]+\.[0-9]+\.x$'
+# Example output: origin/0.3.x
 
-2. Make your changes and commit
+# 2. Branch from it (not from main!)
+git checkout 0.3.x && git pull
+git checkout -b feat/my-feature
 
-3. Push your branch:
-   ```bash
-   git push -u origin feat/123-my-feature
-   ```
+# 3. Work, commit, push
+git push -u origin feat/my-feature
 
-4. Open a Pull Request on GitHub
+# 4. Open PR targeting the VERSION BRANCH (not main!)
+```
 
-5. Request review, address feedback
+### Releases
 
-6. Merge after approval and CI passes
+The AI will suggest when it's time to release. When approved:
+
+1. Version branch merges to main
+2. Version gets tagged (e.g., `v0.3.0`)
+3. Old branch archived (e.g., `archive/0.3.x`)
+4. New version branch created (e.g., `0.4.x`)
+
+### One-Time Setup
+
+Enable the pre-push hook to catch accidental pushes to main:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### Common Errors
+
+#### "Push declined due to repository rule violations"
+
+You tried to push to main. ALL work goes through the version branch:
+
+```bash
+# Find current version branch
+git branch -r | grep -E 'origin/[0-9]+\.[0-9]+\.x$'
+
+# Create feature branch from it
+git checkout 0.3.x
+git checkout -b feat/your-feature
+git push origin feat/your-feature
+# Open PR targeting 0.3.x (not main!)
+```
 
 ---
 
