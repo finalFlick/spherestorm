@@ -856,12 +856,6 @@ git push
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
-#### Milestone-Version Alignment
-
-- Each MINOR/MAJOR version MUST have a GitHub Milestone
-- Close milestone when version is released
-- Create GitHub Release with notes from CHANGELOG.md
-
 ### 18. Source of Truth Policy
 
 **Work Items (tasks, bugs, features):**
