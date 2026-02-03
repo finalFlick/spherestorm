@@ -1,8 +1,14 @@
 {
   "name": "spherestorm",
+  "type": "module",
   "scripts": {
-    "build": "node scripts/build.js",
-    "dev": "echo 'Open index.html directly for dev'"
+    "build": "node scripts/build.cjs",
+    "dev": "echo 'Open index.html directly for dev'",
+    "feedback-sync": "node scripts/feedback-sync.js"
+  },
+  "dependencies": {
+    "googleapis": "^134.0.0",
+    "@octokit/rest": "^20.0.0"
   },
   "devDependencies": {
     "esbuild": "^0.20.0"
