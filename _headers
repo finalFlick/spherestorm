@@ -1,0 +1,17 @@
+# Cloudflare Pages headers file
+# Prevents aggressive caching of JS files so updates deploy immediately
+
+# HTML - always revalidate
+/*.html
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+# JS files - short cache with revalidation
+/js/*
+  Cache-Control: public, max-age=60, must-revalidate
+
+# Config files - no cache (most likely to change)
+/js/config/*
+  Cache-Control: no-cache
