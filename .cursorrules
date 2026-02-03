@@ -222,11 +222,9 @@ python -m http.server 8000
 | `docs/BOSS.md` | Boss system reference - all bosses, abilities, phases |
 | `docs/ENEMIES.md` | Enemy roster - all enemy types, behaviors, spawn mechanics |
 | `docs/ARENA.md` | Arena progression - wave system, geometry, unlocks |
-| `docs/EPICS.md` | Feature tracking and epic status |
-| `docs/PROJECT_STATE.md` | Current implementation state and known issues |
 | `docs/PULSE_MUSIC_SYSTEM.md` | Adaptive music system design |
 | `PROMPTS.md` | Designer personas for feature design |
-| `FEATURES.md` | Complete feature list with checkboxes |
+| `CONTRIBUTING.md` | Contribution guidelines and workflow |
 
 #### Design Prompt Workflow
 
@@ -270,9 +268,6 @@ When working on **feature design** (not just bug fixes), follow this workflow:
 1. **Search for `TODO`, `FIXME`, `STUB`, empty function bodies** - Ask user to implement before committing
 2. **Review docs for accuracy** - Check if your changes require doc updates
 3. **Update affected documentation files** in the same commit as code changes
-4. Update `docs/EPICS.md` if feature/epic status changed
-5. Update `docs/PROJECT_STATE.md` if behavior or architecture changed
-6. Update `FEATURES.md` if adding/completing features
 
 **Documentation-to-Code Mapping:**
 
@@ -283,8 +278,6 @@ When working on **feature design** (not just bug fixes), follow this workflow:
 | `js/config/enemies.js`, `js/entities/enemies.js` | `docs/ENEMIES.md` |
 | `js/config/arenas.js`, `js/arena/generator.js`, `js/systems/waveSystem.js` | `docs/ARENA.md` |
 | `js/systems/pulseMusic.js` | `docs/PULSE_MUSIC_SYSTEM.md` |
-| Feature tracking, epic status | `docs/EPICS.md` |
-| Implementation state, known issues | `docs/PROJECT_STATE.md` |
 
 **Examples:**
 
@@ -864,3 +857,35 @@ git push
 Track major milestones:
 - **0.1.0**: Initial release (Arena 1, basic systems)
 - **0.2.0**: Documentation overhaul, code quality sweep, module system groundwork
+
+### 18. Source of Truth Policy
+
+**Work Items (tasks, bugs, features):**
+- GitHub Issues = ONLY source of truth
+- DO NOT create or maintain task lists in markdown files
+- DO NOT add `[ ]` checkboxes for work items in any file
+- When user mentions a task, create a GitHub Issue (not a local file entry)
+
+**Implementation State (what's built):**
+- The CODE is the source of truth
+- System details documented in docs/*.md (BOSS.md, ENEMIES.md, etc.)
+- README.md for game overview
+
+**Quick Capture:**
+- `todo.txt` = Scratch pad only, NOT a backlog
+- Triage todo.txt items into GitHub Issues, then clear todo.txt
+
+**Forbidden Patterns:**
+- NO `[ ]` checkboxes in README.md or any tracking file
+- NO BACKLOG.md, FEATURES.md, PROJECT_STATE.md, or EPICS.md files
+- NO duplicate task tracking across files and GitHub
+- NO creating new state-tracking files
+
+**File Purposes:**
+| File | Purpose | NOT For |
+|------|---------|---------|
+| GitHub Issues | Work to do | - |
+| README.md | Game overview | Task tracking |
+| docs/*.md | System documentation | Task tracking |
+| `todo.txt` | Scratch capture | Permanent storage |
+| `CONTRIBUTING.md` | Process docs | State tracking |

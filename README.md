@@ -103,6 +103,10 @@ Bosses are **puzzle tests** of learned mechanics, not just damage sponges:
 - High score entry with 3-character name
 - Viewable from main menu
 
+## Roadmap
+
+See [GitHub Issues](https://github.com/finalFlick/mantasphere/issues) for planned features and [Milestones](https://github.com/finalFlick/mantasphere/milestones) for release planning.
+
 ### PULSE Adaptive Music System
 
 Procedural music that adapts to gameplay in real-time:
