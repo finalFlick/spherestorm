@@ -22,6 +22,7 @@ import {
     showTutorialCallout,
     updateUI 
 } from '../ui/hud.js';
+import { showFeedbackOverlay, isFeedbackEnabled } from './playtestFeedback.js';
 import { scene } from '../core/scene.js';
 import { startCinematic, triggerSlowMo, endCinematic, shortenCinematic } from './visualFeedback.js';
 import { log, logOnce, logThrottled, assert } from './debugLog.js';
@@ -116,7 +117,7 @@ function handleWaveIntro() {
         gameState.waveCognitiveMax = modifierConfig?.cognitiveMax || baseBudget.maxCognitive;
         gameState.waveCognitiveUsed = 0;
         gameState.waveSpawnCount = 0;
-        gameState.lastWaveSpawn = 0;
+        gameState.waveSpawnTimer = 0;  // Reset frame-based spawn timer
         
         // Micro-breather tracking
         gameState.microBreatherActive = false;
@@ -130,8 +131,8 @@ function handleWaveIntro() {
         // Initialize spawn choreography for this wave
         initializeWaveChoreography();
         
-        // Track wave start time for speed bonus calculation
-        gameState.waveStartTime = Date.now();
+        // Track wave start for speed bonus calculation (frame-based)
+        gameState.waveFrameCounter = 0;
         if (DEBUG) console.log(`[SpeedBonus] Wave ${gameState.currentWave} start recorded`);
         
         // Log wave start with full context (using waveType from above)
@@ -288,7 +289,9 @@ function handleWaveActive() {
         return;
     }
     
-    const now = Date.now();
+    // Frame-based timing (respects pause/slow-mo)
+    gameState.waveSpawnTimer++;
+    gameState.waveFrameCounter++;  // Track wave duration for speed bonus
     const maxWaves = getMaxWaves();
     const isLessonWave = (gameState.currentWave === 1);
     const isExamWave = (gameState.currentWave === maxWaves);
@@ -401,8 +404,9 @@ function handleWaveActive() {
         burstChance *= 0.5;
     }
     
-    // Budget-based spawning
-    if (gameState.waveBudgetRemaining > 0 && now - gameState.lastWaveSpawn > spawnInterval) {
+    // Budget-based spawning (convert ms interval to frames: 60fps = 16.67ms/frame)
+    const spawnIntervalFrames = Math.floor(spawnInterval / 16.67);
+    if (gameState.waveBudgetRemaining > 0 && gameState.waveSpawnTimer >= spawnIntervalFrames) {
         // Burst spawns
         const shouldBurst = Math.random() < burstChance;
         const burstCount = shouldBurst ? (2 + Math.floor(Math.random() * 2)) : 1;
@@ -435,7 +439,7 @@ function handleWaveActive() {
                 gameState.enemiesToSpawn--;
             }
         }
-        gameState.lastWaveSpawn = now;
+        gameState.waveSpawnTimer = 0;  // Reset frame-based spawn timer
     }
     
     checkWaveComplete();
@@ -469,9 +473,10 @@ function handleWaveClear() {
             PulseMusic.onBreatherEnd();
         }
         
-        // Calculate and award speed bonus for fast wave clear
-        if (gameState.waveStartTime) {
-            const clearTimeSeconds = (Date.now() - gameState.waveStartTime) / 1000;
+        // Calculate and award speed bonus for fast wave clear (frame-based)
+        if (gameState.waveFrameCounter > 0) {
+            // Convert frames to seconds (60fps = 16.67ms/frame)
+            const clearTimeSeconds = (gameState.waveFrameCounter * 16.67) / 1000;
             // Bonus formula: up to 300 points for sub-10s clear, 0 for 30s+
             const speedBonus = Math.max(0, Math.floor((30 - clearTimeSeconds) * 10));
             
@@ -990,6 +995,16 @@ function handleBossDefeated() {
         }
     }
     gameState.waveTimer++;
+    
+    // PLAYTEST LOCKDOWN: After Boss 1 defeat, show feedback overlay and end the run
+    const isPlaytestEnd = gameState.currentArena === 1;
+    if (isPlaytestEnd && gameState.waveTimer > BOSS_DEFEATED_FRAMES) {
+        // Stop the game and show feedback overlay
+        gameState.running = false;
+        gameState.paused = true;
+        showFeedbackOverlay('boss1');
+        return;
+    }
     
     // Final boss (Arena 6): Auto-transition after celebration (no portal needed - game ends)
     const isFinalBoss = gameState.currentArena === 6;

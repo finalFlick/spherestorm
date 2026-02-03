@@ -28,6 +28,7 @@ import { initTrailPool, updateTrail, resetTrail } from './effects/trail.js';
 import { initParticlePool, updateParticles, resetParticles } from './effects/particles.js';
 import { updateSlowMo, updateScreenFlash, getTimeScale, updateCinematic, isCinematicActive, endCinematic, clearGeometryCache, startIntroCinematic, updateIntroCinematic, isIntroActive, startCinematic, triggerSlowMo } from './systems/visualFeedback.js';
 import { updateAmbience } from './systems/ambience.js';
+import { updateMaterialFlashes, clearMaterialFlashes } from './systems/materialUtils.js';
 
 import { 
     updateUI, 
@@ -62,6 +63,16 @@ import {
 import { showModulesScreen, hideModulesScreen } from './ui/modulesUI.js';
 import { initRosterUI } from './ui/rosterUI.js';
 import { MenuScene } from './ui/menuScene.js';
+import { 
+    initPlaytestFeedback, 
+    initFeedbackFormListeners, 
+    showFeedbackOverlay, 
+    hideFeedbackOverlay,
+    showPlayAgainPrompt,
+    hidePlayAgainPrompt,
+    isFeedbackEnabled,
+    testFeedbackConnection
+} from './systems/playtestFeedback.js';
 
 let lastUIUpdate = 0;
 let lastFrameTime = 0;
@@ -98,6 +109,7 @@ function cleanupGameState() {
     clearModulePickups();  // Clear hidden module pickups
     clearEnemyGeometryCache();
     clearGeometryCache();
+    clearMaterialFlashes();  // Clear pending material flash resets
     // NOTE: Do NOT call cleanupAllListeners() here - UI button listeners must persist
     // across game sessions. They are set up once in init() and should never be removed.
     resetLogState();
@@ -134,12 +146,15 @@ async function init() {
     }
     window.__mantaSphereInitialized = true;
     
-    // Try to enable secure debug mode (requires localhost + debug.local.js)
+    // Try to enable secure debug mode and playtest feedback (requires localhost + debug.local.js)
     import('/js/config/debug.local.js')
-        .then(({ DEBUG_SECRET }) => {
+        .then(({ DEBUG_SECRET, PLAYTEST_CONFIG }) => {
             if (DEBUG_SECRET === true) {
                 enableDebugMode();
                 console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Enabled (debug.local.js loaded)');
+            }
+            if (PLAYTEST_CONFIG && PLAYTEST_CONFIG.url && PLAYTEST_CONFIG.token) {
+                initPlaytestFeedback(PLAYTEST_CONFIG);
             }
         })
         .catch(() => {});
@@ -373,6 +388,52 @@ async function init() {
     if (pauseMainMenuBtn) {
         addTrackedListener(pauseMainMenuBtn, 'click', (e) => {
             e.stopPropagation(); // Prevent resume trigger
+            returnToMainMenu();
+        });
+    }
+    
+    // Pause menu feedback button
+    const pauseFeedbackBtn = document.getElementById('pause-feedback-btn');
+    if (pauseFeedbackBtn) {
+        addTrackedListener(pauseFeedbackBtn, 'click', (e) => {
+            e.stopPropagation(); // Prevent resume trigger
+            showFeedbackOverlay('pause');
+        });
+    }
+    
+    // Main menu feedback button
+    const menuFeedbackBtn = document.getElementById('menu-feedback-btn');
+    if (menuFeedbackBtn) {
+        addTrackedListener(menuFeedbackBtn, 'click', () => {
+            showFeedbackOverlay('menu');
+        });
+    }
+    
+    // Death screen feedback button
+    const deathFeedbackBtn = document.getElementById('death-feedback-btn');
+    if (deathFeedbackBtn) {
+        addTrackedListener(deathFeedbackBtn, 'click', () => {
+            hideGameOver();
+            showFeedbackOverlay('death');
+        });
+    }
+    
+    // Initialize feedback form listeners
+    initFeedbackFormListeners();
+    
+    // Play Again prompt buttons
+    const playAgainYes = document.getElementById('play-again-yes');
+    if (playAgainYes) {
+        addTrackedListener(playAgainYes, 'click', () => {
+            hidePlayAgainPrompt();
+            restartGame();
+        });
+    }
+    
+    const playAgainMenu = document.getElementById('play-again-menu');
+    if (playAgainMenu) {
+        addTrackedListener(playAgainMenu, 'click', () => {
+            hidePlayAgainPrompt();
             returnToMainMenu();
         });
     }
@@ -709,6 +770,7 @@ function animate(currentTime) {
             updateModulePickups();  // Update hidden module pickups
             updateParticles(clampedDelta);
             updateTrail();
+            updateMaterialFlashes();  // Frame-based material flash resets
             updateHazardZones();
             
             if (!cinematicActive) {
@@ -840,6 +902,27 @@ function setupDebugControls() {
     if (unlockAllBtn) {
         addTrackedListener(unlockAllBtn, 'click', () => {
             debugUnlockAllMechanics();
+        });
+    }
+    
+    // Test feedback connection
+    const testFeedbackBtn = document.getElementById('debug-test-feedback');
+    const feedbackStatusEl = document.getElementById('debug-feedback-status');
+    if (testFeedbackBtn) {
+        addTrackedListener(testFeedbackBtn, 'click', async () => {
+            testFeedbackBtn.disabled = true;
+            testFeedbackBtn.textContent = 'Testing...';
+            if (feedbackStatusEl) feedbackStatusEl.textContent = '';
+            
+            const result = await testFeedbackConnection();
+            
+            testFeedbackBtn.disabled = false;
+            testFeedbackBtn.textContent = 'Test Connection';
+            
+            if (feedbackStatusEl) {
+                feedbackStatusEl.textContent = result.message;
+                feedbackStatusEl.style.color = result.success ? '#44ff44' : '#ff4444';
+            }
         });
     }
 }
