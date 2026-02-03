@@ -1,9 +1,10 @@
 name: CI
 on:
   pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches:
+      - main
+      - '**.x'      # Version branches like 0.3.x
 
 jobs:
   ci:
