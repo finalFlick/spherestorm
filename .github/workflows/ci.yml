@@ -23,9 +23,9 @@ jobs:
       
       - name: Check for common issues
         run: |
-          # Fail if TODO/FIXME/STUB found (per project rules)
+          # Fail if TODO/FIXME/STUB found in JS code (per project rules)
           if grep -rn "TODO\|FIXME\|STUB" js/ --include="*.js"; then
-            echo "::error::Found TODO/FIXME/STUB markers. Resolve before merging."
+            echo "::error::Found TODO/FIXME/STUB markers in js/. Resolve before merging."
             exit 1
           fi
       
