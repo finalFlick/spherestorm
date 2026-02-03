@@ -359,6 +359,25 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ---
 
+## Cursor Bugbot (Optional)
+
+PRs may receive automated reviews from [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot).
+
+**What it does:** Auto-generates a risk assessment and change summary on PRs.
+
+**Configuration:** https://cursor.com/dashboard?tab=bugbot
+
+| Option | Recommended For |
+|--------|-----------------|
+| **Disabled** | Solo devs (you're already using Cursor for review) |
+| **On-demand** | Trigger manually with `/bugbot review` comment |
+| **On PR open only** | Reduce noise, only review initial submission |
+| **Always on** | Teams wanting automated first-pass review |
+
+**Note:** Bugbot runs on every push by default, which can be slow for work-in-progress PRs. Consider on-demand mode for faster iteration.
+
+---
+
 ## Getting Help
 
 - **Design questions:** Read `PROMPTS.md` for design personas
