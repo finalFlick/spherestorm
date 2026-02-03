@@ -834,8 +834,13 @@ The project follows **Semantic Versioning 2.0.0** (MAJOR.MINOR.PATCH) tracked in
 **Before pushing to remote:**
 1. Review all commits since last version bump
 2. Determine highest severity change (MAJOR > MINOR > PATCH)
-3. Update `VERSION` file with new version
+3. Run `node scripts/bump-version.js X.Y.Z` to update all version references
 4. Include version bump in final commit message: `chore: bump version to X.Y.Z`
+
+**Version Script (`scripts/bump-version.js`):**
+- Single source of truth: `js/config/constants.js`
+- Updates: `VERSION` file, `index.html` (loading screen, display, cache-buster)
+- Usage: `node scripts/bump-version.js 0.3.0`
 
 **Example Workflow:**
 ```bash
@@ -848,8 +853,8 @@ git commit -m "fix: correct projectile collision bug"
 # Bug fix = PATCH bump
 # Result: MINOR bump wins (0.1.0 → 0.2.0)
 
-echo "0.2.0" > VERSION
-git add VERSION
+node scripts/bump-version.js 0.2.0
+git add .
 git commit -m "chore: bump version to 0.2.0"
 git push
 ```
