@@ -6,7 +6,7 @@
 import { ARENA_CONFIG } from '../config/arenas.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { BOSS_CONFIG } from '../config/bosses.js';
-import { DEBUG } from '../config/constants.js';
+import { AUDIO_CONFIG, DEBUG_ENABLED } from '../config/constants.js';
 
 export const PulseMusic = {
     // Audio context and nodes
@@ -120,7 +120,7 @@ export const PulseMusic = {
             this.generateAllProfiles();
             
             this.initialized = true;
-            if (DEBUG) console.log('[PulseMusic] Initialized with', Object.keys(this.arenaProfiles).length, 'arena profiles');
+            if (DEBUG_ENABLED) console.log('[PulseMusic] Initialized with', Object.keys(this.arenaProfiles).length, 'arena profiles');
         } catch (e) {
             console.warn('[PulseMusic] Web Audio not available:', e);
             this.enabled = false;
@@ -308,7 +308,7 @@ export const PulseMusic = {
         this.targetIntensity = 0;
         this.bossPhase = 0;
         
-        if (DEBUG) console.log('[PulseMusic] Loaded arena', arenaId, '-', profile.name, '- Key:', profile.rootNote, profile.scale, '- BPM:', this.bpm);
+        if (DEBUG_ENABLED) console.log('[PulseMusic] Loaded arena', arenaId, '-', profile.name, '- Key:', profile.rootNote, profile.scale, '- BPM:', this.bpm);
     },
     
     // ============================================================================
@@ -321,7 +321,7 @@ export const PulseMusic = {
         this.stopMusicLoop();
         this.nextBarTime = this.ctx.currentTime + 0.1;
         this.musicLoopId = setInterval(() => this.musicTick(), 50);
-        if (DEBUG) console.log('[PulseMusic] Music loop started');
+        if (DEBUG_ENABLED) console.log('[PulseMusic] Music loop started');
     },
     
     stopMusicLoop() {
@@ -2142,7 +2142,7 @@ export const PulseMusic = {
             }
         }, 50);
         
-        if (DEBUG) console.log('[PulseMusic] Menu music started');
+        if (DEBUG_ENABLED) console.log('[PulseMusic] Menu music started');
     },
     
     stopMenuMusic() {
@@ -2158,7 +2158,7 @@ export const PulseMusic = {
         });
         this.activeOscillators = [];
         
-        if (DEBUG) console.log('[PulseMusic] Menu music stopped');
+        if (DEBUG_ENABLED) console.log('[PulseMusic] Menu music stopped');
     },
     
     scheduleMenuBar(barTime, rootMidi, scale) {

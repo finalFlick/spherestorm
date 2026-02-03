@@ -3,7 +3,7 @@ import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer, camera } from './core/scene.js';
 import { initInput, resetInput, checkCutsceneSkip, cleanupInput } from './core/input.js';
 import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
-import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE, VERSION, enableDebugMode } from './config/constants.js';
+import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG_ENABLED, GAME_TITLE, VERSION, enableDebugMode } from './config/constants.js';
 
 import { createPlayer, updatePlayer, resetPlayer, player } from './entities/player.js';
 import { updateEnemies, clearEnemyGeometryCache } from './entities/enemies.js';
@@ -325,7 +325,7 @@ async function init() {
     addTrackedListener(window, 'keydown', (e) => {
         if (e.key === 'm' || e.key === 'M') {
             const enabled = PulseMusic.toggle();
-            if (DEBUG) console.log(`[${GAME_TITLE.toUpperCase()}] Music:`, enabled ? 'ON' : 'OFF');
+            if (DEBUG_ENABLED) console.log(`[${GAME_TITLE.toUpperCase()}] Music:`, enabled ? 'ON' : 'OFF');
         }
     });
     
@@ -438,10 +438,10 @@ async function init() {
         });
     }
     
-    // Pause menu debug button - only visible when DEBUG is enabled
+    // Pause menu debug button - only visible when DEBUG_ENABLED is true
     const pauseDebugBtn = document.getElementById('pause-debug-btn');
     if (pauseDebugBtn) {
-        if (DEBUG) {
+        if (DEBUG_ENABLED) {
             pauseDebugBtn.style.display = 'inline-block';
             addTrackedListener(pauseDebugBtn, 'click', (e) => {
                 e.stopPropagation(); // Prevent resume trigger
@@ -471,10 +471,10 @@ async function init() {
         }
     });
     
-    // Debug menu button - only visible when DEBUG is enabled
+    // Debug menu button - only visible when DEBUG_ENABLED is true
     const debugBtn = document.getElementById('debug-btn');
     if (debugBtn) {
-        if (DEBUG) {
+        if (DEBUG_ENABLED) {
             addTrackedListener(debugBtn, 'click', () => {
                 showDebugMenu();
             });
@@ -490,8 +490,8 @@ async function init() {
         addTrackedListener(closeDebugBtn, 'click', hideDebugMenu);
     }
     
-    // Debug controls - only set up when DEBUG is enabled
-    if (DEBUG) {
+    // Debug controls - only set up when DEBUG_ENABLED is true
+    if (DEBUG_ENABLED) {
         setupDebugControls();
     }
     
@@ -954,12 +954,12 @@ function startEmptyArena() {
     updateUI();
     animate();
     
-    if (DEBUG) console.log('[DEBUG] Empty arena started - no enemies will spawn');
+    if (DEBUG_ENABLED) console.log('[DEBUG] Empty arena started - no enemies will spawn');
 }
 
 function debugSpawnEnemy(enemyType) {
     if (!gameState.running) {
-        if (DEBUG) console.log('[DEBUG] Cannot spawn enemy - game not running');
+        if (DEBUG_ENABLED) console.log('[DEBUG] Cannot spawn enemy - game not running');
         return;
     }
     
@@ -970,12 +970,12 @@ function debugSpawnEnemy(enemyType) {
     const z = player.position.z + Math.sin(angle) * distance;
     
     spawnSpecificEnemy(enemyType, x, 1, z);
-    if (DEBUG) console.log(`[DEBUG] Spawned ${enemyType} at (${x.toFixed(1)}, 1, ${z.toFixed(1)})`);
+    if (DEBUG_ENABLED) console.log(`[DEBUG] Spawned ${enemyType} at (${x.toFixed(1)}, 1, ${z.toFixed(1)})`);
 }
 
 function debugWarpToArenaWave(arena, wave) {
     if (!gameState.running) {
-        if (DEBUG) console.log('[DEBUG] Cannot warp - game not running');
+        if (DEBUG_ENABLED) console.log('[DEBUG] Cannot warp - game not running');
         return;
     }
     
@@ -1005,7 +1005,7 @@ function debugWarpToArenaWave(arena, wave) {
     PulseMusic.onArenaChange(arena);
     
     updateUI();
-    if (DEBUG) console.log(`[DEBUG] Warped to Arena ${arena}, Wave ${wave}`);
+    if (DEBUG_ENABLED) console.log(`[DEBUG] Warped to Arena ${arena}, Wave ${wave}`);
 }
 
 function startBossBattle(bossNum) {
@@ -1061,7 +1061,7 @@ function startBossBattle(bossNum) {
     updateUI();
     animate();
     
-    if (DEBUG) console.log(`[DEBUG] Starting Boss ${bossNum} Battle`);
+    if (DEBUG_ENABLED) console.log(`[DEBUG] Starting Boss ${bossNum} Battle`);
 }
 
 // Legacy alias for compatibility
@@ -1071,7 +1071,7 @@ function debugSpawnBoss(bossNum) {
 
 function debugGiveLevels(count) {
     if (!gameState.running) {
-        if (DEBUG) console.log('[DEBUG] Cannot give levels - game not running');
+        if (DEBUG_ENABLED) console.log('[DEBUG] Cannot give levels - game not running');
         return;
     }
     
@@ -1105,7 +1105,7 @@ function debugGiveLevels(count) {
     }
     
     updateUI();
-    if (DEBUG) console.log(`[DEBUG] Gave ${count} levels - now level ${gameState.level}`);
+    if (DEBUG_ENABLED) console.log(`[DEBUG] Gave ${count} levels - now level ${gameState.level}`);
 }
 
 function debugToggleInvincibility() {
@@ -1119,18 +1119,18 @@ function debugToggleInvincibility() {
             'linear-gradient(135deg, #444, #555)';
     }
     
-    if (DEBUG) console.log(`[DEBUG] Invincibility: ${gameState.debug.invincible ? 'ON' : 'OFF'}`);
+    if (DEBUG_ENABLED) console.log(`[DEBUG] Invincibility: ${gameState.debug.invincible ? 'ON' : 'OFF'}`);
 }
 
 function debugFullHeal() {
     if (!gameState.running) {
-        if (DEBUG) console.log('[DEBUG] Cannot heal - game not running');
+        if (DEBUG_ENABLED) console.log('[DEBUG] Cannot heal - game not running');
         return;
     }
     
     gameState.health = gameState.maxHealth;
     updateUI();
-    if (DEBUG) console.log('[DEBUG] Full heal applied');
+    if (DEBUG_ENABLED) console.log('[DEBUG] Full heal applied');
 }
 
 function debugUnlockAllMechanics() {
@@ -1143,7 +1143,7 @@ function debugUnlockAllMechanics() {
     gameState.unlockedEnemyBehaviors.ambush = true;
     gameState.unlockedEnemyBehaviors.multiLevel = true;
     
-    if (DEBUG) console.log('[DEBUG] All mechanics unlocked');
+    if (DEBUG_ENABLED) console.log('[DEBUG] All mechanics unlocked');
 }
 
 window.onload = init;

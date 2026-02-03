@@ -32,6 +32,9 @@ export function enableDebugMode() {
     return true;
 }
 
+// Export DEBUG_ENABLED for dynamic debug checks
+export { DEBUG_ENABLED };
+
 // Debug Logging Configuration
 // Level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
 // Tags: Enable/disable logging per category
@@ -48,8 +51,10 @@ export const DEBUG_CONFIG = {
     }
 };
 
-// Backward compatibility alias (updated dynamically by enableDebugMode)
-export const DEBUG = DEBUG_CONFIG.level !== 'silent';
+// Backward compatibility alias (getter function to check current state)
+export function DEBUG() {
+    return DEBUG_ENABLED;
+}
 
 // Game constants
 export const DAMAGE_COOLDOWN = 500;

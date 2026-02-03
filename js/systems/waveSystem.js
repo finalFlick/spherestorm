@@ -4,7 +4,7 @@ import { player } from '../entities/player.js';
 import { spawnWaveEnemy } from '../entities/enemies.js';
 import { spawnBoss, spawnIntroMinions, triggerDemoAbility, endDemoMode, prepareBossForCutscene, endCutsceneAndRepositionPlayer } from '../entities/boss.js';
 import { clearAllPickups, updateArenaPortal, clearArenaPortal, spawnBossEntrancePortal, freezeBossEntrancePortal, updateBossEntrancePortal } from './pickups.js';
-import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION, SPAWN_CHOREOGRAPHY, DEBUG, CINEMATIC_BOSS_HOLD_FRAMES } from '../config/constants.js';
+import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION, SPAWN_CHOREOGRAPHY, DEBUG_ENABLED, CINEMATIC_BOSS_HOLD_FRAMES } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { generateArena } from '../arena/generator.js';
@@ -133,7 +133,7 @@ function handleWaveIntro() {
         
         // Track wave start for speed bonus calculation (frame-based)
         gameState.waveFrameCounter = 0;
-        if (DEBUG) console.log(`[SpeedBonus] Wave ${gameState.currentWave} start recorded`);
+        if (DEBUG_ENABLED) console.log(`[SpeedBonus] Wave ${gameState.currentWave} start recorded`);
         
         // Log wave start with full context (using waveType from above)
         log('WAVE', 'start', {
