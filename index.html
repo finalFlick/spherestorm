@@ -57,7 +57,6 @@
         .secondary-btn:hover { border-color: #ffdd44; color: #ffdd44; }
         .controls-info { margin-top: 20px; text-align: center; color: #666; font-size: 14px; }
         .controls-info span { display: inline-block; background: #333; padding: 5px 12px; border-radius: 5px; margin: 3px; }
-        #version-display { margin-top: 30px; font-size: 12px; color: #444; letter-spacing: 1px; }
         
         /* Mastery Panel on Start Screen */
         #mastery-panel { display: flex; gap: 10px; margin-top: 30px; flex-wrap: wrap; justify-content: center; }
@@ -306,8 +305,8 @@
         #pause-debug-btn { border-color: #ff8800; color: #ff8800; display: none; }
         #pause-debug-btn:hover { border-color: #ffaa44; color: #ffaa44; }
         
-        /* Version Display (debug only) */
-        #version-display { position: fixed; bottom: 10px; right: 10px; font-size: 12px; color: rgba(255, 255, 255, 0.4); font-family: monospace; z-index: 1000; pointer-events: none; display: none; }
+        /* Version Display - always visible */
+        #version-display { position: fixed; bottom: 10px; right: 10px; font-size: 12px; color: rgba(255, 255, 255, 0.3); font-family: monospace; z-index: 10000; pointer-events: none; }
         
         /* Loading Screen */
         #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a1a; display: flex; justify-content: center; align-items: center; z-index: 9999; transition: opacity 0.5s ease; }
@@ -353,7 +352,6 @@
     
     <div id="game-container">
         <div id="damage-flash"></div>
-        <div id="version-display"></div>
         
         <!-- HUD -->
         <div id="hud">
@@ -619,10 +617,12 @@
                     <div><span>MOUSE</span> Look around <span>CLICK</span> Lock cursor</div>
                     <div style="margin-top: 15px;"><span>M</span> Toggle Music</div>
                 </div>
-                <div id="version-display"></div>
             </div>
         </div>
     </div>
+    
+    <!-- Global Version Display - always visible -->
+    <div id="version-display">v0.2.2</div>
     
     <!-- Three.js from CDN with SRI hash for supply-chain security -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js" 
@@ -641,6 +641,6 @@
     <!-- loglevel for debug logging (1.4KB) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/loglevel/1.9.2/loglevel.min.js"></script>
     
-    <script type="module" src="js/main.js?v=20260201b"></script>
+    <script type="module" src="js/main.js?v=20260201c"></script>
 </body>
 </html>
