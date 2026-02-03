@@ -338,6 +338,13 @@
         .help-section ol, .help-section ul { margin: 8px 0 0 20px; padding: 0; }
         .help-section li { margin: 4px 0; line-height: 1.5; }
     </style>
+    
+    <!-- Preload critical JS modules -->
+    <link rel="modulepreload" href="js/main.js">
+    <link rel="modulepreload" href="js/config/constants.js">
+    <link rel="modulepreload" href="js/core/gameState.js">
+    <link rel="modulepreload" href="js/core/scene.js">
+    <link rel="modulepreload" href="js/core/input.js">
 </head>
 <body>
     <!-- Loading Screen (shows while Three.js initializes) -->
@@ -638,13 +645,6 @@
     
     <!-- loglevel for debug logging (1.4KB) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/loglevel/1.9.2/loglevel.min.js"></script>
-    
-    <!-- Service Worker for JS cache-busting -->
-    <script>
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-    </script>
     
     <script type="module" src="js/main.js"></script>
 </body>
