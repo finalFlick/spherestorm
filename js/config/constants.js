@@ -3,24 +3,67 @@ export const GAME_TITLE = 'Manta Sphere';
 export const VERSION = '0.2.2';  // Semantic versioning - see VERSION file and .cursorrules
 export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_';
 
+// ==================== DEBUG MODE DETECTION ====================
+// Enable debug via:
+//   1. URL param: ?debug=true (temporary, this session)
+//   2. localStorage: localStorage.setItem('mantasphere_debug', 'true') (persistent)
+//   3. Console: window.enableDebug() / window.disableDebug()
+// Production default: off
+function isDebugEnabled() {
+    // Check URL param first (highest priority)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('debug') === 'true') return true;
+    if (urlParams.get('debug') === 'false') return false;
+    
+    // Check localStorage (persistent dev setting)
+    try {
+        return localStorage.getItem('mantasphere_debug') === 'true';
+    } catch {
+        return false;
+    }
+}
+
+const DEBUG_ENABLED = isDebugEnabled();
+
 // Debug Logging Configuration
 // Level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
 // Tags: Enable/disable logging per category
 export const DEBUG_CONFIG = {
-    level: 'silent',     // Production: no debug logging
+    level: DEBUG_ENABLED ? 'info' : 'silent',
     tags: {
-        WAVE: false,
-        SPAWN: false,
-        BOSS: false,
-        SCORE: false,
-        STATE: false,
-        SAFETY: false,
-        PERF: false
+        WAVE: DEBUG_ENABLED,
+        SPAWN: DEBUG_ENABLED,
+        BOSS: DEBUG_ENABLED,
+        SCORE: DEBUG_ENABLED,
+        STATE: DEBUG_ENABLED,
+        SAFETY: DEBUG_ENABLED,
+        PERF: false  // Always off by default (very noisy)
     }
 };
 
 // Backward compatibility alias
 export const DEBUG = DEBUG_CONFIG.level !== 'silent';
+
+// Console helpers for toggling debug at runtime (requires page refresh)
+if (typeof window !== 'undefined') {
+    window.enableDebug = () => {
+        localStorage.setItem('mantasphere_debug', 'true');
+        console.log('Debug enabled. Refresh page to apply.');
+    };
+    window.disableDebug = () => {
+        localStorage.removeItem('mantasphere_debug');
+        console.log('Debug disabled. Refresh page to apply.');
+    };
+    window.debugStatus = () => {
+        console.log('Debug:', DEBUG_ENABLED ? 'ON' : 'OFF');
+        console.log('Enable: ?debug=true in URL or window.enableDebug()');
+    };
+    
+    // Log debug status on load if enabled
+    if (DEBUG_ENABLED) {
+        console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Logging enabled. window.disableDebug() to turn off.');
+    }
+}
 
 // Game constants
 export const DAMAGE_COOLDOWN = 500;
