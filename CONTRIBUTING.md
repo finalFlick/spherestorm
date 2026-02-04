@@ -137,6 +137,27 @@ See `.cursorrules` for complete development guidelines.
 
 ## Issue Guidelines
 
+### GitHub App Bot Identity (for agents)
+
+If you want automated issue/comments to show as the agent bot (e.g., `manta-ai[bot]`) instead of your personal account:
+
+1. Create a GitHub App: `https://github.com/settings/apps/new`
+2. Permissions (minimum):
+   - Repository permissions → **Issues: Read & write**
+   - Repository permissions → **Metadata: Read-only**
+3. Install it on `finalFlick/mantasphere` (Only select repositories)
+4. Download the App private key (`.pem`) into `.secrets/` (gitignored)
+5. Create `.secrets/github-app.json` (gitignored) with your App ID + key path
+6. Mint a short-lived token and use it with `gh`:
+
+```powershell
+$token = (node scripts/gh-app-auth.js --repo finalFlick/mantasphere --raw).Trim()
+$env:GH_TOKEN = $token
+
+# Example: comment as the bot
+gh issue comment 19 -R finalFlick/mantasphere -b "Test comment from GitHub App bot identity"
+```
+
 ### Label Taxonomy
 
 Every issue must have labels from these categories:

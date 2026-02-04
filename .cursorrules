@@ -1027,3 +1027,68 @@ See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 | docs/*.md | System documentation | Task tracking |
 | `todo.txt` | Scratch capture | Permanent storage |
 | `CONTRIBUTING.md` | Process docs | State tracking |
+
+### 20. GitHub Issue Creation Process
+
+When creating or commenting on GitHub Issues, AI agents must include persona-based analysis (not just the user request).
+
+#### Required Structure for Issues/Comments
+
+Every issue or comment created by the AI must include:
+
+1. **User Request/Feedback** - What was reported or requested (quote if from playtest)
+2. **AI Analysis** - Insights from the appropriate persona:
+   - Use **Game Director** for cross-system, pillar alignment, scope decisions
+   - Use **specialist persona** if issue is clearly in their domain (Boss Designer, Enemy Designer, etc.)
+   - If no persona specified, provide general AI analysis
+3. **Pillar Alignment** - Which game pillars this supports/threatens
+4. **Recommendation** - Priority, scope, and implementation guidance
+
+#### Issue Comment Format
+
+When commenting on existing issues with playtest evidence:
+
+```
+**Playtest Evidence (YYYY-MM-DD)**
+
+> [Quote from feedback]
+
+**Director Analysis:**
+[Persona-based reasoning about why this matters, pillar alignment, risks]
+
+**Suggested Action:**
+[Specific tuning or implementation guidance]
+
+----
+```
+
+#### New Issue Format
+
+```
+## Problem
+[Clear problem statement]
+
+## Evidence
+[Quotes, data, reproduction steps]
+
+## Director Analysis
+[Pillar alignment, why this matters for the game's identity, scope concerns]
+
+## Proposed Solutions
+[Options with tradeoffs]
+
+## Acceptance Criteria
+[Measurable outcomes]
+```
+
+#### Persona Selection
+
+| Issue Type | Persona | Focus |
+|------------|---------|-------|
+| Cross-system, scope, pillars | Game Director | Identity, priorities |
+| Boss mechanics | Boss Designer | Fairness, readability, phases |
+| Enemy behavior/waves | Enemy Designer | Roles, composition, spawns |
+| Arena layout | Arena Designer | Routing, geometry, hazards |
+| Audio/music | Audio Designer | Pulse system, feedback |
+| Balance/tuning | Game Director | Pillar tradeoffs |
+| UX/readability | Playtest Evaluator | Evidence-based decisions |

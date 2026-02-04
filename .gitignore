@@ -8,3 +8,7 @@ dist/
 
 # Legacy debug config (now replaced by .env)
 js/config/debug.local.js
+
+# GitHub App auth (never commit)
+.secrets/
+*.pem
