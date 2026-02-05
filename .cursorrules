@@ -1149,5 +1149,33 @@ Use this exact structure:
 #### 21.4 Agent behavior requirements
 
 - **All agents**: Treat the most recent `finalflick` direction as canonical for that issue, even if it conflicts with docs, prior comments, or earlier agent analysis.
-- **Non-warden agents**: Do not “continue anyway” in the thread. If you are not `manta-warden`, your next step is to request/route for a `manta-warden` acknowledgment comment.
+- **Non-warden agents**: Do not "continue anyway" in the thread. If you are not `manta-warden`, your next step is to request/route for a `manta-warden` acknowledgment comment.
 - **Conflict handling**: If `finalflick` direction conflicts with system constraints or safety rules, `manta-warden` must call it out and propose the smallest viable alternative while asking for confirmation.
+
+### 22. GitHub Bot Identity Requirement
+
+**AI agents MUST use the manta-warden bot identity for ALL GitHub operations.**
+
+`finalFlick` is the project owner's personal account. Agents must NEVER create issues or post comments as `finalFlick`. If the owner wants to comment as themselves, they will do so manually.
+
+#### Before ANY `gh issue`, `gh pr`, or `gh api` command:
+
+1. **Obtain the bot token first:**
+   ```powershell
+   $token = (node scripts/gh-app-auth.js --repo finalFlick/mantasphere --raw).Trim()
+   $env:GH_TOKEN = $token
+   ```
+
+2. **Then run the gh command** - it will appear as `manta-warden [bot]`
+
+#### If bot token cannot be obtained:
+
+- **DO NOT fall back to personal auth**
+- **DO NOT run the gh command**
+- **Inform the user** that the operation requires bot credentials and ask them to verify `.secrets/github-app.json` exists and is configured correctly
+
+#### Never:
+
+- Run `gh` commands without explicitly setting `GH_TOKEN` to the bot token first
+- Assume the default `gh` auth is acceptable for this project
+- Post comments, create issues, or modify labels as `finalFlick`
