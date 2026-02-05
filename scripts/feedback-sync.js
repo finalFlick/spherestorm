@@ -224,10 +224,10 @@ async function alreadyPostedToday(issueNumber, today) {
     per_page: 50
   });
   
-  return comments.some(c => 
-    c.user?.login === 'github-actions[bot]' && 
-    c.body?.includes(`## ${today}`)
-  );
+  // Authorship can vary (github-actions bot token vs GitHub App token). Use content-based idempotency.
+  const dateHeading = `## ${today}`;
+  const rawLink = `[Raw data](docs/playtests/${today}.md)`;
+  return comments.some((c) => c.body?.includes(dateHeading) && c.body?.includes(rawLink));
 }
 
 /**

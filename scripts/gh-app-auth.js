@@ -104,15 +104,27 @@ Prints a short-lived GitHub App installation token for the repo.
     process.exit(args.help ? 0 : 1);
   }
 
-  const cfg = readJson(args.config);
-  if (!cfg?.appId || !cfg?.privateKeyPath) {
+  // Support CI env vars (preferred in GitHub Actions) OR local file config.
+  // Env vars:
+  // - GH_APP_ID: number
+  // - GH_APP_PRIVATE_KEY: PEM contents (multiline)
+  const cfg = fs.existsSync(args.config) ? readJson(args.config) : null;
+  const envAppId = process.env.GH_APP_ID ? Number(process.env.GH_APP_ID) : null;
+  const envPrivateKeyPem = process.env.GH_APP_PRIVATE_KEY || null;
+
+  const appId = envAppId || cfg?.appId;
+  const privateKeyPem =
+    envPrivateKeyPem || (cfg?.privateKeyPath ? fs.readFileSync(cfg.privateKeyPath, 'utf8') : null);
+
+  if (!appId || !privateKeyPem) {
     throw new Error(
-      `Invalid config at ${args.config}. Expected: { "appId": number, "privateKeyPath": string }`
+      `Missing GitHub App credentials. Provide either:\n` +
+        `- env: GH_APP_ID + GH_APP_PRIVATE_KEY\n` +
+        `- or config: ${args.config} with { "appId": number, "privateKeyPath": string }`
     );
   }
 
-  const privateKeyPem = fs.readFileSync(cfg.privateKeyPath, 'utf8');
-  const appJwt = signAppJwt({ appId: cfg.appId, privateKeyPem });
+  const appJwt = signAppJwt({ appId, privateKeyPem });
 
   const [owner, repo] = args.repo.split('/');
   if (!owner || !repo) throw new Error(`Invalid --repo. Expected "owner/name", got "${args.repo}"`);

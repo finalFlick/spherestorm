@@ -21,6 +21,7 @@ import { initLeaderboard } from './systems/leaderboard.js';
 import { PulseMusic } from './systems/pulseMusic.js';
 import { initLogger, setGameStateRef, resetLogState, log } from './systems/debugLog.js';
 import { gpuInfo } from './systems/gpuDetect.js';
+import { TUNING } from './config/tuning.js';
 
 import { generateArena, updateHazardZones } from './arena/generator.js';
 
@@ -922,6 +923,87 @@ function setupDebugControls() {
                 feedbackStatusEl.textContent = result.message;
                 feedbackStatusEl.style.color = result.success ? '#44ff44' : '#ff4444';
             }
+        });
+    }
+
+    // ==================== TUNING SLIDERS ====================
+    function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+    }
+
+    function bindSlider(sliderId, valueId, { getValue, setValue, min, max, format }) {
+        const slider = document.getElementById(sliderId);
+        const valueEl = document.getElementById(valueId);
+        if (!slider) return;
+
+        const write = () => {
+            const v = getValue();
+            slider.value = String(v);
+            if (valueEl) valueEl.textContent = format(v);
+        };
+
+        // Init
+        write();
+
+        // Live update
+        slider.addEventListener('input', () => {
+            const raw = Number(slider.value);
+            const v = clamp(raw, min, max);
+            setValue(v);
+            if (valueEl) valueEl.textContent = format(v);
+            log('DEBUG', 'tuning_changed', { key: sliderId, value: v });
+        });
+
+        return write;
+    }
+
+    const writeSpawnRate = bindSlider('debug-tuning-spawn-rate', 'debug-tuning-spawn-rate-value', {
+        getValue: () => Number(TUNING.spawnRateMultiplier || 1.0).toFixed(2),
+        setValue: (v) => (TUNING.spawnRateMultiplier = v),
+        min: 0.25,
+        max: 3.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    const writeEnemySpeed = bindSlider('debug-tuning-enemy-speed', 'debug-tuning-enemy-speed-value', {
+        getValue: () => Number(TUNING.enemySpeedMultiplier || 1.0).toFixed(2),
+        setValue: (v) => (TUNING.enemySpeedMultiplier = v),
+        min: 0.25,
+        max: 3.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    const writeGravity = bindSlider('debug-tuning-gravity', 'debug-tuning-gravity-value', {
+        getValue: () => Number(TUNING.gravityMultiplier || 1.0).toFixed(2),
+        setValue: (v) => (TUNING.gravityMultiplier = v),
+        min: 0.25,
+        max: 3.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    const writeXpDespawn = bindSlider('debug-tuning-xp-despawn', 'debug-tuning-xp-despawn-value', {
+        getValue: () => Math.round(Number(TUNING.xpDespawnSeconds || 15)),
+        setValue: (v) => (TUNING.xpDespawnSeconds = Math.round(v)),
+        min: 1,
+        max: 120,
+        format: (v) => `${Math.round(v)}s`
+    });
+
+    const resetTuningBtn = document.getElementById('debug-tuning-reset');
+    if (resetTuningBtn) {
+        resetTuningBtn.addEventListener('click', () => {
+            TUNING.spawnRateMultiplier = 1.0;
+            TUNING.enemySpeedMultiplier = 1.0;
+            TUNING.gravityMultiplier = 1.0;
+            TUNING.xpDespawnSeconds = 15;
+
+            // Refresh UI from current tuning values
+            if (writeSpawnRate) writeSpawnRate();
+            if (writeEnemySpeed) writeEnemySpeed();
+            if (writeGravity) writeGravity();
+            if (writeXpDespawn) writeXpDespawn();
+
+            log('DEBUG', 'tuning_reset', { ...TUNING });
         });
     }
 }

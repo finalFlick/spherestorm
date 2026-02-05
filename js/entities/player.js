@@ -3,6 +3,7 @@ import { gameState } from '../core/gameState.js';
 import { keys, cameraAngleX, cameraAngleY } from '../core/input.js';
 import { obstacles, hazardZones, enemies, tempVec3, tempVec3_2, tempVec3_3, tempVec3_4, tempVec3_5 } from '../core/entities.js';
 import { PLAYER_JUMP_VELOCITY, PLAYER_GRAVITY, BOUNCE_FACTORS, TRAIL_SPAWN_DISTANCE, WAVE_STATE } from '../config/constants.js';
+import { TUNING } from '../config/tuning.js';
 import { spawnParticle } from '../effects/particles.js';
 import { spawnTrail, lastTrailPos, setLastTrailPos } from '../effects/trail.js';
 import { takeDamage } from '../systems/damage.js';
@@ -373,7 +374,9 @@ export function updatePlayer(delta) {
         player.squashTime = 8;
     }
     
-    player.velocity.y -= PLAYER_GRAVITY;
+    const gravityMultRaw = Number(TUNING.gravityMultiplier || 1.0);
+    const gravityMult = Math.max(0.25, Math.min(3.0, gravityMultRaw || 1.0));
+    player.velocity.y -= PLAYER_GRAVITY * gravityMult;
     player.position.y += player.velocity.y;
     
     // Ground/Platform landing

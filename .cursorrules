@@ -1092,3 +1092,62 @@ When commenting on existing issues with playtest evidence:
 | Audio/music | Audio Designer | Pulse system, feedback |
 | Balance/tuning | Game Director | Pillar tradeoffs |
 | UX/readability | Playtest Evaluator | Evidence-based decisions |
+
+### 21. Owner Authority Protocol (GitHub Issues)
+
+**Project owner authority:** On GitHub Issues, `finalflick` is the final authority. If `finalflick` provides direction, it supersedes all prior discussion, analysis, plans, labels, and AI recommendations on that issue.
+
+#### 21.1 What triggers this protocol
+
+Treat any of the following as an **Owner Override Event** on a GitHub Issue:
+- `finalflick` posts a comment (new direction, correction, constraint, scope change)
+- `finalflick` edits the issue title/body
+- `finalflick` changes labels, milestones, assignees, or issue state (open/close/reopen/lock)
+
+If the override is a **comment**, the information in that comment is the source of truth for that issue. If the override is a **non-comment action**, assume intent changed and require clarification before proceeding.
+
+#### 21.2 Stop-the-line rule (no further GitHub actions)
+
+After an Owner Override Event is detected on an issue:
+- **All agents must immediately pause** any further actions related to that issue on GitHub.
+- **No further GitHub mutations are allowed** on that issue until `manta-warden` posts an acknowledgment comment on that issue.
+
+Examples of blocked actions until acknowledgment:
+- commenting (except the required `manta-warden` acknowledgment)
+- changing labels/milestones/assignees/projects/status fields
+- editing issue title/body
+- linking/closing via PR descriptions, automations, or follow-up issue churn
+
+#### 21.3 Required `manta-warden` acknowledgment (before any further work proceeds)
+
+`manta-warden` must respond on the issue to:
+- **acknowledge** the Owner Override Event
+- **rectify**: restate the updated scope/priority/constraints in plain language
+- **clarify**: ask targeted questions if anything is ambiguous
+- **gate**: explicitly state what will happen next, and what is blocked pending answers
+
+Use this exact structure:
+
+```
+**Owner Override Acknowledged (finalflick)**
+
+**Observed:** [link/quote of finalflick comment or describe the owner action]
+
+**Updated interpretation (supersedes prior thread):**
+- Scope: [...]
+- Priority/sequence: [...]
+- Constraints/definition of done: [...]
+
+**Clarifying questions (if needed):**
+1. ...
+2. ...
+
+**Next action (after confirmation):**
+- ...
+```
+
+#### 21.4 Agent behavior requirements
+
+- **All agents**: Treat the most recent `finalflick` direction as canonical for that issue, even if it conflicts with docs, prior comments, or earlier agent analysis.
+- **Non-warden agents**: Do not “continue anyway” in the thread. If you are not `manta-warden`, your next step is to request/route for a `manta-warden` acknowledgment comment.
+- **Conflict handling**: If `finalflick` direction conflicts with system constraints or safety rules, `manta-warden` must call it out and propose the smallest viable alternative while asking for confirmation.

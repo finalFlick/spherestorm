@@ -10,6 +10,7 @@ import { ENEMY_TYPES } from '../config/enemies.js';
 import { generateArena } from '../arena/generator.js';
 import { awardArenaBadge } from './badges.js';
 import { PulseMusic } from './pulseMusic.js';
+import { TUNING } from '../config/tuning.js';
 import { 
     showWaveAnnouncement, 
     hideWaveAnnouncement, 
@@ -405,7 +406,10 @@ function handleWaveActive() {
     }
     
     // Budget-based spawning (convert ms interval to frames: 60fps = 16.67ms/frame)
-    const spawnIntervalFrames = Math.floor(spawnInterval / 16.67);
+    const spawnIntervalFramesBase = Math.floor(spawnInterval / 16.67);
+    const spawnRateMultRaw = Number(TUNING.spawnRateMultiplier || 1.0);
+    const spawnRateMult = Math.max(0.25, Math.min(3.0, spawnRateMultRaw || 1.0));
+    const spawnIntervalFrames = Math.max(1, Math.floor(spawnIntervalFramesBase / spawnRateMult));
     if (gameState.waveBudgetRemaining > 0 && gameState.waveSpawnTimer >= spawnIntervalFrames) {
         // Burst spawns
         const shouldBurst = Math.random() < burstChance;

@@ -236,6 +236,8 @@
         .debug-input:focus { border-color: #ffdd44; outline: none; }
         .debug-label { font-size: 14px; color: #aaa; margin-right: 10px; }
         .debug-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .debug-slider { flex: 1; max-width: 380px; }
+        .debug-value { font-size: 14px; color: #ffdd44; min-width: 70px; text-align: right; }
         #close-debug { margin-top: 20px; padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; }
         #close-debug:hover { border-color: #ffdd44; color: #ffdd44; }
         
@@ -588,6 +590,34 @@
                     <button id="debug-full-heal" class="debug-btn success">Full Heal</button>
                     <button id="debug-unlock-all" class="debug-btn">Unlock All Mechanics</button>
                 </div>
+            </div>
+
+            <div class="debug-section">
+                <h3>Tuning Sliders</h3>
+                <div class="debug-row">
+                    <span class="debug-label">Spawn Rate</span>
+                    <input id="debug-tuning-spawn-rate" class="debug-slider" type="range" min="0.50" max="1.50" step="0.05" value="1.00">
+                    <span id="debug-tuning-spawn-rate-value" class="debug-value">1.00x</span>
+                </div>
+                <div class="debug-row">
+                    <span class="debug-label">Enemy Speed</span>
+                    <input id="debug-tuning-enemy-speed" class="debug-slider" type="range" min="0.50" max="1.50" step="0.05" value="1.00">
+                    <span id="debug-tuning-enemy-speed-value" class="debug-value">1.00x</span>
+                </div>
+                <div class="debug-row">
+                    <span class="debug-label">Gravity</span>
+                    <input id="debug-tuning-gravity" class="debug-slider" type="range" min="0.50" max="1.50" step="0.05" value="1.00">
+                    <span id="debug-tuning-gravity-value" class="debug-value">1.00x</span>
+                </div>
+                <div class="debug-row">
+                    <span class="debug-label">XP Despawn</span>
+                    <input id="debug-tuning-xp-despawn" class="debug-slider" type="range" min="5" max="40" step="1" value="15">
+                    <span id="debug-tuning-xp-despawn-value" class="debug-value">15s</span>
+                </div>
+                <div class="debug-controls" style="margin-top: 10px;">
+                    <button id="debug-tuning-reset" class="debug-btn">Reset Tuning</button>
+                </div>
+                <p class="subtitle" style="margin: 10px 0 0 0;">Note: some knobs apply to newly spawned objects only (e.g., XP gem TTL).</p>
             </div>
             
             <div class="debug-section">

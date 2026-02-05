@@ -3,6 +3,7 @@ import { gameState } from '../core/gameState.js';
 import { xpGems, hearts, tempVec3, obstacles, modulePickups, getArenaPortal, setArenaPortal, getBossEntrancePortal, setBossEntrancePortal } from '../core/entities.js';
 import { player } from '../entities/player.js';
 import { HEART_TTL, XP_GEM_TTL, WAVE_STATE } from '../config/constants.js';
+import { TUNING } from '../config/tuning.js';
 import { spawnParticle } from '../effects/particles.js';
 import { levelUp } from '../ui/menus.js';
 import { triggerSlowMo, triggerScreenFlash } from './visualFeedback.js';
@@ -38,7 +39,10 @@ export function spawnXpGem(position, value) {
     gem.position.y = gem.baseY;
     gem.value = value * gameState.stats.xpMultiplier;
     gem.bobOffset = Math.random() * Math.PI * 2;
-    gem.ttl = XP_GEM_TTL;  // 15 seconds at 60fps
+    // TTL is frame-based (60fps). Use TUNING to allow rapid iteration in debug mode.
+    const tunedSeconds = Math.max(1, Number(TUNING.xpDespawnSeconds || 0));
+    gem.ttl = Math.round(tunedSeconds * 60) || XP_GEM_TTL;
+    gem.fadeFrames = Math.min(180, gem.ttl); // Fade over last 3 seconds (or entire life if shorter)
     
     scene.add(gem);
     xpGems.push(gem);
@@ -95,9 +99,10 @@ export function updateXpGems(delta) {
         // Decrement TTL
         gem.ttl--;
         
-        // Fade out over last 3 seconds (180 frames)
-        if (gem.ttl < 180) {
-            gem.material.opacity = (gem.ttl / 180) * 0.9;
+        // Fade out near expiry (default: last 3 seconds)
+        const fadeFrames = gem.fadeFrames || 180;
+        if (gem.ttl < fadeFrames) {
+            gem.material.opacity = (gem.ttl / fadeFrames) * 0.9;
         }
         
         // Remove expired gems

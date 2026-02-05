@@ -14,6 +14,7 @@ import { ARENA_CONFIG } from '../config/arenas.js';
 import { spawnEnemyProjectileFromPool } from '../systems/projectiles.js';
 import { markEnemyEncountered } from '../ui/rosterUI.js';
 import { log, logOnce, logThrottled } from '../systems/debugLog.js';
+import { TUNING } from '../config/tuning.js';
 
 // Cache pillar positions for pillar hopper behavior
 let cachedPillarTops = [];
@@ -42,6 +43,11 @@ export function clearEnemyGeometryCache() {
         }
         coneGeometryCache.clear();
     }
+}
+
+function getEnemySpeedTuningMultiplier() {
+    const multRaw = Number(TUNING.enemySpeedMultiplier || 1.0);
+    return Math.max(0.25, Math.min(3.0, multRaw || 1.0));
 }
 
 // Check if a position is valid for enemy placement (not in hazards or obstacles)
@@ -1696,6 +1702,7 @@ function calculateSteeringForce(enemy, desiredDir) {
 
 function updateChaseEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
+    const tuningMult = getEnemySpeedTuningMultiplier();
     
     // Closing speed acceleration - enemies speed up when close to player
     let speedMultiplier = 1.0;
@@ -1712,8 +1719,8 @@ function updateChaseEnemy(enemy) {
     tempVec3.add(steerForce);
     tempVec3.normalize();
     
-    enemy.position.x += tempVec3.x * enemy.speed * speedMultiplier;
-    enemy.position.z += tempVec3.z * enemy.speed * speedMultiplier;
+    enemy.position.x += tempVec3.x * enemy.speed * speedMultiplier * tuningMult;
+    enemy.position.z += tempVec3.z * enemy.speed * speedMultiplier * tuningMult;
     
     if (gameState.unlockedEnemyBehaviors.jumping) {
         for (const obs of obstacles) {
@@ -1733,6 +1740,7 @@ function updateChaseEnemy(enemy) {
 
 function updateShooterEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
+    const tuningMult = getEnemySpeedTuningMultiplier();
     
     // Increment shoot timer
     enemy.shootTimer = (enemy.shootTimer || 0) + 1;
@@ -1741,14 +1749,14 @@ function updateShooterEnemy(enemy) {
         tempVec3.subVectors(player.position, enemy.position);
         tempVec3.y = 0;
         tempVec3.normalize();
-        enemy.position.x += tempVec3.x * enemy.speed;
-        enemy.position.z += tempVec3.z * enemy.speed;
+        enemy.position.x += tempVec3.x * enemy.speed * tuningMult;
+        enemy.position.z += tempVec3.z * enemy.speed * tuningMult;
     } else if (dist < enemy.shootRange * 0.5) {
         tempVec3.subVectors(enemy.position, player.position);
         tempVec3.y = 0;
         tempVec3.normalize();
-        enemy.position.x += tempVec3.x * enemy.speed * 0.5;
-        enemy.position.z += tempVec3.z * enemy.speed * 0.5;
+        enemy.position.x += tempVec3.x * enemy.speed * 0.5 * tuningMult;
+        enemy.position.z += tempVec3.z * enemy.speed * 0.5 * tuningMult;
     }
     
     // Frame-based shooting cooldown
@@ -1759,8 +1767,9 @@ function updateShooterEnemy(enemy) {
 }
 
 function updateBouncerEnemy(enemy) {
-    enemy.position.x += enemy.velocity.x;
-    enemy.position.z += enemy.velocity.z;
+    const tuningMult = getEnemySpeedTuningMultiplier();
+    enemy.position.x += enemy.velocity.x * tuningMult;
+    enemy.position.z += enemy.velocity.z * tuningMult;
     
     // Wall bouncing
     if (enemy.position.x < -42 || enemy.position.x > 42) {
@@ -1824,9 +1833,10 @@ function updateBouncerEnemy(enemy) {
     
     // Speed cap
     const speed = Math.sqrt(enemy.velocity.x * enemy.velocity.x + enemy.velocity.z * enemy.velocity.z);
-    if (speed > enemy.speed) {
-        enemy.velocity.x = enemy.velocity.x / speed * enemy.speed;
-        enemy.velocity.z = enemy.velocity.z / speed * enemy.speed;
+    const speedCap = enemy.speed * tuningMult;
+    if (speed > speedCap) {
+        enemy.velocity.x = (enemy.velocity.x / speed) * speedCap;
+        enemy.velocity.z = (enemy.velocity.z / speed) * speedCap;
     }
     
     // Trail particles for enhanced visibility
@@ -1837,6 +1847,7 @@ function updateBouncerEnemy(enemy) {
 
 function updateShieldBreakerEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
+    const tuningMult = getEnemySpeedTuningMultiplier();
     
     // Windup phase before rush (telegraph)
     if (dist < enemy.rushRange && !enemy.isRushing && !enemy.rushWindupTimer) {
@@ -1871,7 +1882,7 @@ function updateShieldBreakerEnemy(enemy) {
     }
     
     if (enemy.isRushing) {
-        enemy.position.add(enemy.rushDirection.clone().multiplyScalar(enemy.rushSpeed));
+        enemy.position.add(enemy.rushDirection.clone().multiplyScalar(enemy.rushSpeed * tuningMult));
         if (Math.abs(enemy.position.x) > 42 || Math.abs(enemy.position.z) > 42) {
             enemy.isRushing = false;
             enemy.position.x = Math.max(-42, Math.min(42, enemy.position.x));
@@ -1883,11 +1894,12 @@ function updateShieldBreakerEnemy(enemy) {
 }
 
 function updateWaterBalloonEnemy(enemy) {
+    const tuningMult = getEnemySpeedTuningMultiplier();
     tempVec3.subVectors(player.position, enemy.position);
     tempVec3.y = 0;
     tempVec3.normalize();
-    enemy.position.x += tempVec3.x * enemy.speed;
-    enemy.position.z += tempVec3.z * enemy.speed;
+    enemy.position.x += tempVec3.x * enemy.speed * tuningMult;
+    enemy.position.z += tempVec3.z * enemy.speed * tuningMult;
     
     if (enemy.size < enemy.maxSize) {
         enemy.size += enemy.growRate;
@@ -1908,6 +1920,7 @@ export function explodeWaterBalloon(enemy) {
 
 function updateTeleporterEnemy(enemy) {
     const dist = enemy.position.distanceTo(player.position);
+    const tuningMult = getEnemySpeedTuningMultiplier();
     
     // Increment teleport timer
     enemy.teleportTimer = (enemy.teleportTimer || 0) + 1;
@@ -1944,13 +1957,14 @@ function updateTeleporterEnemy(enemy) {
         tempVec3.subVectors(player.position, enemy.position);
         tempVec3.y = 0;
         tempVec3.normalize();
-        enemy.position.x += tempVec3.x * enemy.speed * 0.5;
-        enemy.position.z += tempVec3.z * enemy.speed * 0.5;
+        enemy.position.x += tempVec3.x * enemy.speed * 0.5 * tuningMult;
+        enemy.position.z += tempVec3.z * enemy.speed * 0.5 * tuningMult;
     }
 }
 
 // Pillar Police - hops between pillar tops, hunts players who camp on pillars
 function updatePillarHopperEnemy(enemy) {
+    const tuningMult = getEnemySpeedTuningMultiplier();
     // Initialize state if needed
     if (!enemy.hopState) {
         enemy.hopState = 'idle';
@@ -2020,8 +2034,8 @@ function updatePillarHopperEnemy(enemy) {
                 tempVec3.subVectors(player.position, enemy.position);
                 tempVec3.y = 0;
                 tempVec3.normalize();
-                enemy.position.x += tempVec3.x * enemy.speed * 2.5;
-                enemy.position.z += tempVec3.z * enemy.speed * 2.5;
+                enemy.position.x += tempVec3.x * enemy.speed * 2.5 * tuningMult;
+                enemy.position.z += tempVec3.z * enemy.speed * 2.5 * tuningMult;
             }
             break;
             
@@ -2059,8 +2073,8 @@ function updatePillarHopperEnemy(enemy) {
             
         case 'hopping':
             // In the air
-            enemy.position.x += enemy.hopVelocity.x;
-            enemy.position.z += enemy.hopVelocity.z;
+            enemy.position.x += enemy.hopVelocity.x * tuningMult;
+            enemy.position.z += enemy.hopVelocity.z * tuningMult;
             enemy.velocityY = enemy.hopVelocity.y;
             enemy.hopVelocity.y -= 0.02; // Gravity
             
