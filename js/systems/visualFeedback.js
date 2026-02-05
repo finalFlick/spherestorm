@@ -2822,6 +2822,115 @@ export function updateChargeTrailSegment(trail) {
     return false;
 }
 
+// ==================== DASH STRIKE IMPACT VFX ====================
+// Used by: player.js (dash strike completion)
+
+/**
+ * Creates impact shockwave VFX when player completes dash strike
+ * @param {THREE.Vector3} position - Impact position
+ * @param {number} color - Impact color
+ * @returns {THREE.Group} The impact VFX group
+ */
+export function createDashStrikeImpactVFX(position, color = 0x00ffff) {
+    const group = new THREE.Group();
+    group.position.copy(position);
+    group.position.y = 0.2;
+    
+    // Expanding shockwave ring
+    const ringGeom = getRingGeometry(0.5, 1.2, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 1.0,
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.name = 'impactRing';
+    group.add(ring);
+    
+    // Inner flash circle
+    const flashGeom = getCircleGeometry(2, 32);
+    const flashMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+    });
+    const flash = new THREE.Mesh(flashGeom, flashMat);
+    flash.rotation.x = -Math.PI / 2;
+    flash.name = 'impactFlash';
+    group.add(flash);
+    
+    // Radial burst lines (8 spokes) - geometries cached to avoid per-impact allocation
+    const spokeCount = 8;
+    for (let i = 0; i < spokeCount; i++) {
+        const angle = (i / spokeCount) * Math.PI * 2;
+        const lineGeom = getCachedGeometry(`dashSpoke_${i}`, () => {
+            const g = new THREE.BufferGeometry();
+            g.setFromPoints([
+                new THREE.Vector3(0, 0.1, 0),
+                new THREE.Vector3(Math.cos(angle) * 3, 0.1, Math.sin(angle) * 3)
+            ]);
+            return g;
+        });
+        const lineMat = new THREE.LineBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.8
+        });
+        const line = new THREE.Line(lineGeom, lineMat);
+        line.name = `spoke_${i}`;
+        group.add(line);
+    }
+    
+    group.userData.frameAge = 0;
+    group.userData.durationFrames = 30; // 0.5 seconds at 60fps (frame-based for slow-mo safety)
+    
+    scene.add(group);
+    return group;
+}
+
+/**
+ * Updates dash strike impact VFX (expand and fade)
+ * @param {THREE.Group} vfx - The impact VFX group
+ * @returns {boolean} true if VFX should be removed
+ */
+export function updateDashStrikeImpactVFX(vfx) {
+    if (!vfx || !vfx.userData) return true;
+    
+    vfx.userData.frameAge++;
+    if (vfx.userData.frameAge > vfx.userData.durationFrames) return true;
+    
+    const progress = vfx.userData.frameAge / vfx.userData.durationFrames;
+    
+    // Expand ring
+    const ring = vfx.children.find(c => c.name === 'impactRing');
+    if (ring) {
+        const scale = 1 + progress * 3;
+        ring.scale.setScalar(scale);
+        ring.material.opacity = 1.0 - progress;
+    }
+    
+    // Fade flash
+    const flash = vfx.children.find(c => c.name === 'impactFlash');
+    if (flash) {
+        flash.material.opacity = 0.8 * (1 - progress);
+    }
+    
+    // Extend and fade spokes
+    for (let i = 0; i < 8; i++) {
+        const spoke = vfx.children.find(c => c.name === `spoke_${i}`);
+        if (spoke) {
+            const scale = 1 + progress * 2;
+            spoke.scale.setScalar(scale);
+            spoke.material.opacity = 0.8 * (1 - progress);
+        }
+    }
+    
+    return false;
+}
+
 // ==================== WALL IMPACT VFX ====================
 
 /**

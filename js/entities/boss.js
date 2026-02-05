@@ -650,6 +650,11 @@ export function initiateRetreat(boss) {
         gameState.arena1ChaseState.persistentBossHealth = boss.health;
     }
     
+    // Arena 1 chase tutorial: explain the multi-encounter structure on first retreat
+    if (gameState.currentArena === 1 && gameState.arena1ChaseState?.enabled) {
+        showTutorialCallout('bossChase', 'The King will return after more waves!', 2600);
+    }
+    
     // Visual feedback - phase cleared banner
     const phaseNum = boss.phase;
     showPhaseAnnouncement(phaseNum, 'PHASE CLEARED!');

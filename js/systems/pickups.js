@@ -8,6 +8,7 @@ import { levelUp } from '../ui/menus.js';
 import { triggerSlowMo, triggerScreenFlash } from './visualFeedback.js';
 import { incrementModuleCounter, tryLevelUpModule, getModuleLevel, isModuleUnlocked } from './moduleProgress.js';
 import { showModuleUnlockBanner } from '../ui/hud.js';
+import { PulseMusic } from './pulseMusic.js';
 
 // Get the surface height at a given X/Z position (checks platforms/obstacles)
 function getSurfaceHeight(x, z) {
@@ -121,6 +122,7 @@ export function updateXpGems(delta) {
         if (dist < 1) {
             gameState.xp += gem.value;
             spawnParticle(gem.position, 0x44ff44, 5);
+            PulseMusic.onXpPickup();
             
             gem.geometry.dispose();
             gem.material.dispose();

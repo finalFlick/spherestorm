@@ -58,6 +58,13 @@
         .secondary-btn:hover { border-color: #ffdd44; color: #ffdd44; }
         .controls-info { margin-top: 20px; text-align: center; color: #666; font-size: 14px; }
         .controls-info span { display: inline-block; background: #333; padding: 5px 12px; border-radius: 5px; margin: 3px; }
+
+        /* Audio Controls (cloned into start + pause menus from a single template) */
+        .audio-controls { margin-top: 15px; padding: 10px 15px; background: rgba(0, 0, 0, 0.5); border-radius: 8px; width: min(520px, 90vw); }
+        .audio-slider-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+        .audio-slider-row label { color: #888; font-size: 12px; min-width: 60px; text-transform: uppercase; letter-spacing: 1px; text-align: left; }
+        .audio-slider-row input[type="range"] { flex: 1; accent-color: #ffdd44; }
+        .audio-slider-row .vol-label { color: #ffdd44; font-size: 12px; min-width: 44px; text-align: right; }
         
         /* Mastery Panel on Start Screen */
         #mastery-panel { display: flex; gap: 10px; margin-top: 30px; flex-wrap: wrap; justify-content: center; }
@@ -100,6 +107,10 @@
         
         /* Kill Counter */
         #kill-counter { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.7); padding: 10px 30px; border-radius: 20px; color: white; font-size: 18px; z-index: 100; }
+
+        /* Dash Hint (HUD) */
+        #dash-hint { position: absolute; bottom: 20px; left: 20px; background: rgba(0, 0, 0, 0.65); padding: 8px 12px; border-radius: 10px; color: #88aaff; font-size: 14px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(68, 136, 255, 0.35); z-index: 100; pointer-events: none; }
+        #dash-hint.locked { color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.18); opacity: 0.75; }
         
         /* Damage Flash */
         #damage-flash { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 0, 0, 0.3); pointer-events: none; opacity: 0; z-index: 50; transition: opacity 0.1s ease; }
@@ -132,8 +143,16 @@
         #boss-phase.phase-2 { color: #ff8844; background: rgba(255, 136, 68, 0.3); }
         #boss-phase.phase-3 { color: #ff4444; background: rgba(255, 68, 68, 0.4); animation: phase-pulse 0.5s infinite; }
         @keyframes phase-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-        #boss-health-bar-bg { width: 100%; height: 20px; background: #333; border-radius: 10px; overflow: hidden; }
+        #boss-health-bar-bg { width: 100%; height: 20px; background: #333; border-radius: 10px; overflow: hidden; position: relative; }
         #boss-health-bar { height: 100%; background: linear-gradient(90deg, #ff2222, #ff6644); transition: width 0.3s ease; width: 100%; }
+        #boss-health-text { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.75); display: flex; justify-content: space-between; }
+        #boss-health-text.dimmed { color: rgba(255,255,255,0.55); }
+        .boss-phase-marker { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255, 255, 255, 0.28); box-shadow: 0 0 6px rgba(255, 255, 255, 0.18); pointer-events: none; }
+        #boss-health-container.dimmed { opacity: 0.55; border-color: rgba(200,200,200,0.35); }
+        #boss-health-container.dimmed #boss-name { color: rgba(255,255,255,0.7); }
+        #boss-health-container.dimmed #boss-phase { color: rgba(255,255,255,0.65); background: rgba(255,255,255,0.12); }
+        #boss-health-container.flash { animation: boss-flash 0.35s ease-out; }
+        @keyframes boss-flash { 0% { transform: translateX(-50%) scale(1.03); } 100% { transform: translateX(-50%) scale(1); } }
         #boss-shield-container { margin-top: 8px; display: none; }
         #boss-shield-bar-bg { width: 100%; height: 8px; background: #222; border-radius: 4px; overflow: hidden; }
         #boss-shield-bar { height: 100%; background: linear-gradient(90deg, #4488ff, #66aaff); transition: width 0.3s ease; width: 100%; }
@@ -238,6 +257,32 @@
         .debug-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         #close-debug { margin-top: 20px; padding: 15px 40px; font-size: 18px; background: transparent; border: 2px solid #666; border-radius: 10px; cursor: pointer; color: white; transition: all 0.3s ease; }
         #close-debug:hover { border-color: #ffdd44; color: #ffdd44; }
+        
+        /* Balance Tuner (inside debug menu) */
+        #debug-balance { width: 100%; max-width: 800px; }
+        .balance-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+        .balance-tab { padding: 6px 14px; font-size: 13px; background: transparent; border: 1px solid #555; border-radius: 6px; cursor: pointer; color: #888; transition: all 0.2s ease; }
+        .balance-tab:hover { border-color: #888; color: #ccc; }
+        .balance-tab.active { border-color: #ffdd44; color: #ffdd44; background: rgba(255,221,68,0.08); }
+        .balance-category { display: none; }
+        .balance-category.active { display: block; }
+        .balance-param-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.02); }
+        .balance-param-row:hover { background: rgba(255,255,255,0.05); }
+        .balance-param-label { flex: 0 0 200px; font-size: 13px; color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .balance-param-slider { flex: 1; -webkit-appearance: none; appearance: none; height: 6px; background: #333; border-radius: 3px; outline: none; }
+        .balance-param-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #ffdd44; cursor: pointer; }
+        .balance-param-value { flex: 0 0 70px; text-align: right; }
+        .balance-param-value input { width: 64px; padding: 3px 6px; font-size: 13px; background: #222; border: 1px solid #444; border-radius: 4px; color: #fff; text-align: right; }
+        .balance-param-value input:focus { border-color: #ffdd44; outline: none; }
+        .balance-param-reset { flex: 0 0 20px; cursor: pointer; color: #666; font-size: 14px; text-align: center; line-height: 1; transition: color 0.2s; }
+        .balance-param-reset:hover { color: #ff8844; }
+        .balance-param-reset.has-override { color: #ff8844; }
+        .balance-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+        .balance-toolbar .debug-btn { font-size: 12px; padding: 6px 14px; }
+        .balance-import-area { display: none; margin-top: 10px; }
+        .balance-import-area textarea { width: 100%; min-height: 80px; padding: 8px; font-size: 12px; font-family: monospace; background: #111; border: 1px solid #444; border-radius: 6px; color: #ccc; resize: vertical; }
+        .balance-import-area textarea:focus { border-color: #ffdd44; outline: none; }
+        .balance-override-count { font-size: 12px; color: #888; margin-left: auto; line-height: 32px; }
         
         /* Character Roster Screen */
         #roster-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.95); display: none; flex-direction: column; align-items: center; z-index: 350; color: white; padding: 40px 20px; overflow-y: auto; }
@@ -426,6 +471,7 @@
         
         <div id="crosshair"></div>
         <div id="kill-counter">Kills: <span id="kills">0</span></div>
+        <div id="dash-hint" class="locked">SHIFT: DASH (LOCKED)</div>
         
         <!-- Announcements -->
         <div id="wave-announcement">
@@ -444,6 +490,7 @@
                 <div id="boss-phase">PHASE I</div>
             </div>
             <div id="boss-health-bar-bg"><div id="boss-health-bar"></div></div>
+            <div id="boss-health-text"><span id="boss-health-hp">0</span><span id="boss-health-max">0</span></div>
             <div id="boss-shield-container">
                 <div id="boss-shield-bar-bg"><div id="boss-shield-bar"></div></div>
                 <div id="boss-shield-label">
@@ -470,7 +517,7 @@
         </div>
         
         <!-- Menus -->
-        <div id="pause-indicator">PAUSED<p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button><button id="pause-feedback-btn">Feedback</button><button id="pause-debug-btn">Debug</button><button id="pause-main-menu-btn">Main Menu</button></div>
+        <div id="pause-indicator">PAUSED<p id="pause-music-status">Music: ON</p><p>Click anywhere to resume</p><button id="pause-roster-btn">View Roster</button><button id="pause-feedback-btn">Feedback</button><button id="pause-debug-btn">Debug</button><button id="pause-main-menu-btn">Main Menu</button></div>
         
         <div id="upgrade-menu">
             <h2>LEVEL UP!</h2>
@@ -605,6 +652,13 @@
                 </div>
             </div>
             
+            <div class="debug-section">
+                <h3>Balance Tuning</h3>
+                <div id="debug-balance">
+                    <!-- Populated dynamically by balanceTunerUI.js -->
+                </div>
+            </div>
+            
             <button id="close-debug">Close</button>
         </div>
         
@@ -635,7 +689,7 @@
         <div id="feedback-overlay">
             <div class="feedback-container">
                 <div class="feedback-title">Thanks for Playing!</div>
-                <div class="feedback-version" id="feedback-version">v0.2.4</div>
+                <div class="feedback-version" id="feedback-version">v0.2.4 (dev)</div>
                 
                 <div class="feedback-question">
                     <label class="feedback-question-label">1. How fun was this session?</label>
@@ -759,14 +813,29 @@
                 <div class="controls-info">
                     <div><span>WASD</span> Move <span>SPACE</span> Jump <span>SHIFT</span> Dash</div>
                     <div><span>MOUSE</span> Look around <span>CLICK</span> Lock cursor</div>
-                    <div style="margin-top: 15px;"><span>M</span> Toggle Music</div>
+                    <div style="margin-top: 15px;"><span>M</span> <span id="music-status">Music: ON</span></div>
                 </div>
             </div>
         </div>
     </div>
+
+    <template id="audio-controls-template">
+        <div class="audio-controls">
+            <div class="audio-slider-row">
+                <label>Master</label>
+                <input type="range" class="vol-slider" data-vol="master" min="0" max="100" value="60">
+                <span class="vol-label">60%</span>
+            </div>
+            <div class="audio-slider-row">
+                <label>Music</label>
+                <input type="range" class="vol-slider" data-vol="music" min="0" max="100" value="50">
+                <span class="vol-label">50%</span>
+            </div>
+        </div>
+    </template>
     
     <!-- Global Version Display - always visible -->
-    <div id="version-display">v0.2.4</div>
+    <div id="version-display">v0.2.4 (dev)</div>
     
     <!-- Three.js from CDN with SRI hash for supply-chain security -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js" 
@@ -784,7 +853,13 @@
     
     <!-- loglevel for debug logging (1.4KB) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/loglevel/1.9.2/loglevel.min.js"></script>
-    
-    <script type="module" src="dist/bundle.js?v=0.2.3"></script>
+
+    <!-- Runtime config: local dev reads from dist/manta-config.js (gitignored, written by build.cjs) -->
+    <script src="dist/manta-config.js"></script>
+    <!-- Docker runtime config (start.sh injects between these markers at container startup) -->
+    <!-- MANTA_CONFIG_START -->
+    <!-- MANTA_CONFIG_END -->
+
+    <script type="module" src="dist/bundle.js?v=0.2.4"></script>
 </body>
 </html>

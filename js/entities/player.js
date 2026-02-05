@@ -6,21 +6,26 @@ import { PLAYER_JUMP_VELOCITY, PLAYER_GRAVITY, BOUNCE_FACTORS, TRAIL_SPAWN_DISTA
 import { spawnParticle } from '../effects/particles.js';
 import { spawnTrail, lastTrailPos, setLastTrailPos } from '../effects/trail.js';
 import { takeDamage } from '../systems/damage.js';
-import { triggerSlowMo, triggerScreenFlash } from '../systems/visualFeedback.js';
+import { triggerSlowMo, triggerScreenFlash, createChargeTrailSegment, updateChargeTrailSegment, cleanupVFX, createDashStrikeImpactVFX, updateDashStrikeImpactVFX, createChargePathMarker, updateChargePathMarker } from '../systems/visualFeedback.js';
 import { getLastShot, getFireRate } from '../systems/projectiles.js';
 import { safeFlashMaterial } from '../systems/materialUtils.js';
+import { PulseMusic } from '../systems/pulseMusic.js';
 
 export let player = null;
-export let isDashing = false;
-let dashCooldownFrames = 0;  // Frame-based cooldown (60 frames = 1 second)
-let dashActiveFrames = 0;     // Frame counter for dash duration
-const dashDirection = new THREE.Vector3();
 
 // Dash Strike state (active ability from Boss 1 module)
+let isDashStrikeWindingUp = false;  // Wind-up phase (showing telegraph)
+let dashStrikeWindupTimer = 0;       // Frame counter for wind-up
+let dashStrikePathMarker = null;     // Visual telegraph marker
+let dashStrikeDirection = new THREE.Vector3();  // Locked direction
 let isDashStriking = false;
 let dashStrikeStartPos = new THREE.Vector3();
 let dashStrikeTargetPos = new THREE.Vector3();
 let dashStrikeProgress = 0;
+let dashStrikeTrails = [];  // VFX trails left during dash strike
+let lastDashTrailPos = new THREE.Vector3();
+let dashStrikeImpactVFX = null;  // Impact shockwave VFX at destination
+let dashHitEnemies = new Set();  // Track enemies hit during current dash (prevents double-hits)
 
 // Lean animation state
 let currentLeanX = 0;  // forward/back lean (W/S)
@@ -285,28 +290,49 @@ export function updatePlayer(delta) {
     if (gameState.dashStrikeCooldownTimer > 0) {
         gameState.dashStrikeCooldownTimer--;
     }
-    if (dashCooldownFrames > 0) {
-        dashCooldownFrames--;
-    }
     
-    // Check for dash/Dash Strike input
+    // Check for Dash Strike input (only available after Boss 1 module unlock)
     if ((keys['ShiftLeft'] || keys['ShiftRight']) && moveDir.length() > 0) {
-        // If Dash Strike is enabled and off cooldown, use it
+        // Dash Strike only available after unlocking Boss 1 module
         if (gameState.dashStrikeEnabled && gameState.dashStrikeCooldownTimer <= 0) {
-            startDashStrike(moveDir);
-        }
-        // Otherwise, regular dash (if available) - 60 frame cooldown (1 second)
-        else if (!gameState.dashStrikeEnabled && dashCooldownFrames <= 0) {
-            isDashing = true;
-            dashCooldownFrames = 60;  // 1 second cooldown
-            dashActiveFrames = 0;     // Reset dash duration counter
-            dashDirection.copy(moveDir);
+            // Only start wind-up if not already winding up or dashing
+            if (!isDashStrikeWindingUp && !isDashStriking) {
+                startDashStrikeWindup(moveDir);
+            }
         }
     }
     
     const oldX = player.position.x;
     const oldZ = player.position.z;
     const oldY = player.position.y;
+    
+    // Handle Dash Strike wind-up phase
+    if (isDashStrikeWindingUp) {
+        dashStrikeWindupTimer++;
+        
+        const WINDUP_DURATION = 30;  // 0.5 seconds at 60fps
+        
+        // Update telegraph marker animation
+        if (dashStrikePathMarker) {
+            updateChargePathMarker(
+                dashStrikePathMarker,
+                dashStrikeWindupTimer / WINDUP_DURATION
+            );
+        }
+        
+        // Lock-in moment (last 6 frames) - visual flash
+        if (dashStrikeWindupTimer === WINDUP_DURATION - 6) {
+            triggerScreenFlash(0x00ffff, 0.2);
+            triggerSlowMo(15, 0.5);
+        }
+        
+        // Wind-up complete - execute dash
+        if (dashStrikeWindupTimer >= WINDUP_DURATION) {
+            executeDashStrike();
+        }
+        
+        // Player can still move during wind-up (falls through to normal movement below)
+    }
     
     // Handle Dash Strike movement
     if (isDashStriking) {
@@ -319,21 +345,61 @@ export function updatePlayer(delta) {
             // Interpolate position
             player.position.lerpVectors(dashStrikeStartPos, dashStrikeTargetPos, dashStrikeProgress);
             
-            // Trail particles during dash
-            if (Math.random() > 0.5) {
-                spawnParticle(player.position.clone(), 0x00ffff, 2);
+            // Damage enemies along dash path
+            const dashDamage = (gameState.dashStrikeConfig?.damage || 15) * 0.5;  // Half damage during dash
+            const dashRadius = 2.0;
+            
+            for (const enemy of enemies) {
+                if (enemy.isDying) continue;
+                
+                const dist = enemy.position.distanceTo(player.position);
+                if (dist < dashRadius) {
+                    // Only damage each enemy once per dash (track hit enemies)
+                    if (!dashHitEnemies.has(enemy)) {
+                        enemy.health -= dashDamage;
+                        dashHitEnemies.add(enemy);
+                        
+                        spawnParticle(enemy.position.clone(), 0x00ffff, 3);
+                        
+                        if (enemy.baseMaterial) {
+                            safeFlashMaterial(
+                                enemy.baseMaterial,
+                                enemy,
+                                0x00ffff,
+                                enemy.baseColor || 0xff4444,
+                                0.3,
+                                50
+                            );
+                        }
+                    }
+                }
+            }
+            
+            // VFX: Ground trail segments (like boss charge trail)
+            const distFromLastTrail = player.position.distanceTo(lastDashTrailPos);
+            if (distFromLastTrail > 1.5 || lastDashTrailPos.length() === 0) {
+                const trail = createChargeTrailSegment(player.position.clone(), 0x00ffff, 1.5);
+                dashStrikeTrails.push(trail);
+                lastDashTrailPos.copy(player.position);
+            }
+            
+            // VFX: Directional particle trail behind player (like boss bubbles)
+            const dashDir = tempVec3.subVectors(dashStrikeTargetPos, dashStrikeStartPos).normalize();
+            const behindOffset = dashDir.clone().multiplyScalar(-0.8);
+            behindOffset.y += 0.3;
+            const trailPos = player.position.clone().add(behindOffset);
+            
+            // Spawn 2-3 particles per frame trailing behind
+            for (let i = 0; i < 2; i++) {
+                const particlePos = trailPos.clone();
+                particlePos.x += (Math.random() - 0.5) * 0.5;
+                particlePos.z += (Math.random() - 0.5) * 0.5;
+                spawnParticle(particlePos, 0x00ffff, 1);
             }
         }
     }
-    // Handle regular dash (frame-based duration: 12 frames = ~200ms)
-    else if (isDashing) {
-        dashActiveFrames++;
-        if (dashActiveFrames < 12) {
-            player.position.add(dashDirection.clone().multiplyScalar(0.5));
-        } else {
-            isDashing = false;
-        }
-    } else if (moveDir.length() > 0) {
+    // Normal movement (when not dashing)
+    else if (moveDir.length() > 0) {
         player.position.add(moveDir.multiplyScalar(gameState.stats.moveSpeed));
     }
     
@@ -474,7 +540,7 @@ export function updatePlayer(delta) {
     player.position.z = Math.max(-45, Math.min(45, player.position.z));
     
     // Enhanced trail
-    const isMoving = moveDir.length() > 0 || isDashing;
+    const isMoving = moveDir.length() > 0 || isDashStriking;
     const currentLastTrailPos = lastTrailPos;
     if (isMoving && player.isGrounded && 
         (!currentLastTrailPos || player.position.distanceTo(currentLastTrailPos) > TRAIL_SPAWN_DISTANCE)) {
@@ -616,6 +682,26 @@ export function updatePlayer(delta) {
         }
     }
     
+    // Update Dash Strike VFX
+    // Update ground trails
+    for (let i = dashStrikeTrails.length - 1; i >= 0; i--) {
+        const trail = dashStrikeTrails[i];
+        const shouldRemove = updateChargeTrailSegment(trail);
+        if (shouldRemove) {
+            cleanupVFX(trail);
+            dashStrikeTrails.splice(i, 1);
+        }
+    }
+    
+    // Update impact VFX
+    if (dashStrikeImpactVFX) {
+        const shouldRemove = updateDashStrikeImpactVFX(dashStrikeImpactVFX);
+        if (shouldRemove) {
+            cleanupVFX(dashStrikeImpactVFX);
+            dashStrikeImpactVFX = null;
+        }
+    }
+    
     // Camera follow
     camera.position.x = player.position.x + Math.sin(cameraAngleX) * 8;
     camera.position.z = player.position.z + Math.cos(cameraAngleX) * 8;
@@ -664,13 +750,32 @@ export function resetPlayer() {
             }
         }
     }
-    isDashing = false;
+    // Reset dash strike state
+    isDashStrikeWindingUp = false;
+    dashStrikeWindupTimer = 0;
     isDashStriking = false;
     dashStrikeProgress = 0;
-    dashCooldownFrames = 0;
-    dashActiveFrames = 0;
     currentLeanX = 0;
     currentLeanZ = 0;
+    
+    // Clean up dash strike VFX
+    if (dashStrikePathMarker) {
+        cleanupVFX(dashStrikePathMarker);
+        dashStrikePathMarker = null;
+    }
+    
+    for (const trail of dashStrikeTrails) {
+        cleanupVFX(trail);
+    }
+    dashStrikeTrails.length = 0;
+    lastDashTrailPos.set(0, 0, 0);
+    
+    if (dashStrikeImpactVFX) {
+        cleanupVFX(dashStrikeImpactVFX);
+        dashStrikeImpactVFX = null;
+    }
+    
+    dashHitEnemies.clear();
 }
 
 export function getPlayer() {
@@ -681,36 +786,62 @@ export function getPlayer() {
 // Active ability from Boss 1 module - dash forward and deal AoE damage
 
 /**
- * Start a Dash Strike in the given direction
+ * Start Dash Strike wind-up phase (shows telegraph)
  */
-function startDashStrike(direction) {
+function startDashStrikeWindup(direction) {
     if (!gameState.dashStrikeConfig) return;
     
-    isDashStriking = true;
-    dashStrikeProgress = 0;
+    isDashStrikeWindingUp = true;
+    dashStrikeWindupTimer = 0;
     
-    // Store start position
+    // Lock direction on Shift press
+    dashStrikeDirection.copy(direction).normalize();
+    
+    // Calculate dash path
+    const distance = gameState.dashStrikeConfig.distance || 16;
     dashStrikeStartPos.copy(player.position);
-    
-    // Calculate target position based on dash distance
-    const distance = gameState.dashStrikeConfig.distance || 8;
     dashStrikeTargetPos.copy(player.position);
-    // Direction is already normalized from getWorldDirection
-    dashStrikeTargetPos.add(tempVec3_4.copy(direction).multiplyScalar(distance));
+    dashStrikeTargetPos.add(dashStrikeDirection.clone().multiplyScalar(distance));
     
     // Clamp to arena bounds
     dashStrikeTargetPos.x = Math.max(-42, Math.min(42, dashStrikeTargetPos.x));
     dashStrikeTargetPos.z = Math.max(-42, Math.min(42, dashStrikeTargetPos.z));
     
-    // Set cooldown (frames)
-    gameState.dashStrikeCooldownTimer = gameState.dashStrikeConfig.cooldown || 300;
+    // Create telegraph marker (cyan charge path)
+    dashStrikePathMarker = createChargePathMarker(
+        player.position,
+        dashStrikeDirection.clone(),
+        distance
+    );
     
-    // Visual feedback
-    triggerScreenFlash(0x00ffff, 0.2);
-    triggerSlowMo(15, 0.5);  // Brief slow-mo at start
+    // Audio feedback
+    PulseMusic.onBossChargeWindup();
     
-    // Spawn trail particles at start
+    // Visual particles at start
     spawnParticle(player.position.clone(), 0x00ffff, 8);
+}
+
+/**
+ * Execute the Dash Strike (called after wind-up completes)
+ */
+function executeDashStrike() {
+    // Clean up wind-up state
+    isDashStrikeWindingUp = false;
+    if (dashStrikePathMarker) {
+        cleanupVFX(dashStrikePathMarker);
+        dashStrikePathMarker = null;
+    }
+    
+    // Start actual dash movement
+    isDashStriking = true;
+    dashStrikeProgress = 0;
+    lastDashTrailPos.set(0, 0, 0);
+    
+    // Reset hit tracking for this dash
+    dashHitEnemies.clear();
+    
+    // Set cooldown
+    gameState.dashStrikeCooldownTimer = gameState.dashStrikeConfig.cooldown || 300;
 }
 
 /**
@@ -753,7 +884,10 @@ function completeDashStrike() {
         }
     }
     
-    // Impact VFX
+    // VFX: Impact shockwave ring at destination
+    dashStrikeImpactVFX = createDashStrikeImpactVFX(player.position.clone(), 0x00ffff);
+    
+    // VFX: Impact particles
     spawnParticle(player.position.clone(), 0x00ffff, 12);
     
     // Extra feedback if we hit something

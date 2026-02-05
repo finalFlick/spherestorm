@@ -417,20 +417,21 @@ function addPlatformHeightIndicators(arenaNum) {
 
 // Arena 1 landmarks - visual-only orientation aids
 function addArena1Landmarks() {
-    // Central ring marker - orientation anchor
-    const centerRing = new THREE.Mesh(
-        new THREE.RingGeometry(8, 10, 32),
+    // Center reset pad marker (visual-only) - psychological "home base" anchor
+    // Matches Arena 1 plan: radius 12, subtle blue tint, slightly above ground to avoid z-fighting
+    const resetPad = new THREE.Mesh(
+        new THREE.CircleGeometry(12, 32),
         new THREE.MeshBasicMaterial({
             color: 0x3a3a5a,
             transparent: true,
-            opacity: 0.3,
+            opacity: 0.2,
             side: THREE.DoubleSide
         })
     );
-    centerRing.rotation.x = -Math.PI / 2;
-    centerRing.position.y = 0.01;
-    scene.add(centerRing);
-    arenaLandmarks.push(centerRing);
+    resetPad.rotation.x = -Math.PI / 2;
+    resetPad.position.y = 0.02;
+    scene.add(resetPad);
+    arenaLandmarks.push(resetPad);
     
     // Cardinal direction lines - subtle orientation guides
     const lineMat = new THREE.MeshBasicMaterial({

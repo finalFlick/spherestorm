@@ -6,7 +6,12 @@
 import { ARENA_CONFIG } from '../config/arenas.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { BOSS_CONFIG } from '../config/bosses.js';
-import { DEBUG } from '../config/constants.js';
+import { DEBUG, STORAGE_PREFIX } from '../config/constants.js';
+import { log } from './debugLog.js';
+
+const MUSIC_ENABLED_KEY = STORAGE_PREFIX + 'music_enabled';
+const MASTER_VOL_KEY = STORAGE_PREFIX + 'volume_master';
+const MUSIC_VOL_KEY = STORAGE_PREFIX + 'volume_music';
 
 export const PulseMusic = {
     // Audio context and nodes
@@ -47,6 +52,30 @@ export const PulseMusic = {
     lastLayerChange: 0,
     lastIntensityChange: 0,
     lastShieldHit: 0,
+    lastIntensityBucket: null,
+    lastBossPhaseLogged: 0,
+    lastXpPickupTime: -999,
+
+    // Volume (init-safe: stored even before audio context exists)
+    desiredMasterVol: 0.6,
+    desiredMusicVol: 0.5,
+
+    _safeGetStorageItem(key) {
+        try {
+            return localStorage.getItem(key);
+        } catch (e) {
+            return null;
+        }
+    },
+
+    _safeSetStorageItem(key, value) {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+            if (DEBUG) console.warn('[PulseMusic] Storage write failed (privacy mode?):', e.message);
+            // ignore (privacy mode / disabled storage)
+        }
+    },
     
     // Helper: Check if system is ready (reduces duplication)
     _checkReady() {
@@ -118,6 +147,26 @@ export const PulseMusic = {
             
             // Generate profiles from game config
             this.generateAllProfiles();
+
+            // Load persisted settings (safe even if localStorage is unavailable)
+            const savedEnabled = this._safeGetStorageItem(MUSIC_ENABLED_KEY);
+            if (savedEnabled !== null) {
+                try {
+                    this.enabled = JSON.parse(savedEnabled);
+                } catch (e) {
+                    // ignore
+                }
+            }
+            const savedMaster = this._safeGetStorageItem(MASTER_VOL_KEY);
+            if (savedMaster !== null && !Number.isNaN(parseFloat(savedMaster))) {
+                this.desiredMasterVol = Math.max(0, Math.min(1, parseFloat(savedMaster)));
+            }
+            const savedMusic = this._safeGetStorageItem(MUSIC_VOL_KEY);
+            if (savedMusic !== null && !Number.isNaN(parseFloat(savedMusic))) {
+                this.desiredMusicVol = Math.max(0, Math.min(1, parseFloat(savedMusic)));
+            }
+
+            this._applyVolumes();
             
             this.initialized = true;
             if (DEBUG) console.log('[PulseMusic] Initialized with', Object.keys(this.arenaProfiles).length, 'arena profiles');
@@ -131,6 +180,19 @@ export const PulseMusic = {
         if (this.ctx && this.ctx.state === 'suspended') {
             this.ctx.resume();
         }
+        this._applyVolumes();
+    },
+
+    _applyVolumes() {
+        if (!this.ctx || !this.masterGain || !this.musicBus) return;
+
+        const t = this.ctx.currentTime;
+        const master = Math.max(0, Math.min(1, this.desiredMasterVol));
+        const music = Math.max(0, Math.min(1, this.desiredMusicVol));
+
+        // Smooth changes to avoid clicks
+        this.masterGain.gain.setTargetAtTime(master, t, 0.02);
+        this.musicBus.gain.setTargetAtTime(music, t, 0.02);
     },
     
     // ============================================================================
@@ -307,6 +369,8 @@ export const PulseMusic = {
         this.intensity = 0;
         this.targetIntensity = 0;
         this.bossPhase = 0;
+        this.lastIntensityBucket = null;
+        this.lastBossPhaseLogged = 0;
         
         if (DEBUG) console.log('[PulseMusic] Loaded arena', arenaId, '-', profile.name, '- Key:', profile.rootNote, profile.scale, '- BPM:', this.bpm);
     },
@@ -321,6 +385,15 @@ export const PulseMusic = {
         this.stopMusicLoop();
         this.nextBarTime = this.ctx.currentTime + 0.1;
         this.musicLoopId = setInterval(() => this.musicTick(), 50);
+        if (this.currentProfile) {
+            log('MUSIC', 'loop_started', {
+                arena: this.currentArenaId,
+                profile: this.currentProfile.name,
+                bpm: this.bpm
+            });
+        } else {
+            log('MUSIC', 'loop_started', { arena: this.currentArenaId });
+        }
         if (DEBUG) console.log('[PulseMusic] Music loop started');
     },
     
@@ -710,11 +783,24 @@ export const PulseMusic = {
     
     playEnemySound(enemy, event) {
         if (!this._checkReady()) return;
-        
-        const profile = this.enemySfxProfiles[enemy.typeName] || this.enemySfxProfiles['grunt'];
-        if (!profile) return;
-        
+
+        // Rate limiting: global per event, plus per-enemy for attacks.
         const now = this.ctx.currentTime;
+        const GLOBAL_COOLDOWNS = { spawn: 0.08, death: 0.06, attack: 0.10 };
+        const globalKey = '_lastSfx_' + event;
+        const globalCd = GLOBAL_COOLDOWNS[event] || 0;
+        if (globalCd > 0 && this[globalKey] && (now - this[globalKey]) < globalCd) return;
+        this[globalKey] = now;
+
+        if (event === 'attack') {
+            if (enemy && enemy._lastAttackSfx && (now - enemy._lastAttackSfx) < 0.25) return;
+            if (enemy) enemy._lastAttackSfx = now;
+        }
+
+        const type = (enemy && (enemy.enemyType || enemy.typeName || enemy.type)) || 'grunt';
+        const profile = this.enemySfxProfiles[type] || this.enemySfxProfiles['grunt'];
+        if (!profile) return;
+
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         
@@ -724,7 +810,7 @@ export const PulseMusic = {
             osc.type = profile.waveform;
             osc.frequency.setValueAtTime(this.midiToFreq(baseNote + 12), now);
             osc.frequency.exponentialRampToValueAtTime(this.midiToFreq(baseNote), now + 0.2);
-            gain.gain.setValueAtTime(profile.baseVolume * 0.3, now);
+            gain.gain.setValueAtTime(profile.baseVolume * 0.15, now);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
         } else if (event === 'death') {
             osc.type = 'sawtooth';
@@ -913,6 +999,23 @@ export const PulseMusic = {
         
         this.harmonicTension = waveIntensity * 0.7 + (this.bossPhase > 0 ? 0.3 : 0);
         this.beatCount++;
+
+        const intensityBucket = this.getIntensityBucket(this.targetIntensity, this.bossPhase);
+        if (intensityBucket !== this.lastIntensityBucket) {
+            this.lastIntensityBucket = intensityBucket;
+            log('MUSIC', 'intensity_bucket', {
+                bucket: intensityBucket,
+                targetIntensity: Number(this.targetIntensity.toFixed(2)),
+                enemyCount,
+                wave: gameStateRef.currentWave,
+                bossPhase: this.bossPhase
+            });
+        }
+
+        if (this.bossPhase !== this.lastBossPhaseLogged) {
+            this.lastBossPhaseLogged = this.bossPhase;
+            log('MUSIC', 'boss_phase', { phase: this.bossPhase });
+        }
     },
     
     // ============================================================================
@@ -921,9 +1024,21 @@ export const PulseMusic = {
     
     onArenaChange(arenaId) {
         this.loadArena(arenaId);
+        if (this.currentProfile) {
+            log('MUSIC', 'arena_change', {
+                arena: arenaId,
+                profile: this.currentProfile.name,
+                key: this.currentProfile.rootNote,
+                scale: this.currentProfile.scale,
+                bpm: this.bpm
+            });
+        } else {
+            log('MUSIC', 'arena_change', { arena: arenaId });
+        }
     },
     
     onWaveStart(waveNum) {
+        log('MUSIC', 'wave_start', { wave: waveNum, arena: this.currentArenaId });
         this.playWaveStinger();
     },
     
@@ -937,6 +1052,7 @@ export const PulseMusic = {
     
     onBossStart(arenaId) {
         this.bossPhase = 1;
+        log('MUSIC', 'boss_start', { arena: arenaId });
         this.playBossStinger();
     },
     
@@ -1221,6 +1337,47 @@ export const PulseMusic = {
     
     onLevelUp() {
         this.playLevelUpStinger();
+    },
+
+    onXpPickup() {
+        if (!this._checkReady()) return;
+
+        const now = this.ctx.currentTime;
+        if (now - this.lastXpPickupTime < 0.05) return;
+        this.lastXpPickupTime = now;
+
+        const profile = this.currentProfile;
+        const notes = [0, 2, 4].map(interval => profile.rootMidi + 12 + profile.scaleIntervals[interval % profile.scaleIntervals.length]);
+        let time = now;
+
+        notes.forEach((note) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(this.midiToFreq(note), time);
+
+            gain.gain.setValueAtTime(0.12, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.18);
+
+            osc.connect(gain);
+            gain.connect(this.sfxBus);
+            osc.start(time);
+            osc.stop(time + 0.2);
+            osc.endTime = time + 0.2;
+            this.activeOscillators.push(osc);
+
+            time += 0.04;
+        });
+    },
+
+    getIntensityBucket(intensity, bossPhase) {
+        if (bossPhase > 0) return 'boss';
+        if (intensity > 0.7) return 'arp';
+        if (intensity > 0.5) return 'melody';
+        if (intensity > 0.3) return 'chords';
+        if (intensity > 0.1) return 'bass';
+        return 'idle';
     },
     
     onGameOver() {
@@ -1573,6 +1730,31 @@ export const PulseMusic = {
         clickOsc.endTime = now + 0.1;
         this.activeOscillators.push(clickOsc);
     },
+
+    onMinionKill() {
+        if (!this._checkReady()) return;
+
+        const now = this.ctx.currentTime;
+        const profile = this.currentProfile;
+        const root = profile.rootMidi + 12;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(this.midiToFreq(root + 7), now);
+        osc.frequency.exponentialRampToValueAtTime(this.midiToFreq(root), now + 0.08);
+
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+        osc.connect(gain);
+        gain.connect(this.sfxBus);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        osc.endTime = now + 0.15;
+        this.activeOscillators.push(osc);
+    },
     
     // Final boss victory fanfare - triumphant ascending chord progression
     onFinalBossVictory() {
@@ -1679,6 +1861,37 @@ export const PulseMusic = {
         gain.connect(this.sfxBus);
         noiseSource.start(now);
         noiseSource.stop(now + 0.22);
+    },
+
+    onTeleportReal() {
+        if (!this._checkReady()) return;
+
+        // Capture time once for both sounds to keep them in sync
+        const now = this.ctx.currentTime;
+
+        // Base appearing whoosh
+        this.onTeleport(true);
+
+        // Overlay: bright tonal shimmer so the real destination reads as distinct
+        const profile = this.currentProfile;
+        const root = profile.rootMidi + 12;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(this.midiToFreq(root + 7), now);
+        osc.frequency.setValueAtTime(this.midiToFreq(root + 12), now + 0.05);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+
+        osc.connect(gain);
+        gain.connect(this.sfxBus);
+        osc.start(now);
+        osc.stop(now + 0.2);
+        osc.endTime = now + 0.2;
+        this.activeOscillators.push(osc);
     },
     
     // ============================================================================
@@ -2073,13 +2286,28 @@ export const PulseMusic = {
     // ============================================================================
     
     setMasterVolume(vol) {
-        if (this.masterGain) {
-            this.masterGain.gain.setValueAtTime(Math.max(0, Math.min(1, vol)), this.ctx.currentTime);
-        }
+        this.desiredMasterVol = Math.max(0, Math.min(1, vol));
+        this._safeSetStorageItem(MASTER_VOL_KEY, String(this.desiredMasterVol));
+        this._applyVolumes();
+    },
+
+    setMusicVolume(vol) {
+        this.desiredMusicVol = Math.max(0, Math.min(1, vol));
+        this._safeSetStorageItem(MUSIC_VOL_KEY, String(this.desiredMusicVol));
+        this._applyVolumes();
+    },
+
+    getMasterVolume() {
+        return this.desiredMasterVol;
+    },
+
+    getMusicVolume() {
+        return this.desiredMusicVol;
     },
     
     setEnabled(enabled) {
         this.enabled = enabled;
+        this._safeSetStorageItem(MUSIC_ENABLED_KEY, JSON.stringify(enabled));
         if (!enabled) {
             this.stop();
         }

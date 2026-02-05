@@ -1,42 +1,26 @@
 // Game Identity
 export const GAME_TITLE = 'Manta Sphere';
 export const VERSION = '0.2.4';  // Semantic versioning - see VERSION file and .cursorrules
+export const COMMIT_HASH = 'dev';  // Updated by bump-version.js
 export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_';
 
-// ==================== SECURE DEBUG MODE ====================
-// Debug requires BOTH conditions (unhackable in production):
-//   1. Running on localhost/127.0.0.1
-//   2. js/config/debug.local.js file exists (gitignored)
-// To enable: copy debug.local.example.js to debug.local.js
-let DEBUG_ENABLED = false;
+// ==================== DEBUG MODE ====================
+// Debug is controlled by runtime config in index.html:
+//   window.__MANTA_CONFIG__ = { debug: boolean, playtest: { url, token } }
+//
+// Local dev: set DEBUG_MODE / PLAYTEST_URL / PLAYTEST_TOKEN in .env, then run npm run build
+// Docker: set DEBUG_MODE / PLAYTEST_URL / PLAYTEST_TOKEN as container env vars (start.sh injects at startup)
 
-// Synchronous localhost check (debug.local.js import happens async in main.js)
-function isLocalhost() {
-    if (typeof window === 'undefined') return false;
-    const host = window.location.hostname;
-    return host === 'localhost' || host === '127.0.0.1';
-}
-
-// Export function to enable debug after async import succeeds
-export function enableDebugMode() {
-    if (!isLocalhost()) return false;
-    DEBUG_ENABLED = true;
-    DEBUG_CONFIG.level = 'info';
-    DEBUG_CONFIG.tags.WAVE = true;
-    DEBUG_CONFIG.tags.SPAWN = true;
-    DEBUG_CONFIG.tags.BOSS = true;
-    DEBUG_CONFIG.tags.SCORE = true;
-    DEBUG_CONFIG.tags.STATE = true;
-    DEBUG_CONFIG.tags.SAFETY = true;
-    console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Secure debug enabled (localhost + debug.local.js)');
-    return true;
+function getRuntimeConfig() {
+    if (typeof window === 'undefined') return null;
+    return window.__MANTA_CONFIG__ || null;
 }
 
 // Debug Logging Configuration
 // Level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
 // Tags: Enable/disable logging per category
 export const DEBUG_CONFIG = {
-    level: 'silent',  // Default: off (enableDebugMode() turns on if conditions met)
+    level: 'silent',  // Default silent; enableDebugMode() sets 'info' when DEBUG is true
     tags: {
         WAVE: false,
         SPAWN: false,
@@ -44,12 +28,34 @@ export const DEBUG_CONFIG = {
         SCORE: false,
         STATE: false,
         SAFETY: false,
-        PERF: false
+        PERF: false,
+        MUSIC: false
     }
 };
 
-// Backward compatibility alias (updated dynamically by enableDebugMode)
-export const DEBUG = DEBUG_CONFIG.level !== 'silent';
+// Runtime-gated debug flag (read synchronously at module load)
+const __CFG = getRuntimeConfig();
+export let DEBUG = __CFG?.debug === true;
+
+// Playtest feedback configuration (empty strings disables the feedback system)
+export const PLAYTEST_CONFIG = {
+    url: (__CFG && __CFG.playtest && typeof __CFG.playtest.url === 'string') ? __CFG.playtest.url : '',
+    token: (__CFG && __CFG.playtest && typeof __CFG.playtest.token === 'string') ? __CFG.playtest.token : ''
+};
+
+// Enable debug at runtime (e.g., if DEBUG is true at startup, main.js calls this once)
+export function enableDebugMode() {
+    DEBUG = true;
+    DEBUG_CONFIG.level = 'info';
+    DEBUG_CONFIG.tags.WAVE = true;
+    DEBUG_CONFIG.tags.SPAWN = true;
+    DEBUG_CONFIG.tags.BOSS = true;
+    DEBUG_CONFIG.tags.SCORE = true;
+    DEBUG_CONFIG.tags.STATE = true;
+    DEBUG_CONFIG.tags.SAFETY = true;
+    console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Debug enabled');
+    return true;
+}
 
 // Game constants
 export const DAMAGE_COOLDOWN = 500;
@@ -238,10 +244,16 @@ export const SPAWN_CHOREOGRAPHY = {
     // 'random': default random spawning
     // 'lane': all enemies from one direction (edge)
     // 'pincer': enemies from two opposite edges
+    // 'flank': majority from one direction, some from perpendicular directions
+    // 'burst': spawns from any direction (high-pressure pattern)
     arena1: {
         1: 'random',  // Wave 1: learning, random spawns
         2: 'lane',    // Wave 2: lane flood from one direction
-        3: 'pincer'   // Wave 3: pincer from two directions
+        3: 'pincer',  // Wave 3: pincer from two directions
+        4: 'flank',   // Waves 4-5: flanking pressure
+        5: 'flank',
+        6: 'burst',   // Waves 6-7: burst pressure from all sides
+        7: 'burst'
     },
     // Other arenas use random by default (can be extended)
     edgeSpawnDistance: 40,   // How far from center to spawn (near arena edge)

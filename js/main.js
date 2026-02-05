@@ -3,7 +3,7 @@ import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer, camera } from './core/scene.js';
 import { initInput, resetInput, checkCutsceneSkip, cleanupInput } from './core/input.js';
 import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
-import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, GAME_TITLE, VERSION, enableDebugMode } from './config/constants.js';
+import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG, PLAYTEST_CONFIG, GAME_TITLE, VERSION, COMMIT_HASH, enableDebugMode } from './config/constants.js';
 
 import { createPlayer, updatePlayer, resetPlayer, player } from './entities/player.js';
 import { updateEnemies, clearEnemyGeometryCache } from './entities/enemies.js';
@@ -32,6 +32,7 @@ import { updateMaterialFlashes, clearMaterialFlashes } from './systems/materialU
 
 import { 
     updateUI, 
+    updateMusicStatusDisplay,
     hideStartScreen,
     showStartScreen, 
     showGameOver, 
@@ -63,6 +64,8 @@ import {
 import { showModulesScreen, hideModulesScreen } from './ui/modulesUI.js';
 import { initRosterUI } from './ui/rosterUI.js';
 import { MenuScene } from './ui/menuScene.js';
+import { applyAllBalanceOverrides } from './config/balanceRegistry.js';
+import { initBalanceTunerUI } from './ui/balanceTunerUI.js';
 import { 
     initPlaytestFeedback, 
     initFeedbackFormListeners, 
@@ -90,6 +93,71 @@ function cleanupAllListeners() {
         target.removeEventListener(event, handler, options);
     });
     eventCleanup.length = 0;
+}
+
+function syncAudioControlsUI(kind = null) {
+    const masterPct = Math.round(PulseMusic.getMasterVolume() * 100);
+    const musicPct = Math.round(PulseMusic.getMusicVolume() * 100);
+
+    function sync(kindName, pct) {
+        document.querySelectorAll(`.vol-slider[data-vol="${kindName}"]`).forEach((slider) => {
+            slider.value = String(pct);
+            const label = slider.parentElement?.querySelector('.vol-label');
+            if (label) label.textContent = `${pct}%`;
+        });
+    }
+
+    if (!kind || kind === 'master') sync('master', masterPct);
+    if (!kind || kind === 'music') sync('music', musicPct);
+}
+
+function initAudioControlsUI() {
+    const template = document.getElementById('audio-controls-template');
+    if (!template || !(template instanceof HTMLTemplateElement)) return;
+
+    const startControls = document.querySelector('#start-screen-content .controls-info');
+    const pauseIndicator = document.getElementById('pause-indicator');
+
+    function insertClone(container, beforeSelector = null) {
+        if (!container) return;
+        // Check for direct child to avoid matching nested elements
+        if (Array.from(container.children).some(el => el.classList.contains('audio-controls'))) return;
+
+        const fragment = template.content.cloneNode(true);
+        if (beforeSelector) {
+            const beforeEl = container.querySelector(beforeSelector);
+            if (beforeEl) {
+                container.insertBefore(fragment, beforeEl);
+                return;
+            }
+        }
+        container.appendChild(fragment);
+    }
+
+    insertClone(startControls);
+    insertClone(pauseIndicator, 'button');
+
+    // Initialize slider values from persisted state
+    syncAudioControlsUI();
+
+    // Single delegated listener for all sliders (both menus)
+    addTrackedListener(document, 'input', (e) => {
+        const target = e.target;
+        if (!target || !(target instanceof HTMLInputElement)) return;
+        if (!target.classList.contains('vol-slider')) return;
+
+        const pct = parseInt(target.value, 10);
+        if (Number.isNaN(pct)) return;
+
+        const kind = target.dataset.vol;
+        if (kind === 'master') {
+            PulseMusic.setMasterVolume(pct / 100);
+            syncAudioControlsUI('master');
+        } else if (kind === 'music') {
+            PulseMusic.setMusicVolume(pct / 100);
+            syncAudioControlsUI('music');
+        }
+    }, { passive: true });
 }
 
 // Helper: Clean up all game state and entities (reduces code duplication)
@@ -146,23 +214,20 @@ async function init() {
     }
     window.__mantaSphereInitialized = true;
     
-    // Try to enable secure debug mode and playtest feedback (requires localhost + debug.local.js)
-    import('/js/config/debug.local.js')
-        .then(({ DEBUG_SECRET, PLAYTEST_CONFIG }) => {
-            if (DEBUG_SECRET === true) {
-                enableDebugMode();
-                console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Enabled (debug.local.js loaded)');
-            }
-            if (PLAYTEST_CONFIG && PLAYTEST_CONFIG.url && PLAYTEST_CONFIG.token) {
-                initPlaytestFeedback(PLAYTEST_CONFIG);
-            }
-        })
-        .catch(() => {});
+    // Enable debug mode if configured in runtime config (see index.html + .env / Docker env vars)
+    if (DEBUG) {
+        enableDebugMode();
+    }
     
     // Initialize debug logger
     setGameStateRef(gameState);
     initLogger();
     log('STATE', 'init', { version: VERSION });
+
+    // Initialize playtest feedback if configured
+    if (PLAYTEST_CONFIG && PLAYTEST_CONFIG.url && PLAYTEST_CONFIG.token) {
+        initPlaytestFeedback(PLAYTEST_CONFIG);
+    }
     
     // Set document title from config
     document.title = GAME_TITLE.toUpperCase();
@@ -172,7 +237,11 @@ async function init() {
     // Show version display
     const versionEl = document.getElementById('version-display');
     if (versionEl) {
-        versionEl.textContent = `v${VERSION}`;
+        versionEl.textContent = `v${VERSION} (${COMMIT_HASH})`;
+    }
+    const feedbackVersionEl = document.getElementById('feedback-version');
+    if (feedbackVersionEl) {
+        feedbackVersionEl.textContent = `v${VERSION} (${COMMIT_HASH})`;
     }
     
     initScene();
@@ -188,6 +257,8 @@ async function init() {
     initLeaderboard();
     initModuleProgress();  // Load module unlock progress from localStorage
     PulseMusic.init();
+    updateMusicStatusDisplay(PulseMusic.enabled);
+    initAudioControlsUI();
     
     // Initialize animated menu background
     const startScreen = document.getElementById('start-screen');
@@ -325,6 +396,7 @@ async function init() {
     addTrackedListener(window, 'keydown', (e) => {
         if (e.key === 'm' || e.key === 'M') {
             const enabled = PulseMusic.toggle();
+            updateMusicStatusDisplay(enabled);
             if (DEBUG) console.log(`[${GAME_TITLE.toUpperCase()}] Music:`, enabled ? 'ON' : 'OFF');
         }
     });
@@ -447,6 +519,8 @@ async function init() {
                 e.stopPropagation(); // Prevent resume trigger
                 showDebugMenu();
             });
+        } else {
+            pauseDebugBtn.style.display = 'none';
         }
     }
     
@@ -475,11 +549,11 @@ async function init() {
     const debugBtn = document.getElementById('debug-btn');
     if (debugBtn) {
         if (DEBUG) {
+            debugBtn.style.display = 'inline-block';
             addTrackedListener(debugBtn, 'click', () => {
                 showDebugMenu();
             });
         } else {
-            // Hide debug button in production
             debugBtn.style.display = 'none';
         }
     }
@@ -517,6 +591,7 @@ async function init() {
 }
 
 function startGame() {
+    applyAllBalanceOverrides();
     hideStartScreen();
     resetActiveBadges();
     generateArena(1);
@@ -546,6 +621,7 @@ function startGame() {
 
 function restartGame() {
     cleanupGameState();
+    applyAllBalanceOverrides();
     generateArena(1);
     spawnArena1ModulePickup();  // Spawn hidden Speed Module pickup
     
@@ -592,6 +668,7 @@ function startAtArena(arenaNumber) {
     MenuScene.pause();
     
     cleanupGameState();
+    applyAllBalanceOverrides();
     
     // Arena level scaling configuration
     const arenaScaling = {
@@ -821,6 +898,9 @@ function animate(currentTime) {
 
 // Debug menu functions
 function setupDebugControls() {
+    // Initialize balance tuner UI (renders sliders from registry)
+    initBalanceTunerUI();
+    
     // Populate GPU info in debug menu
     const gpuInfoEl = document.getElementById('debug-gpu-info');
     if (gpuInfoEl) {
@@ -929,6 +1009,7 @@ function setupDebugControls() {
 
 function startEmptyArena() {
     cleanupGameState();
+    applyAllBalanceOverrides();
     
     // Enable debug mode
     gameState.debug.enabled = true;

@@ -3,18 +3,29 @@ import { getCurrentBoss } from '../core/entities.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { BOSS_CONFIG } from '../config/bosses.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
-import { THREAT_BUDGET, WAVE_MODIFIERS } from '../config/constants.js';
+import { THREAT_BUDGET, WAVE_MODIFIERS, WAVE_STATE, STORAGE_PREFIX } from '../config/constants.js';
 import { getHudBadges, getMasteryBadges, updateStatBadges } from '../systems/badges.js';
 import { getRecentDamage, getDeathTip } from '../systems/damage.js';
 import { MODULE_CONFIG } from '../config/modules.js';
+import { safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage.js';
 
 export let gameStartTime = 0;
 
 // Module-local state (replaces window globals for cleaner namespace)
 let boss6SequenceTooltipShown = false;
+let bossHealthDimmed = false;
+let bossHealthFlashTimer = 0;
 
 export function setGameStartTime(time) {
     gameStartTime = time;
+}
+
+export function updateMusicStatusDisplay(enabled) {
+    const statuses = ['music-status', 'pause-music-status'];
+    statuses.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = enabled ? 'Music: ON' : 'Music: OFF';
+    });
 }
 
 export function updateUI() {
@@ -43,6 +54,29 @@ export function updateUI() {
     // Update badge display
     updateStatBadges();
     updateBadgeDisplay();
+    
+    // Dash hint (always visible, context-aware)
+    updateDashHint();
+}
+
+function updateDashHint() {
+    const el = document.getElementById('dash-hint');
+    if (!el) return;
+    
+    const nextLocked = !gameState.dashStrikeEnabled;
+    if (gameState._dbgDashHintLocked !== nextLocked) {
+        gameState._dbgDashHintLocked = nextLocked;
+    }
+    
+    // Dash is gated behind Boss 1 module; before unlock, show locked hint
+    if (gameState.dashStrikeEnabled) {
+        el.textContent = 'SHIFT: DASH STRIKE';
+        el.classList.remove('locked');
+    } else {
+        // Keep this accurate for Arena 1: dash is not available yet
+        el.textContent = 'SHIFT: DASH (LOCKED)';
+        el.classList.add('locked');
+    }
 }
 
 // Update badge panel in HUD
@@ -247,19 +281,171 @@ export function showBossHealthBar(name) {
     }
     if (shieldEl) shieldEl.style.display = 'none';
     if (exposedEl) exposedEl.style.display = 'none';
+    
+    ensureBossHealthExtras();
+}
+
+function ensureBossHealthExtras() {
+    const bg = document.getElementById('boss-health-bar-bg');
+    if (bg && !document.getElementById('boss-phase-marker-66')) {
+        const m66 = document.createElement('div');
+        m66.id = 'boss-phase-marker-66';
+        m66.className = 'boss-phase-marker';
+        bg.appendChild(m66);
+    }
+    if (bg && !document.getElementById('boss-phase-marker-33')) {
+        const m33 = document.createElement('div');
+        m33.id = 'boss-phase-marker-33';
+        m33.className = 'boss-phase-marker';
+        bg.appendChild(m33);
+    }
+}
+
+function setBossHealthDimmed(isDimmed) {
+    const container = document.getElementById('boss-health-container');
+    const text = document.getElementById('boss-health-text');
+    if (!container) return;
+    
+    if (isDimmed !== bossHealthDimmed) {
+        // Flash when returning to full visibility
+        if (!isDimmed) {
+            container.classList.add('flash');
+            bossHealthFlashTimer = 25; // ~0.4s at 60fps (timed via update calls)
+        }
+        bossHealthDimmed = isDimmed;
+    }
+    
+    if (bossHealthDimmed) container.classList.add('dimmed');
+    else container.classList.remove('dimmed');
+    
+    if (text) {
+        if (bossHealthDimmed) text.classList.add('dimmed');
+        else text.classList.remove('dimmed');
+    }
+    
+    // Clear flash class after a few update calls
+    if (bossHealthFlashTimer > 0) {
+        bossHealthFlashTimer--;
+        if (bossHealthFlashTimer <= 0) {
+            container.classList.remove('flash');
+        }
+    }
+}
+
+function setBossHealthNumbers(health, maxHealth) {
+    const hpEl = document.getElementById('boss-health-hp');
+    const maxEl = document.getElementById('boss-health-max');
+    if (hpEl) hpEl.textContent = Math.max(0, Math.ceil(health)).toString();
+    if (maxEl) maxEl.textContent = Math.max(1, Math.ceil(maxHealth)).toString();
+}
+
+function setArena1ChasePhaseMarkers(maxHealth) {
+    const chase = gameState.arena1ChaseState;
+    const m66 = document.getElementById('boss-phase-marker-66');
+    const m33 = document.getElementById('boss-phase-marker-33');
+    if (!chase || !m66 || !m33 || !maxHealth) return;
+    
+    const t1 = chase.phaseThresholds?.[1] ?? null;
+    const t2 = chase.phaseThresholds?.[2] ?? null;
+    if (typeof t1 !== 'number' || typeof t2 !== 'number') return;
+    
+    const p66 = Math.max(0, Math.min(100, (t1 / maxHealth) * 100));
+    const p33 = Math.max(0, Math.min(100, (t2 / maxHealth) * 100));
+    m66.style.left = `${p66}%`;
+    m33.style.left = `${p33}%`;
+    
+    // Only show markers during Arena 1 chase mode
+    m66.style.display = 'block';
+    m33.style.display = 'block';
+}
+
+function hideArena1ChasePhaseMarkers() {
+    const m66 = document.getElementById('boss-phase-marker-66');
+    const m33 = document.getElementById('boss-phase-marker-33');
+    if (m66) m66.style.display = 'none';
+    if (m33) m33.style.display = 'none';
 }
 
 export function updateBossHealthBar() {
     const currentBoss = getCurrentBoss();
-    if (!currentBoss) return;
+    const containerEl = document.getElementById('boss-health-container');
+    if (!containerEl) return;
+    
+    ensureBossHealthExtras();
+    
+    // Arena 1 chase: if boss is currently offscreen (retreated), keep a dimmed persistent bar visible
+    const chase = gameState.arena1ChaseState;
+    const isArena1Chase = gameState.currentArena === 1 && chase?.enabled;
+    const canShowPersistent =
+        isArena1Chase &&
+        !currentBoss &&
+        chase.persistentBossHealth !== null &&
+        chase.bossEncounterCount > 0 &&
+        chase.bossEncounterCount < 3 &&
+        (gameState.waveState === WAVE_STATE.WAVE_INTRO ||
+         gameState.waveState === WAVE_STATE.WAVE_ACTIVE ||
+         gameState.waveState === WAVE_STATE.WAVE_CLEAR);
+    
+    if (!currentBoss && !canShowPersistent) {
+        return;
+    }
+    
+    // Ensure visible when updating
+    containerEl.style.display = 'block';
     
     // Health bar
     const healthBar = document.getElementById('boss-health-bar');
-    healthBar.style.width = (currentBoss.health / currentBoss.maxHealth * 100) + '%';
+    
+    let health = 0;
+    let maxHealth = 1;
+    let phase = 1;
+    let shieldActive = false;
+    let isExposed = false;
+    let minionCount = 0;
+    let maxMinions = 2;
+    let shouldDim = false;
+    
+    if (currentBoss) {
+        health = currentBoss.health;
+        maxHealth = currentBoss.maxHealth;
+        phase = currentBoss.phase || 1;
+        shieldActive = !!(currentBoss.shieldConfig && currentBoss.shieldActive);
+        isExposed = !!currentBoss.isExposed;
+        minionCount = currentBoss.summonedMinions ? currentBoss.summonedMinions.length : 0;
+        maxMinions = phase + 1;
+        
+        // Dim during retreat state for readability + persistence signaling
+        shouldDim = (gameState.waveState === WAVE_STATE.BOSS_RETREAT) || !!currentBoss.isRetreating;
+    } else {
+        // Persistent chase UI (boss is currently absent)
+        const bossCfg = BOSS_CONFIG[1];
+        const nameEl = document.getElementById('boss-name');
+        if (nameEl && bossCfg?.name) nameEl.textContent = bossCfg.name;
+        
+        maxHealth = bossCfg?.health || 1250;
+        health = chase.persistentBossHealth;
+        
+        // Show the upcoming phase number (next encounter)
+        phase = Math.min(3, (chase.bossEncounterCount || 1) + 1);
+        shieldActive = false;
+        isExposed = false;
+        shouldDim = true;
+    }
+    
+    if (healthBar) {
+        const pct = Math.max(0, Math.min(100, (health / maxHealth) * 100));
+        healthBar.style.width = pct + '%';
+    }
+    
+    setBossHealthNumbers(health, maxHealth);
+    setBossHealthDimmed(shouldDim);
+    
+    if (isArena1Chase) setArena1ChasePhaseMarkers(maxHealth);
+    else hideArena1ChasePhaseMarkers();
     
     // Lock icon and blue tint when shielded
     const lockIcon = document.getElementById('boss-shield-lock-icon');
-    if (currentBoss.shieldConfig && currentBoss.shieldActive) {
+    if (shieldActive) {
         healthBar.classList.add('shielded');
         if (lockIcon) lockIcon.style.display = 'block';
     } else {
@@ -270,20 +456,20 @@ export function updateBossHealthBar() {
     // Phase indicator
     const phaseEl = document.getElementById('boss-phase');
     const phaseNames = ['PHASE I', 'PHASE II', 'PHASE III'];
-    phaseEl.textContent = phaseNames[currentBoss.phase - 1] || 'PHASE I';
-    phaseEl.className = currentBoss.phase > 1 ? `phase-${currentBoss.phase}` : '';
+    if (phaseEl) {
+        phaseEl.textContent = phaseNames[phase - 1] || 'PHASE I';
+        phaseEl.className = phase > 1 ? `phase-${phase}` : '';
+    }
     
     // Shield status
     const shieldContainer = document.getElementById('boss-shield-container');
     const exposedEl = document.getElementById('boss-exposed');
     
-    if (currentBoss.shieldConfig && currentBoss.shieldActive) {
+    if (shieldActive) {
         shieldContainer.style.display = 'block';
         exposedEl.style.display = 'none';
         
         // Show minion count with max
-        const minionCount = currentBoss.summonedMinions ? currentBoss.summonedMinions.length : 0;
-        const maxMinions = currentBoss.phase + 1;  // 2/3/4 based on phase
         document.getElementById('boss-minion-count').textContent = `${minionCount}/${maxMinions} minions`;
         
         // Shield bar visual (based on minion count)
@@ -297,12 +483,12 @@ export function updateBossHealthBar() {
             shieldContainer.style.animation = 'none';
         }
         
-    } else if (currentBoss.isExposed) {
+    } else if (isExposed) {
         shieldContainer.style.display = 'none';
         exposedEl.style.display = 'block';
         
         // Show countdown
-        const secondsLeft = Math.ceil(currentBoss.exposedTimer / 60);
+        const secondsLeft = currentBoss ? Math.ceil(currentBoss.exposedTimer / 60) : 0;
         exposedEl.textContent = `EXPOSED! (${secondsLeft}s)`;
         
     } else {
@@ -574,11 +760,30 @@ export function showGameOver() {
     
     // Show death recap
     showDeathRecap();
+    maybeShowArena1DashTutorialOnFirstDeath();
     
     // Show combat recap
     showCombatRecap();
     
     document.getElementById('game-over').style.display = 'block';
+}
+
+function maybeShowArena1DashTutorialOnFirstDeath() {
+    // One-time hint on first death in Arena 1 (persisted) to address dash discoverability
+    if (gameState.currentArena !== 1) return;
+    
+    const key = STORAGE_PREFIX + 'tutorial_arena1_dash_first_death';
+    if (safeLocalStorageGet(key, false)) return;
+    safeLocalStorageSet(key, true);
+    
+    const tipEl = document.getElementById('death-tip');
+    if (!tipEl) return;
+    
+    if (gameState.dashStrikeEnabled) {
+        tipEl.textContent = 'Press SHIFT to dash through danger!';
+    } else {
+        tipEl.textContent = 'Defeat the King to unlock Dash Strike (SHIFT).';
+    }
 }
 
 // Display death recap with recent damage and tips

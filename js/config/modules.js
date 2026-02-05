@@ -60,15 +60,15 @@ export const MODULE_CONFIG = {
             // Effects scale with mastery level
             // dashDistance: units traveled, cooldown: frames (60fps), damage: AoE damage
             effectsByLevel: {
-                1: { dashDistance: 8, cooldown: 300, damage: 15 },   // 5s CD
-                2: { dashDistance: 10, cooldown: 240, damage: 20 },  // 4s CD
-                3: { dashDistance: 12, cooldown: 180, damage: 25 },  // 3s CD
+                1: { dashDistance: 16, cooldown: 300, damage: 15 },   // 5s CD
+                2: { dashDistance: 20, cooldown: 240, damage: 20 },  // 4s CD
+                3: { dashDistance: 24, cooldown: 180, damage: 25 },  // 3s CD
             },
             // Description shown in upgrade menu
             desc: { 
-                1: 'Dash attack (8 range, 5s CD)', 
-                2: 'Dash attack (10 range, 4s CD)', 
-                3: 'Dash attack (12 range, 3s CD)' 
+                1: 'Dash attack (16 range, 5s CD)', 
+                2: 'Dash attack (20 range, 4s CD)', 
+                3: 'Dash attack (24 range, 3s CD)' 
             },
             // Special flag: this is an active ability, not a passive stat
             isActiveAbility: true

@@ -433,6 +433,18 @@ function getSafeSpawnAngle(playerVelocity) {
     return spawnAngle;
 }
 
+// Arena 1 specific: Spawn within the forward 180° arc relative to the player's movement direction.
+// This reduces "rear spawn" moments that feel like off-screen ambushes.
+function getForward180SpawnAngle(playerVelocity) {
+    if (!playerVelocity) return Math.random() * Math.PI * 2;
+    const horizontalSpeed = Math.sqrt(playerVelocity.x * playerVelocity.x + playerVelocity.z * playerVelocity.z);
+    if (horizontalSpeed < 0.01) return Math.random() * Math.PI * 2;
+    
+    const moveAngle = Math.atan2(playerVelocity.z, playerVelocity.x);
+    const halfArc = Math.PI / 2; // +/- 90° around "ahead of movement"
+    return moveAngle + Math.PI + (Math.random() * 2 - 1) * halfArc;
+}
+
 // Check if two points are in the same corridor segment (Arena 5)
 // Corridors are the outer perimeter areas beyond the tunnel walls
 function isInSameCorridor(x1, z1, x2, z2) {
@@ -481,15 +493,32 @@ function getArenaSpawnPosition(playerPos, playerVelocity) {
     const choreography = gameState.waveChoreography;
     if (choreography && choreography.type !== 'random' && SPAWN_CHOREOGRAPHY.enabled) {
         let pos = null;
+        let chosenDirection = null;
         
         if (choreography.type === 'lane') {
             // All enemies from one direction
-            pos = getChoreographedSpawnPosition(choreography.primaryDirection);
+            chosenDirection = choreography.primaryDirection;
+            pos = getChoreographedSpawnPosition(chosenDirection);
         } else if (choreography.type === 'pincer') {
             // Alternate between two opposite directions
             const useSecondary = Math.random() < 0.5;
-            const direction = useSecondary ? choreography.secondaryDirection : choreography.primaryDirection;
-            pos = getChoreographedSpawnPosition(direction);
+            chosenDirection = useSecondary ? choreography.secondaryDirection : choreography.primaryDirection;
+            pos = getChoreographedSpawnPosition(chosenDirection);
+        } else if (choreography.type === 'flank') {
+            // Majority from one direction, some from perpendiculars
+            const flankDirs = choreography.flankDirections || [];
+            const r = Math.random();
+            chosenDirection = choreography.primaryDirection;
+            if (flankDirs.length === 2) {
+                if (r > 0.75) chosenDirection = flankDirs[0];
+                else if (r > 0.5) chosenDirection = flankDirs[1];
+            }
+            pos = getChoreographedSpawnPosition(chosenDirection);
+        } else if (choreography.type === 'burst') {
+            // Any direction (high-pressure). Randomize per-spawn.
+            const dirs = SPAWN_CHOREOGRAPHY.directions;
+            chosenDirection = dirs[Math.floor(Math.random() * dirs.length)];
+            pos = getChoreographedSpawnPosition(chosenDirection);
         }
         
         if (pos) {
@@ -521,13 +550,16 @@ function getArenaSpawnPosition(playerPos, playerVelocity) {
             angle = toCenterAngle + (Math.random() - 0.5) * Math.PI * 0.8;
             distance = 20 + Math.random() * 10;  // Closer spawns when edge-kiting
         } else {
-            // Player is in center area - use safe arc spawning
-            angle = getSafeSpawnAngle(playerVelocity);
+            // Player is in center area - use forward arc spawning for Arena 1 fairness
+            if (arena === 1) angle = getForward180SpawnAngle(playerVelocity);
+            else angle = getSafeSpawnAngle(playerVelocity);
         }
     } else {
         // No special config - just use safe arc spawning
-        angle = getSafeSpawnAngle(playerVelocity);
+        if (arena === 1) angle = getForward180SpawnAngle(playerVelocity);
+        else angle = getSafeSpawnAngle(playerVelocity);
     }
+    
     
     // Calculate position
     let x = playerPos.x + Math.cos(angle) * distance;
@@ -718,6 +750,7 @@ function spawnEnemyAtPosition(enemyType, x, z) {
     
     scene.add(enemy);
     enemies.push(enemy);
+    PulseMusic.onEnemySpawn(enemy);
     
     return enemy;
 }
@@ -1161,6 +1194,7 @@ export function spawnSplitEnemy(position, parentSize, index = 0, totalCount = 3)
     
     scene.add(enemy);
     enemies.push(enemy);
+    PulseMusic.onEnemySpawn(enemy);
 }
 
 export function spawnSpecificEnemy(typeName, nearPosition) {
@@ -1244,6 +1278,7 @@ export function spawnSpecificEnemy(typeName, nearPosition) {
     
     scene.add(enemy);
     enemies.push(enemy);
+    PulseMusic.onEnemySpawn(enemy);
 }
 
 // Spawn Pillar Police on all pillars (for Arena 2-3)
@@ -1497,6 +1532,7 @@ export function updateEnemies(delta) {
                 const typeName = ENEMY_TYPES[enemy.enemyType]?.name || enemy.enemyType || 'Enemy';
                 takeDamage(enemy.damage, typeName, 'enemy');
                 resetDamageCooldown();
+                PulseMusic.onEnemyAttack(enemy);
             }
             tempVec3.subVectors(enemy.position, player.position).normalize();
             enemy.position.add(tempVec3.multiplyScalar(0.5));
@@ -1754,6 +1790,7 @@ function updateShooterEnemy(enemy) {
     // Frame-based shooting cooldown
     if (dist < enemy.shootRange && enemy.shootTimer >= enemy.shootCooldownFrames) {
         spawnEnemyProjectile(enemy, player.position.clone());
+        PulseMusic.onEnemyAttack(enemy);
         enemy.shootTimer = 0;
     }
 }
@@ -1860,6 +1897,7 @@ function updateShieldBreakerEnemy(enemy) {
         
         if (enemy.rushWindupTimer <= 0) {
             enemy.isRushing = true;
+            PulseMusic.onEnemyAttack(enemy);
             enemy.scale.set(1, 1, 1);
             // Cleanup telegraph
             if (enemy.rushTelegraph) {
@@ -2150,6 +2188,7 @@ export function spawnEnemyProjectile(enemy, targetPos) {
 
 // Handle enemy death effects (called from projectiles.js)
 export function handleEnemyDeath(enemy) {
+    PulseMusic.onEnemyDeath(enemy);
     // Track kill for combat stats
     if (gameState.combatStats) {
         const type = enemy.enemyType || 'unknown';
