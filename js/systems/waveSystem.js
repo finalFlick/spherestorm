@@ -35,6 +35,18 @@ const BOSS_INTRO_FRAMES = 60;        // 1 second - dramatic entrance without del
 const BOSS_DEFEATED_FRAMES = 120;    // 2 seconds - satisfying victory beat
 const ARENA_TRANSITION_FRAMES = 60;  // 1 second
 
+function getStressPauseThreshold() {
+    const raw = Number(TUNING.stressPauseThreshold);
+    if (Number.isFinite(raw)) return Math.max(1, Math.round(raw));
+    return PACING_CONFIG.stressPauseThreshold;
+}
+
+function getWaveClearFrames() {
+    const seconds = Number(TUNING.breathingRoomSeconds);
+    if (Number.isFinite(seconds)) return Math.max(0, Math.round(seconds * 60));
+    return WAVE_CLEAR_FRAMES;
+}
+
 export function updateWaveSystem() {
     switch (gameState.waveState) {
         case WAVE_STATE.WAVE_INTRO: handleWaveIntro(); break;
@@ -298,7 +310,7 @@ function handleWaveActive() {
     const isExamWave = (gameState.currentWave === maxWaves);
     
     // Check for stress pause (too many enemies alive)
-    if (enemies.length >= PACING_CONFIG.stressPauseThreshold) {
+    if (enemies.length >= getStressPauseThreshold()) {
         if (!gameState.stressPauseActive) {
             gameState.stressPauseActive = true;
             // Optional: signal music to dip
@@ -408,7 +420,9 @@ function handleWaveActive() {
     // Budget-based spawning (convert ms interval to frames: 60fps = 16.67ms/frame)
     const spawnIntervalFramesBase = Math.floor(spawnInterval / 16.67);
     const spawnRateMultRaw = Number(TUNING.spawnRateMultiplier || 1.0);
-    const spawnRateMult = Math.max(0.25, Math.min(3.0, spawnRateMultRaw || 1.0));
+    const difficultyRaw = Number(TUNING.difficultyMultiplier ?? 1.0);
+    const difficultyMult = Math.max(0.5, Math.min(2.0, difficultyRaw || 1.0));
+    const spawnRateMult = Math.max(0.25, Math.min(3.0, (spawnRateMultRaw || 1.0) * difficultyMult));
     const spawnIntervalFrames = Math.max(1, Math.floor(spawnIntervalFramesBase / spawnRateMult));
     if (gameState.waveBudgetRemaining > 0 && gameState.waveSpawnTimer >= spawnIntervalFrames) {
         // Burst spawns
@@ -513,7 +527,7 @@ function handleWaveClear() {
     }
     gameState.waveTimer++;
     
-    if (gameState.waveTimer > WAVE_CLEAR_FRAMES) {
+    if (gameState.waveTimer > getWaveClearFrames()) {
         // Check for Arena 1 boss chase - boss returns after segment waves
         if (shouldBossReturn()) {
             // Prepare next boss phase
@@ -540,6 +554,14 @@ function handleWaveClear() {
         // The chase mode has more waves than base arena config
         const inChaseMode = gameState.arena1ChaseState?.enabled;
         const chaseComplete = inChaseMode && gameState.arena1ChaseState.bossEncounterCount >= 3;
+
+        // Debug feature toggle: Boss Rush (jump to boss after first wave clear)
+        if (TUNING.bossRushEnabled && !inChaseMode && gameState.currentWave === 1) {
+            gameState.waveState = WAVE_STATE.BOSS_INTRO;
+            gameState.waveTimer = 0;
+            updateUI();
+            return;
+        }
         
         if (gameState.currentWave >= maxWaves && (!inChaseMode || chaseComplete)) {
             gameState.waveState = WAVE_STATE.BOSS_INTRO;

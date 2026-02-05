@@ -1,8 +1,10 @@
 import { gameState } from '../core/gameState.js';
 import { DAMAGE_COOLDOWN, DEATH_TIPS } from '../config/constants.js';
+import { TUNING } from '../config/tuning.js';
 import { PulseMusic } from './pulseMusic.js';
 import { cameraAngleX } from '../core/input.js';
 import { safeFlashMaterial } from './materialUtils.js';
+import { showTutorialCallout } from '../ui/hud.js';
 
 // Hit recovery constants
 const RECOVERY_DURATION = 90;  // 1.5 seconds at 60fps
@@ -83,6 +85,15 @@ export function takeDamage(amount, source = 'Unknown', sourceType = 'enemy', sou
     }
     
     gameState.health -= amount;
+
+    // Debug UX lever: show dash hint on first damage if player hasn't dashed yet
+    if (TUNING.tutorialHintsEnabled) {
+        gameState.tutorial = gameState.tutorial || {};
+        if (!gameState.tutorial.dashHintShown && !gameState.tutorial.hasDashed) {
+            showTutorialCallout('dash', 'Hold SHIFT to DASH (reposition + invuln)', 2500);
+            gameState.tutorial.dashHintShown = true;
+        }
+    }
     
     // Apply knockback and start recovery state
     if (playerRef) {

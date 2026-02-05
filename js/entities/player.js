@@ -240,6 +240,7 @@ export function createPlayer() {
     player.bounceCount = 0;
     player.wasInAir = false;
     player.squashTime = 0;
+    player.landingStunTimer = 0;
     
     // Hit recovery state (invulnerability frames)
     player.isRecovering = false;
@@ -272,6 +273,12 @@ export function updatePlayer(delta) {
         return;  // Skip normal input processing
     }
     
+    // Optional landing stun (debug tuning) - counts down even while paused/slow-mo
+    if (player.landingStunTimer > 0) {
+        player.landingStunTimer--;
+    }
+    const isLandingStunned = player.landingStunTimer > 0;
+    
     const moveDir = new THREE.Vector3();
     const forward = tempVec3.set(0, 0, -1).applyAxisAngle(tempVec3_2.set(0, 1, 0), cameraAngleX);
     const right = tempVec3_3.set(1, 0, 0).applyAxisAngle(tempVec3_2.set(0, 1, 0), cameraAngleX);
@@ -281,6 +288,7 @@ export function updatePlayer(delta) {
     if (keys['KeyA']) moveDir.sub(tempVec3_4.copy(right).multiplyScalar(0.5));  // Reduced strafe - use mouse to turn
     if (keys['KeyD']) moveDir.add(tempVec3_5.copy(right).multiplyScalar(0.5));  // Reduced strafe - use mouse to turn
     moveDir.normalize();
+    if (isLandingStunned) moveDir.set(0, 0, 0);
     
     // Frame-based cooldown timers
     if (gameState.dashStrikeCooldownTimer > 0) {
@@ -291,7 +299,7 @@ export function updatePlayer(delta) {
     }
     
     // Check for dash/Dash Strike input
-    if ((keys['ShiftLeft'] || keys['ShiftRight']) && moveDir.length() > 0) {
+    if (!isLandingStunned && (keys['ShiftLeft'] || keys['ShiftRight']) && moveDir.length() > 0) {
         // If Dash Strike is enabled and off cooldown, use it
         if (gameState.dashStrikeEnabled && gameState.dashStrikeCooldownTimer <= 0) {
             startDashStrike(moveDir);
@@ -302,6 +310,10 @@ export function updatePlayer(delta) {
             dashCooldownFrames = 60;  // 1 second cooldown
             dashActiveFrames = 0;     // Reset dash duration counter
             dashDirection.copy(moveDir);
+
+            // Tutorial tracking
+            gameState.tutorial = gameState.tutorial || {};
+            gameState.tutorial.hasDashed = true;
         }
     }
     
@@ -411,6 +423,10 @@ export function updatePlayer(delta) {
                 player.isGrounded = true;
                 player.wasInAir = false;
                 player.bounceCount = 0;
+                
+                const stunRaw = Number(TUNING.landingStunFrames ?? 0);
+                const stun = Math.max(0, Math.min(30, Math.round(stunRaw || 0)));
+                player.landingStunTimer = stun;
             }
         } else {
             player.velocity.y = 0;
@@ -523,6 +539,8 @@ export function updatePlayer(delta) {
     
     // Position attack indicator manually (it's not a child of player, so unaffected by lean)
     if (player.attackIndicator) {
+        player.attackIndicator.visible = !!TUNING.attackConePreviewEnabled;
+
         // Position at player's feet, offset forward in the facing direction
         const offsetDist = 5;
         player.attackIndicator.position.set(
@@ -691,6 +709,10 @@ function startDashStrike(direction) {
     
     isDashStriking = true;
     dashStrikeProgress = 0;
+
+    // Tutorial tracking (Dash Strike still teaches "dash as an option")
+    gameState.tutorial = gameState.tutorial || {};
+    gameState.tutorial.hasDashed = true;
     
     // Store start position
     dashStrikeStartPos.copy(player.position);

@@ -8,6 +8,7 @@ export const gameState = {
     introCinematicActive: false,
     health: 100,
     maxHealth: 100,
+    lives: 1,
     xp: 0,
     xpToLevel: 10,
     level: 1,
@@ -102,6 +103,7 @@ export function resetGameState() {
     Object.assign(gameState, {
         health: 100,
         maxHealth: 100,
+        lives: 1,
         xp: 0,
         xpToLevel: 10,
         level: 1,

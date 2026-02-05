@@ -534,6 +534,13 @@ function getArenaSpawnPosition(playerPos, playerVelocity) {
         // No special config - just use safe arc spawning
         angle = getSafeSpawnAngle(playerVelocity);
     }
+
+    // Debug tuning: enforce minimum spawn distance from player
+    const safeRadiusRaw = Number(TUNING.spawnSafeZoneRadius ?? 0);
+    const safeRadius = Math.max(0, Math.min(30, safeRadiusRaw || 0));
+    if (safeRadius > 0) {
+        distance = Math.max(distance, safeRadius);
+    }
     
     // Calculate position
     let x = playerPos.x + Math.cos(angle) * distance;
@@ -638,6 +645,11 @@ function spawnEnemyAtPosition(enemyType, x, z) {
     enemy.isBoss = false;
     enemy.isElite = typeData.spawnWeight < 10;
     enemy.xpValue = Math.floor(typeData.xpValue * xpMult);
+
+    // Difficulty scaling (debug lever)
+    const difficultyRaw = Number(TUNING.difficultyMultiplier ?? 1.0);
+    const difficultyMult = Math.max(0.5, Math.min(2.0, difficultyRaw || 1.0));
+    enemy.damage = Math.max(1, Math.floor(enemy.damage * difficultyMult));
     
     // Wave progression XP bonus: +15% per wave after wave 1
     const waveBonus = 1 + (gameState.currentWave - 1) * 0.15;
@@ -673,6 +685,32 @@ function spawnEnemyAtPosition(enemyType, x, z) {
     enemy.movementTimer = Math.random() * 100;  // Offset for variety
     enemy.telegraphActive = false;
     enemy.telegraphTimer = 0;
+
+    // Debug UX: spawn warning particles for close spawns (helps catch off-screen ambushes)
+    if (TUNING.offScreenWarningEnabled) {
+        const distToPlayer = enemy.position.distanceTo(player.position);
+        if (distToPlayer < 25) {
+            spawnParticle(enemy.position.clone(), enemy.baseColor, 4);
+        }
+    }
+
+    // Debug feature toggle: Elite variants (apply after base stats computed)
+    const eliteChanceRaw = Number(TUNING.eliteSpawnChance ?? 0);
+    const eliteChance = Math.max(0, Math.min(1, eliteChanceRaw || 0));
+    if (!enemy.isElite && eliteChance > 0 && Math.random() < eliteChance) {
+        enemy.isElite = true;
+        enemy.health = Math.floor(enemy.health * 1.8);
+        enemy.maxHealth = enemy.health;
+        enemy.damage = Math.floor(enemy.damage * 1.3);
+        enemy.eliteVariant = true;
+
+        // Visual pop: golden emissive tint
+        const mat = enemy.baseMaterial || enemy.material;
+        if (mat && mat.emissive) {
+            mat.emissive.setHex(0xffdd44);
+            mat.emissiveIntensity = 0.9;
+        }
+    }
     
     // Behavior-specific properties
     if (typeData.behavior === 'shooter') {
@@ -1642,7 +1680,10 @@ function updateTelegraph(enemy) {
         const dist = enemy.position.distanceTo(player.position);
         // Check if nearing shoot time (within 30 frames of shooting)
         const framesUntilShoot = enemy.shootCooldownFrames - (enemy.shootTimer || 0);
-        const telegraphFrames = enemy.telegraph.duration ? Math.floor(enemy.telegraph.duration / 16.67) : 30;
+        const telegraphMultRaw = Number(TUNING.telegraphDurationMult ?? 1.0);
+        const telegraphMult = Math.max(0.5, Math.min(2.0, telegraphMultRaw || 1.0));
+        const baseTelegraphFrames = enemy.telegraph.duration ? Math.floor(enemy.telegraph.duration / 16.67) : 30;
+        const telegraphFrames = Math.max(1, Math.floor(baseTelegraphFrames * telegraphMult));
         if (dist < enemy.shootRange && framesUntilShoot < telegraphFrames) {
             shouldTelegraph = true;
         }

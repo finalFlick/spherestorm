@@ -1,6 +1,7 @@
 import { gameState } from '../core/gameState.js';
 import { CORE_UPGRADES } from '../config/upgrades.js';
 import { MODULE_CONFIG } from '../config/modules.js';
+import { TUNING } from '../config/tuning.js';
 import { getModuleLevel, isModuleUnlocked } from '../systems/moduleProgress.js';
 import { PulseMusic } from '../systems/pulseMusic.js';
 
@@ -88,7 +89,16 @@ export function selectUpgrade(upgrade) {
     } else {
         // Standard stat upgrade
         if (upgrade.mult) {
-            gameState.stats[upgrade.stat] *= upgrade.mult;
+            let mult = upgrade.mult;
+
+            // Tuning lever: scale attack speed upgrade strength without changing baseline fire rate
+            if (upgrade.id === 'attackSpeed') {
+                const effRaw = Number(TUNING.fireRateEffectiveness ?? 1.0);
+                const eff = Math.max(0.5, Math.min(2.0, effRaw || 1.0));
+                mult = 1 + (mult - 1) * eff;
+            }
+
+            gameState.stats[upgrade.stat] *= mult;
         } else if (upgrade.add) {
             gameState.stats[upgrade.stat] += upgrade.add;
         }

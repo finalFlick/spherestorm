@@ -5,6 +5,7 @@ import { player } from './player.js';
 import { spawnSpecificEnemy, spawnSplitEnemy } from './enemies.js';
 import { BOSS_CONFIG, ABILITY_COOLDOWNS, ABILITY_TELLS } from '../config/bosses.js';
 import { HEART_HEAL, BOSS_STUCK_THRESHOLD, BOSS_STUCK_FRAMES, PHASE_TRANSITION_DELAY_FRAMES, GAME_TITLE, PHASE2_CUTSCENE, PHASE3_CUTSCENE, WAVE_STATE } from '../config/constants.js';
+import { TUNING } from '../config/tuning.js';
 import { spawnParticle, spawnShieldBreakVFX, spawnBubbleParticle } from '../effects/particles.js';
 import { spawnXpGem, spawnHeart, spawnArenaPortal, unfreezeBossEntrancePortal } from '../systems/pickups.js';
 import { createHazardZone } from '../arena/generator.js';
@@ -452,10 +453,17 @@ export function spawnBoss(arenaNumber) {
         boss.bodyMaterial = bodyMat;
     }
     
-    // Boss properties
-    boss.health = config.health + gameState.level * 25;
+    // Boss properties (tunable in debug)
+    const hpMultRaw = Number(TUNING.bossHealthMultiplier ?? 1.0);
+    const hpMult = Math.max(0.25, Math.min(3.0, hpMultRaw || 1.0));
+    const dmgMultRaw = Number(TUNING.bossDamageMultiplier ?? 1.0);
+    const dmgMult = Math.max(0.25, Math.min(3.0, dmgMultRaw || 1.0));
+    const difficultyRaw = Number(TUNING.difficultyMultiplier ?? 1.0);
+    const difficultyMult = Math.max(0.5, Math.min(2.0, difficultyRaw || 1.0));
+
+    boss.health = Math.round((config.health + gameState.level * 25) * hpMult * difficultyMult);
     boss.maxHealth = boss.health;
-    boss.damage = config.damage;
+    boss.damage = config.damage * dmgMult * difficultyMult;
     boss.size = config.size;
     boss.baseSize = config.size;
     boss.speed = config.speed || 0.045;
@@ -653,6 +661,11 @@ export function initiateRetreat(boss) {
     // Visual feedback - phase cleared banner
     const phaseNum = boss.phase;
     showPhaseAnnouncement(phaseNum, 'PHASE CLEARED!');
+
+    // Debug UX: explicit retreat banner (helps players understand chase mode)
+    if (TUNING.retreatAnnouncementEnabled) {
+        showTutorialCallout('bossRetreat', 'BOSS RETREATING!', 2500);
+    }
     
     // Audio cue
     PulseMusic.onBossPhaseChange?.(phaseNum);
@@ -675,6 +688,22 @@ export function initiateRetreat(boss) {
         hp: boss.health,
         waveState: 'BOSS_RETREAT'
     });
+    
+    // Clear charge trails on retreat to prevent ghost damage
+    clearChargeTrails(boss);
+}
+
+// Clear all charge trails from a boss (prevents ghost damage after death/retreat)
+function clearChargeTrails(boss) {
+    if (!boss || !boss.chargeTrails || boss.chargeTrails.length === 0) return;
+    
+    const trailCount = boss.chargeTrails.length;
+    for (const trail of boss.chargeTrails) {
+        cleanupVFX(trail);
+    }
+    boss.chargeTrails.length = 0;
+    
+    log('BOSS', 'charge_trails_cleared', { count: trailCount });
 }
 
 // Spawn a retreat pulse VFX - expanding ring that signals boss retreat
@@ -4555,8 +4584,11 @@ function isPointNearWall(px, pz, wallX, wallZ, halfLength, wallAngle) {
 function getTellDuration(boss) {
     const phaseKey = `phase${boss.phase}`;
     const tells = {};
+    const telegraphMultRaw = Number(TUNING.telegraphDurationMult ?? 1.0);
+    const telegraphMult = Math.max(0.5, Math.min(2.0, telegraphMultRaw || 1.0));
     for (const [ability, durations] of Object.entries(ABILITY_TELLS)) {
-        tells[ability] = durations[phaseKey] || durations.phase1;
+        const base = durations[phaseKey] || durations.phase1;
+        tells[ability] = Math.max(1, Math.round(base * telegraphMult));
     }
     return tells;
 }
@@ -5021,6 +5053,9 @@ export function killBoss() {
     const currentBoss = getCurrentBoss();
     if (!currentBoss || currentBoss.isDying) return;
     currentBoss.isDying = true;
+    
+    // Clear charge trails on death to prevent ghost damage
+    clearChargeTrails(currentBoss);
     
     // Cleanup combo VFX if active
     if (currentBoss.comboActive) {

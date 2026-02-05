@@ -117,6 +117,12 @@ function cleanupGameState() {
     lastFrameTime = 0;
 }
 
+// Helper: Apply starting lives from tuning config (called at run start)
+function applyStartingLives() {
+    const livesRaw = Number(TUNING.playerStartingLives ?? 1);
+    gameState.lives = Math.max(1, Math.min(9, Math.round(livesRaw || 1)));
+}
+
 // Helper: Unlock all mechanics up to and including the specified arena
 function unlockMechanicsForArena(arenaNumber) {
     if (arenaNumber >= 2) {
@@ -491,6 +497,8 @@ async function init() {
 }
 
 function startGame() {
+    applyStartingLives();
+
     hideStartScreen();
     resetActiveBadges();
     generateArena(1);
@@ -522,6 +530,7 @@ function restartGame() {
     cleanupGameState();
     generateArena(1);
     spawnArena1ModulePickup();  // Spawn hidden Speed Module pickup
+    applyStartingLives();
     
     hideGameOver();
     hidePauseIndicator();
@@ -605,6 +614,7 @@ function startAtArena(arenaNumber) {
     if (arenaNumber === 1) {
         spawnArena1ModulePickup();
     }
+    applyStartingLives();
     
     gameState.running = true;
     gameState.waveState = WAVE_STATE.WAVE_INTRO;
@@ -642,6 +652,25 @@ function gameOver() {
     } else {
         showGameOver();
     }
+}
+
+function tryConsumeLifeAndRespawn() {
+    if (!gameState.running) return false;
+
+    // Only active when starting lives > 1 (default is 1, preserving current behavior)
+    if (!gameState.lives || gameState.lives <= 1) return false;
+
+    gameState.lives = Math.max(0, gameState.lives - 1);
+
+    // Restore health and reset damage state
+    gameState.health = gameState.maxHealth;
+    resetDamageTime();
+
+    // Respawn by rewinding to current arena/wave (safe: rebuilds arena + clears entities)
+    debugWarpToArenaWave(gameState.currentArena, gameState.currentWave);
+
+    log('STATE', 'life_consumed_respawn', { livesRemaining: gameState.lives });
+    return true;
 }
 
 function animate(currentTime) {
@@ -756,6 +785,9 @@ function animate(currentTime) {
             
             // Check game over
             if (gameState.health <= 0) {
+                if (tryConsumeLifeAndRespawn()) {
+                    return;
+                }
                 gameOver();
                 return;
             }
@@ -989,6 +1021,151 @@ function setupDebugControls() {
         format: (v) => `${Math.round(v)}s`
     });
 
+    const writeBreathingRoom = bindSlider('debug-tuning-breathing-room', 'debug-tuning-breathing-room-value', {
+        getValue: () => Number(TUNING.breathingRoomSeconds ?? 1.5).toFixed(2),
+        setValue: (v) => (TUNING.breathingRoomSeconds = Number(v)),
+        min: 0,
+        max: 10,
+        format: (v) => `${Number(v).toFixed(2)}s`
+    });
+
+    const writeStressThreshold = bindSlider('debug-tuning-stress-threshold', 'debug-tuning-stress-threshold-value', {
+        getValue: () => Math.round(Number(TUNING.stressPauseThreshold ?? 6)),
+        setValue: (v) => (TUNING.stressPauseThreshold = Math.round(v)),
+        min: 3,
+        max: 12,
+        format: (v) => `${Math.round(v)}`
+    });
+
+    const writeLandingStun = bindSlider('debug-tuning-landing-stun', 'debug-tuning-landing-stun-value', {
+        getValue: () => Math.round(Number(TUNING.landingStunFrames ?? 0)),
+        setValue: (v) => (TUNING.landingStunFrames = Math.round(v)),
+        min: 0,
+        max: 30,
+        format: (v) => `${Math.round(v)}f`
+    });
+
+    const writeFireRateEff = bindSlider('debug-tuning-fire-rate-eff', 'debug-tuning-fire-rate-eff-value', {
+        getValue: () => Number(TUNING.fireRateEffectiveness ?? 1.0).toFixed(2),
+        setValue: (v) => (TUNING.fireRateEffectiveness = Number(v)),
+        min: 0.5,
+        max: 2.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    const writeBossHp = bindSlider('debug-tuning-boss-hp', 'debug-tuning-boss-hp-value', {
+        getValue: () => Number(TUNING.bossHealthMultiplier ?? 1.0).toFixed(2),
+        setValue: (v) => (TUNING.bossHealthMultiplier = Number(v)),
+        min: 0.25,
+        max: 3.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    const writeBossDmg = bindSlider('debug-tuning-boss-dmg', 'debug-tuning-boss-dmg-value', {
+        getValue: () => Number(TUNING.bossDamageMultiplier ?? 1.0).toFixed(2),
+        setValue: (v) => (TUNING.bossDamageMultiplier = Number(v)),
+        min: 0.25,
+        max: 3.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    const writeSpawnSafeRadius = bindSlider('debug-tuning-spawn-safe-radius', 'debug-tuning-spawn-safe-radius-value', {
+        getValue: () => Math.round(Number(TUNING.spawnSafeZoneRadius ?? 0)),
+        setValue: (v) => (TUNING.spawnSafeZoneRadius = Math.round(v)),
+        min: 0,
+        max: 30,
+        format: (v) => `${Math.round(v)}u`
+    });
+
+    const writeTelegraphMult = bindSlider('debug-tuning-telegraph-mult', 'debug-tuning-telegraph-mult-value', {
+        getValue: () => Number(TUNING.telegraphDurationMult ?? 1.0).toFixed(2),
+        setValue: (v) => (TUNING.telegraphDurationMult = Number(v)),
+        min: 0.5,
+        max: 2.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    // ==================== UX LEVER TOGGLES ====================
+    function bindToggle(btnId, { getValue, setValue, labelOn, labelOff }) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return null;
+
+        const write = () => {
+            const enabled = !!getValue();
+            btn.textContent = enabled ? labelOn : labelOff;
+        };
+
+        write();
+        btn.addEventListener('click', () => {
+            const next = !getValue();
+            setValue(next);
+            write();
+            log('DEBUG', 'toggle_changed', { key: btnId, value: next });
+        });
+
+        return write;
+    }
+
+    const writeTutorialHints = bindToggle('debug-toggle-tutorial-hints', {
+        getValue: () => !!TUNING.tutorialHintsEnabled,
+        setValue: (v) => (TUNING.tutorialHintsEnabled = !!v),
+        labelOn: 'Tutorial Hints: ON',
+        labelOff: 'Tutorial Hints: OFF'
+    });
+
+    const writeSpawnWarning = bindToggle('debug-toggle-spawn-warning', {
+        getValue: () => !!TUNING.offScreenWarningEnabled,
+        setValue: (v) => (TUNING.offScreenWarningEnabled = !!v),
+        labelOn: 'Spawn Warning: ON',
+        labelOff: 'Spawn Warning: OFF'
+    });
+
+    const writeRetreatAnnounce = bindToggle('debug-toggle-retreat-announce', {
+        getValue: () => !!TUNING.retreatAnnouncementEnabled,
+        setValue: (v) => (TUNING.retreatAnnouncementEnabled = !!v),
+        labelOn: 'Retreat Banner: ON',
+        labelOff: 'Retreat Banner: OFF'
+    });
+
+    // ==================== FEATURE TOGGLES (DEBUG) ====================
+    const writeDifficulty = bindSlider('debug-tuning-difficulty', 'debug-tuning-difficulty-value', {
+        getValue: () => Number(TUNING.difficultyMultiplier ?? 1.0).toFixed(2),
+        setValue: (v) => (TUNING.difficultyMultiplier = Number(v)),
+        min: 0.5,
+        max: 2.0,
+        format: (v) => `${Number(v).toFixed(2)}x`
+    });
+
+    const writeStartingLives = bindSlider('debug-tuning-lives', 'debug-tuning-lives-value', {
+        getValue: () => Math.round(Number(TUNING.playerStartingLives ?? 1)),
+        setValue: (v) => (TUNING.playerStartingLives = Math.round(v)),
+        min: 1,
+        max: 9,
+        format: (v) => `${Math.round(v)}`
+    });
+
+    const writeEliteChance = bindSlider('debug-tuning-elite-chance', 'debug-tuning-elite-chance-value', {
+        getValue: () => Number(TUNING.eliteSpawnChance ?? 0).toFixed(2),
+        setValue: (v) => (TUNING.eliteSpawnChance = Number(v)),
+        min: 0,
+        max: 0.5,
+        format: (v) => `${Math.round(Number(v) * 100)}%`
+    });
+
+    const writeBossRush = bindToggle('debug-toggle-boss-rush', {
+        getValue: () => !!TUNING.bossRushEnabled,
+        setValue: (v) => (TUNING.bossRushEnabled = !!v),
+        labelOn: 'Boss Rush: ON',
+        labelOff: 'Boss Rush: OFF'
+    });
+
+    const writeAttackCone = bindToggle('debug-toggle-attack-cone', {
+        getValue: () => !!TUNING.attackConePreviewEnabled,
+        setValue: (v) => (TUNING.attackConePreviewEnabled = !!v),
+        labelOn: 'Attack Cone: ON',
+        labelOff: 'Attack Cone: OFF'
+    });
+
     const resetTuningBtn = document.getElementById('debug-tuning-reset');
     if (resetTuningBtn) {
         resetTuningBtn.addEventListener('click', () => {
@@ -996,12 +1173,44 @@ function setupDebugControls() {
             TUNING.enemySpeedMultiplier = 1.0;
             TUNING.gravityMultiplier = 1.0;
             TUNING.xpDespawnSeconds = 15;
+            TUNING.breathingRoomSeconds = 1.5;
+            TUNING.stressPauseThreshold = 6;
+            TUNING.landingStunFrames = 0;
+            TUNING.fireRateEffectiveness = 1.0;
+            TUNING.bossHealthMultiplier = 1.0;
+            TUNING.bossDamageMultiplier = 1.0;
+            TUNING.spawnSafeZoneRadius = 0;
+            TUNING.telegraphDurationMult = 1.0;
+            TUNING.tutorialHintsEnabled = false;
+            TUNING.offScreenWarningEnabled = false;
+            TUNING.retreatAnnouncementEnabled = false;
+            TUNING.playerStartingLives = 1;
+            TUNING.difficultyMultiplier = 1.0;
+            TUNING.eliteSpawnChance = 0;
+            TUNING.bossRushEnabled = false;
+            TUNING.attackConePreviewEnabled = true;
 
             // Refresh UI from current tuning values
             if (writeSpawnRate) writeSpawnRate();
             if (writeEnemySpeed) writeEnemySpeed();
             if (writeGravity) writeGravity();
             if (writeXpDespawn) writeXpDespawn();
+            if (writeBreathingRoom) writeBreathingRoom();
+            if (writeStressThreshold) writeStressThreshold();
+            if (writeLandingStun) writeLandingStun();
+            if (writeFireRateEff) writeFireRateEff();
+            if (writeBossHp) writeBossHp();
+            if (writeBossDmg) writeBossDmg();
+            if (writeSpawnSafeRadius) writeSpawnSafeRadius();
+            if (writeTelegraphMult) writeTelegraphMult();
+            if (writeTutorialHints) writeTutorialHints();
+            if (writeSpawnWarning) writeSpawnWarning();
+            if (writeRetreatAnnounce) writeRetreatAnnounce();
+            if (writeDifficulty) writeDifficulty();
+            if (writeStartingLives) writeStartingLives();
+            if (writeEliteChance) writeEliteChance();
+            if (writeBossRush) writeBossRush();
+            if (writeAttackCone) writeAttackCone();
 
             log('DEBUG', 'tuning_reset', { ...TUNING });
         });
