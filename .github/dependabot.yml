@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "type:chore"
+      - "priority:P2"
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+    
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "type:chore"
+      - "priority:P3"
+    commit-message:
+      prefix: "chore(ci)"
+    open-pull-requests-limit: 3

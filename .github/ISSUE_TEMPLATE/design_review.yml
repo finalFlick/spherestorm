@@ -1,0 +1,85 @@
+name: Design Review Request
+description: Request a persona-based design review or decision
+labels: ["type:design"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Request a design review from one of the AI designer personas.
+        See [AGENTS.md](../../AGENTS.md) for persona details.
+
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Specialist Persona
+      description: Which designer persona should review this?
+      options:
+        - Game Director (high-level / pillar alignment / cross-system)
+        - Boss Designer (boss encounters, phases, abilities)
+        - Enemy Designer (enemy types, wave composition, AI)
+        - Arena Designer (level geometry, routing, hazards)
+        - Audio Designer (music, SFX, Pulse system)
+        - Playtest Evaluator (feedback triage, evidence-based decisions)
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Design Context
+      description: What are you trying to design or decide?
+      placeholder: |
+        I want to design a new boss for Arena 3 that tests vertical movement skills...
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Known Constraints
+      description: What limitations or requirements should the designer consider?
+      placeholder: |
+        - Must fit Arena 3's vertical loop layout
+        - Max 3 phases, 2-3 minute fight
+        - Should use existing enemy types as adds
+        - Must not require precision platforming under pressure
+    validations:
+      required: false
+
+  - type: dropdown
+    id: pillars
+    attributes:
+      label: Related Pillars
+      description: Which game pillars are most relevant?
+      multiple: true
+      options:
+        - Progressive Complexity (teach one mechanic at a time)
+        - Boss Puzzles (test skills, not HP sponges)
+        - Fast Loops (short arenas, quick restarts)
+        - Visual Progression (badges, unlocks feel earned)
+        - Local Competition (leaderboards, comparable scores)
+    validations:
+      required: false
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: Reference Documents
+      description: Which docs should the designer read first?
+      placeholder: |
+        - docs/BOSS.md (existing boss implementations)
+        - docs/ARENA.md (Arena 3 layout)
+    validations:
+      required: false
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success Criteria
+      description: How will we know the design is good?
+      placeholder: |
+        - Boss has clear telegraphs for all attacks
+        - Player can learn pattern in 3-5 attempts
+        - Uses arena geometry meaningfully
+    validations:
+      required: false

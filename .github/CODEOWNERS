@@ -1,0 +1,14 @@
+# Default owner (adjust as you add collaborators)
+* @finalFlick
+
+# High-risk configuration and process files
+.github/ @finalFlick
+.githooks/ @finalFlick
+
+# Game configuration tends to have wide gameplay impact
+js/config/ @finalFlick
+
+# Design/architecture docs: keep tight and intentional
+AGENTS.md @finalFlick
+docs/ @finalFlick
+

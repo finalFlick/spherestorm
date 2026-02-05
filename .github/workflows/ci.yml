@@ -16,6 +16,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
       
       - name: Check JavaScript syntax
         run: |
@@ -29,6 +33,14 @@ jobs:
             echo "::error::Found TODO/FIXME/STUB markers in js/. Resolve before merging."
             exit 1
           fi
+      
+      - name: Build project
+        run: npm run build
+      
+      - name: Verify build output
+        run: |
+          test -f dist/bundle.js || (echo "::error::dist/bundle.js not generated" && exit 1)
+          echo "Build output verified: dist/bundle.js exists"
       
       - name: Verify critical files exist
         run: |
