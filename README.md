@@ -39,8 +39,7 @@ Then open http://localhost:8000
 ### Option 4: Local Docker
 
 ```bash
-npm run build              # Build production bundle
-docker-compose up --build  # Build and run container
+docker-compose up --build  # Build and run container (self-contained)
 ```
 Then open http://localhost:8080
 
@@ -232,8 +231,7 @@ In `js/config/`:
 
 ### Local Docker
 ```bash
-npm run build              # Build production bundle first
-docker-compose up --build  # Build and run container
+docker-compose up --build  # Build and run container (self-contained)
 ```
 
 ### CI/CD (GitHub Actions → Unraid/Self-hosted)
