@@ -1,4 +1,5 @@
-import { WAVE_STATE, DEFAULT_LIVES } from '../config/constants.js';
+import { WAVE_STATE, DEFAULT_LIVES, STORAGE_PREFIX } from '../config/constants.js';
+import { safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage.js';
 
 // Central game state management
 export const gameState = {
