@@ -466,10 +466,19 @@ export function updateProjectiles(delta) {
                 applyOnHitItemEffects(proj, enemy, proj.damage);
                 
                 // Pierce: allow projectile to pass through extra targets
+                // Check pierce BEFORE deciding to stop the projectile
                 const hasPierce = gameState.heldItems.includes('pierce');
                 if (hasPierce) {
-                    proj.pierceCount = (proj.pierceCount || 0) + 1;
+                    // Initialize pierce count if not set (first hit)
+                    if (proj.pierceCount === undefined) {
+                        proj.pierceCount = 0;
+                    }
+                    
+                    // Increment pierce count (number of enemies pierced so far)
+                    proj.pierceCount++;
                     const maxPierce = PROJECTILE_ITEMS.pierce.extraPierceTargets;
+                    
+                    // If we've pierced the max number of extra targets, stop here
                     if (proj.pierceCount > maxPierce) {
                         hit = true;
                         break;
@@ -478,6 +487,7 @@ export function updateProjectiles(delta) {
                     continue;
                 }
                 
+                // No pierce or pierce budget exhausted — projectile stops here
                 hit = true;
                 break;
             }

@@ -9,6 +9,7 @@ import { getRecentDamage, getDeathTip } from '../systems/damage.js';
 import { MODULE_CONFIG } from '../config/modules.js';
 import { safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage.js';
 import { keys } from '../core/input.js';
+import { getDashStrikeCooldownProgress } from '../entities/player.js';
 
 export let gameStartTime = 0;
 

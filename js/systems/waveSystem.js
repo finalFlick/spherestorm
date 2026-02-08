@@ -659,11 +659,21 @@ function updateSoftlockFailsafe() {
 function checkWaveComplete() {
     const budgetExhausted = gameState.waveBudgetRemaining <= 0;
     const allEnemiesDead = enemies.length === 0;
+    const noBoss = !getCurrentBoss();
     
     // Wave completes when all enemies are dead - XP collection not required
-    if (budgetExhausted && allEnemiesDead && !getCurrentBoss()) {
-        gameState.waveState = WAVE_STATE.WAVE_CLEAR;
-        gameState.waveTimer = 0;
+    if (budgetExhausted && allEnemiesDead && noBoss) {
+        // Only transition if we're still in WAVE_ACTIVE state (avoid duplicate transitions)
+        if (gameState.waveState === WAVE_STATE.WAVE_ACTIVE) {
+            gameState.waveState = WAVE_STATE.WAVE_CLEAR;
+            gameState.waveTimer = 0;
+            log('WAVE', 'complete_triggered', {
+                wave: gameState.currentWave,
+                budgetRemaining: gameState.waveBudgetRemaining,
+                enemiesAlive: enemies.length,
+                spawnCount: gameState.waveSpawnCount
+            });
+        }
     }
 }
 

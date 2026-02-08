@@ -266,6 +266,8 @@ PLAYTEST_URL=https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
 PLAYTEST_TOKEN=your-secret-token
 ```
 
+> **Note for Windows users:** The build script handles Windows line endings (`\r\n`) automatically. If you encounter parsing issues, ensure your editor saves with standard line endings.
+
 | Field | Where to get it |
 |-------|-----------------|
 | `PLAYTEST_URL` | The **Web app URL** from Step 4 (after clicking Deploy) |

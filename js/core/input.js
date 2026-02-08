@@ -48,6 +48,12 @@ export function initInput(rendererElement) {
     cleanupFunctions.push(() => document.removeEventListener('mousemove', onMouseMove));
     
     const clickHandler = () => {
+        // Don't request pointer lock if debug menu is open
+        const debugScreen = document.getElementById('debug-screen');
+        if (debugScreen && debugScreen.style.display === 'flex') {
+            return; // Debug menu is open, don't resume
+        }
+        
         if (gameState.running && !isPointerLocked) {
             // Request pointer lock with error handling for cancelled requests
             rendererElement.requestPointerLock().catch(err => {
