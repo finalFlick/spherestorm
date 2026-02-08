@@ -370,6 +370,13 @@ export function updateProjectiles(delta) {
                 
                 // Check death
                 if (enemy.health <= 0) {
+                    // Debug log
+                    console.log('[XP] Enemy died:', { 
+                        type: enemy.enemyType, 
+                        xpValue: enemy.xpValue,
+                        position: enemy.position.clone() 
+                    });
+                    
                     // Check if this was a boss minion
                     if (enemy.isBossMinion && enemy.parentBoss) {
                         const boss = enemy.parentBoss;

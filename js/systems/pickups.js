@@ -26,6 +26,12 @@ function getSurfaceHeight(x, z) {
 
 
 export function spawnXpGem(position, value) {
+    // Guard: don't spawn if value is invalid
+    if (!value || value <= 0 || !Number.isFinite(value)) {
+        console.warn('[XP] Skipping gem spawn - invalid value:', value, 'at position:', position);
+        return;
+    }
+    
     // Classic XP gem (simple octahedron)
     const gem = new THREE.Mesh(
         new THREE.OctahedronGeometry(0.2, 0),
@@ -42,11 +48,19 @@ export function spawnXpGem(position, value) {
 
     gem.baseY = surfaceHeight + 0.5;
     gem.position.y = gem.baseY;
-    gem.value = value * gameState.stats.xpMultiplier;
+    gem.value = value * (gameState.stats.xpMultiplier || 1); // Fallback multiplier
     gem.bobOffset = Math.random() * Math.PI * 2;
     
     scene.add(gem);
     xpGems.push(gem);
+    
+    // Debug log
+    console.log('[XP] Spawned gem:', { 
+        position: gem.position.clone(), 
+        value: gem.value, 
+        xpMultiplier: gameState.stats.xpMultiplier,
+        totalGems: xpGems.length 
+    });
 }
 
 export function spawnHeart(position, healAmount) {
