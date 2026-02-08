@@ -803,7 +803,7 @@ function animate(currentTime) {
     // If lastFrameTime is 0 (first frame), use 1.0 as delta
     const rawDeltaMs = lastFrameTime === 0 ? 0 : (currentTime - lastFrameTime);
     const delta = lastFrameTime === 0 ? 1.0 : rawDeltaMs / 16.67;
-    lastFrameTime = currentTime;
+    lastFrameTime = currentTime || 0;
     
     // Clamp delta to prevent huge jumps (e.g., when tab is inactive)
     let clampedDelta = Math.min(delta, 3.0);

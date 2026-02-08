@@ -1383,7 +1383,7 @@ export const PulseMusic = {
         osc.frequency.setValueAtTime(this.midiToFreq(rootMidi + degree + 12), now);
         osc.type = 'sine';
 
-        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.setValueAtTime(0.25, now);  // Increased from 0.08 to 0.25 for audible pickup sound
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
 
         osc.connect(gain);
