@@ -1,4 +1,4 @@
-import { scene } from '../core/scene.js';
+import { scene, camera } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
 import { xpGems, hearts, tempVec3, obstacles, modulePickups, chests, getArenaPortal, setArenaPortal, getBossEntrancePortal, setBossEntrancePortal } from '../core/entities.js';
 import { player } from '../entities/player.js';
@@ -54,6 +54,10 @@ export function spawnXpGem(position, value) {
     scene.add(gem);
     xpGems.push(gem);
     
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:spawnXpGem',message:'Gem spawned',data:{x:gem.position.x,y:gem.position.y,z:gem.position.z,surfaceHeight,baseY:gem.baseY,value:gem.value,visible:gem.visible,inScene:scene.children.includes(gem),materialColor:gem.material.color.getHex(),materialOpacity:gem.material.opacity},timestamp:Date.now(),runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
     // Debug log
     console.log('[XP] Spawned gem:', { 
         position: gem.position.clone(), 
@@ -102,16 +106,32 @@ export function spawnHeart(position, healAmount) {
 }
 
 export function updateXpGems(delta) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:updateXpGems',message:'Update called',data:{gemCount:xpGems.length,delta},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+    
     const time = (gameState.time?.realSeconds ?? 0) * 3;
     
     for (let i = xpGems.length - 1; i >= 0; i--) {
         const gem = xpGems[i];
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:updateXpGems:loop',message:'Processing gem',data:{index:i,gemCount:xpGems.length,posX:gem.position.x,posY:gem.position.y,posZ:gem.position.z,visible:gem.visible,inScene:scene.children.includes(gem),baseY:gem.baseY},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        
         // Bob relative to base height (defaults to 0.5 for backwards compatibility)
         const baseY = gem.baseY !== undefined ? gem.baseY : 0.5;
-        gem.position.y = baseY + Math.sin(time + gem.bobOffset) * 0.2;
+        const newY = baseY + Math.sin(time + gem.bobOffset) * 0.2;
+        gem.position.set(gem.position.x, newY, gem.position.z);
         gem.rotation.y += 0.05;
         
         const dist = gem.position.distanceTo(player.position);
+        
+        // #region agent log
+        if (i === xpGems.length - 1) { // Log first gem each frame to avoid spam
+            fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:updateXpGems:position',message:'Gem position after update',data:{gemCount:xpGems.length,posX:gem.position.x,posY:gem.position.y,posZ:gem.position.z,playerX:player.position.x,playerY:player.position.y,playerZ:player.position.z,dist,cameraX:camera?.position.x,cameraY:camera?.position.y,cameraZ:camera?.position.z},timestamp:Date.now(),runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        }
+        // #endregion
         
         // Attract to player
         if (dist < gameState.stats.pickupRange) {
@@ -121,6 +141,10 @@ export function updateXpGems(delta) {
         
         // Collect
         if (dist < 1) {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/4f227216-1057-4ff3-b898-68afb23010ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'pickups.js:updateXpGems:collect',message:'Gem collected',data:{value:gem.value,position:{x:gem.position.x,y:gem.position.y,z:gem.position.z}},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            
             applyXp(gem.value);
             spawnParticle(gem.position, 0x44ff44, 5);
             PulseMusic.onXpPickup();
