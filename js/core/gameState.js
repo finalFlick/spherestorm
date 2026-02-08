@@ -1,4 +1,4 @@
-import { WAVE_STATE } from '../config/constants.js';
+import { WAVE_STATE, DEFAULT_LIVES } from '../config/constants.js';
 
 // Central game state management
 export const gameState = {
