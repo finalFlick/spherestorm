@@ -2,7 +2,7 @@
 import { log } from '../systems/debugLog.js';
 
 export const GAME_TITLE = 'Manta Sphere';
-export const VERSION = '0.4.0';  // Semantic versioning - see VERSION file and .cursorrules
+export const VERSION = '0.5.0';  // Semantic versioning - see VERSION file and .cursorrules
 export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_';
 
 // ==================== BUILD-TIME ENVIRONMENT CONFIG ====================
