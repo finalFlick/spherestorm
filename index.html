@@ -171,6 +171,7 @@
         .lb-rank { width: 50px; color: #ffdd44; font-weight: bold; }
         .lb-name { width: 80px; font-weight: bold; }
         .lb-score { width: 100px; color: #44ff44; text-align: right; }
+        .lb-difficulty { width: 40px; color: #888; font-size: 12px; text-align: center; }
         .lb-arena { width: 80px; color: #888; text-align: center; }
         .lb-badges { width: 100px; text-align: center; }
         .lb-time { width: 60px; color: #888; text-align: right; }
@@ -417,6 +418,7 @@
                     <div class="level-display">Level <span id="level">1</span></div>
                     <div class="stat-label" style="margin-top: 10px;">XP</div>
                     <div class="xp-bar-container"><div class="xp-bar" id="xp-bar"></div></div>
+                    <div id="lives-display" style="margin-top: 8px; font-size: 14px; color: #ffdd44;">Lives: 3</div>
                     <div id="badge-panel"></div>
                 </div>
                 <div class="hud-center">
@@ -434,6 +436,7 @@
         
         <div id="crosshair"></div>
         <div id="kill-counter">Kills: <span id="kills">0</span></div>
+        <div id="dash-hint" style="position: absolute; bottom: 20px; left: 20px; color: #ffdd44; font-size: 14px; pointer-events: none; z-index: 100;">SHIFT: DASH (LOCKED)</div>
         
         <!-- Announcements -->
         <div id="wave-announcement">
@@ -497,6 +500,17 @@
                     <label for="sfx-volume">SFX Volume</label>
                     <input type="range" id="sfx-volume" min="0" max="100" value="70" step="1">
                     <span id="sfx-volume-value">70%</span>
+                </div>
+            </div>
+
+            <div class="pause-controls-section" style="margin: 20px 0; padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
+                <h3 style="font-size: 16px; color: #ffdd44; margin-bottom: 10px;">Controls</h3>
+                <div style="font-size: 14px; color: #aaa; line-height: 1.8;">
+                    <div><span style="color: #ffdd44;">WASD</span> Move</div>
+                    <div><span style="color: #ffdd44;">SPACE</span> Jump</div>
+                    <div><span style="color: #ffdd44;">SHIFT</span> Dash Strike <span style="color: #888;">(unlocked after Boss 1)</span></div>
+                    <div><span style="color: #ffdd44;">MOUSE</span> Look around</div>
+                    <div><span style="color: #ffdd44;">CLICK</span> Lock cursor / Auto-fire</div>
                 </div>
             </div>
 
@@ -576,7 +590,7 @@
                     <span class="debug-label">Enemy Type:</span>
                     <select id="debug-enemy-select" class="debug-select">
                         <option value="grunt">Grunt</option>
-                        <option value="shielded">Shielded</option>
+                        <option value="shielded">Guardian Crab</option>
                         <option value="fastBouncer">Fast Bouncer</option>
                         <option value="splitter">Splitter</option>
                         <option value="teleporter">Teleporter</option>
@@ -588,23 +602,12 @@
             </div>
             
             <div class="debug-section">
-                <h3>Warp to Arena/Wave</h3>
-                <div class="debug-row">
-                    <span class="debug-label">Arena:</span>
-                    <input type="number" id="debug-warp-arena" class="debug-input" min="1" max="6" value="1">
-                    <span class="debug-label">Wave:</span>
-                    <input type="number" id="debug-warp-wave" class="debug-input" min="1" max="10" value="1">
-                    <button id="debug-warp-btn" class="debug-btn">Warp</button>
-                </div>
-            </div>
-            
-            <div class="debug-section">
                 <h3>Start Boss Battle</h3>
                 <div class="debug-row">
                     <span class="debug-label">Boss Type:</span>
                     <select id="debug-boss-select" class="debug-select">
                         <option value="1">Boss 1 - The Gatekeeper</option>
-                        <option value="2">Boss 2 - The Monolith</option>
+                        <option value="2">Boss 2 - The Shieldfather</option>
                         <option value="3">Boss 3 - The Ascendant</option>
                         <option value="4">Boss 4 - The Overgrowth</option>
                         <option value="5">Boss 5 - The Burrower</option>
@@ -876,6 +879,15 @@
                 <h1>MANTA SPHERE</h1>
                 <p>Survive the arenas. Defeat the bosses. Earn your badges.</p>
                 <div class="start-buttons">
+                    <div style="margin-bottom: 15px;">
+                        <label for="difficulty-select" style="display: block; margin-bottom: 8px; color: #aaa; font-size: 14px;">Difficulty:</label>
+                        <select id="difficulty-select" style="padding: 10px 20px; font-size: 16px; background: rgba(0,0,0,0.5); border: 2px solid #666; border-radius: 8px; color: white; cursor: pointer;">
+                            <option value="easy">Easy</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="hard">Hard</option>
+                            <option value="nightmare">Nightmare</option>
+                        </select>
+                    </div>
                     <button id="start-btn">START GAME</button>
                 </div>
                 <div class="start-buttons">

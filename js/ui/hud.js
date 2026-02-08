@@ -8,6 +8,7 @@ import { getHudBadges, getMasteryBadges, updateStatBadges } from '../systems/bad
 import { getRecentDamage, getDeathTip } from '../systems/damage.js';
 import { MODULE_CONFIG } from '../config/modules.js';
 import { safeLocalStorageGet, safeLocalStorageSet } from '../utils/storage.js';
+import { keys } from '../core/input.js';
 
 export let gameStartTime = 0;
 
@@ -15,6 +16,10 @@ export let gameStartTime = 0;
 let boss6SequenceTooltipShown = false;
 let bossHealthDimmed = false;
 let bossHealthFlashTimer = 0;
+
+// Controls overlay DOM cache (lazy init)
+let controlsOverlayEl = null;
+let controlsOverlayKeyEls = null;
 
 export function setGameStartTime(time) {
     gameStartTime = time;
@@ -38,6 +43,12 @@ export function updateUI() {
     document.getElementById('kills').textContent = gameState.kills;
     document.getElementById('score').textContent = gameState.score;
     
+    // Lives display
+    const livesEl = document.getElementById('lives-display');
+    if (livesEl) {
+        livesEl.textContent = 'Lives: ' + gameState.lives;
+    }
+    
     // Arena info with tiered waves
     const arenaConfig = ARENA_CONFIG.arenas[Math.min(gameState.currentArena, 6)];
     const maxWaves = getArenaWaves(gameState.currentArena);
@@ -47,7 +58,7 @@ export function updateUI() {
     document.getElementById('waves-total').textContent = maxWaves;
     
     // Timer
-    const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
+    const elapsed = Math.floor(gameState.time?.runSeconds ?? 0);
     document.getElementById('timer').textContent = 
         Math.floor(elapsed / 60) + ':' + (elapsed % 60).toString().padStart(2, '0');
     
@@ -57,6 +68,39 @@ export function updateUI() {
     
     // Dash hint (always visible, context-aware)
     updateDashHint();
+
+    // Controls overlay (bottom-right keycaps)
+    updateControlsOverlay();
+}
+
+function updateControlsOverlay() {
+    if (!controlsOverlayEl) {
+        controlsOverlayEl = document.getElementById('controls-overlay');
+        controlsOverlayKeyEls = controlsOverlayEl ? controlsOverlayEl.querySelectorAll('.ctrl-key') : null;
+    }
+
+    if (!controlsOverlayEl || !controlsOverlayKeyEls) return;
+
+    // Only show during active gameplay (hide during pause/menus)
+    const shouldShow = !!(gameState.running && !gameState.paused);
+    if (controlsOverlayEl.style.display !== (shouldShow ? 'block' : 'none')) {
+        controlsOverlayEl.style.display = shouldShow ? 'block' : 'none';
+    }
+
+    if (!shouldShow) return;
+
+    for (const el of controlsOverlayKeyEls) {
+        const key = el.dataset.key;
+        let isActive = false;
+
+        if (key === 'Shift') {
+            isActive = !!(keys['ShiftLeft'] || keys['ShiftRight']);
+        } else {
+            isActive = !!keys[key];
+        }
+
+        el.classList.toggle('active', isActive);
+    }
 }
 
 function updateDashHint() {
@@ -70,12 +114,25 @@ function updateDashHint() {
     
     // Dash is gated behind Boss 1 module; before unlock, show locked hint
     if (gameState.dashStrikeEnabled) {
-        el.textContent = 'SHIFT: DASH STRIKE';
+        // Check cooldown status
+        const cooldownProgress = getDashStrikeCooldownProgress();
+        
+        if (cooldownProgress < 1) {
+            // On cooldown - show progress
+            const cooldownPct = Math.floor(cooldownProgress * 100);
+            el.textContent = `SHIFT: DASH (${cooldownPct}%)`;
+            el.style.opacity = '0.6';
+        } else {
+            // Ready
+            el.textContent = 'SHIFT: DASH STRIKE';
+            el.style.opacity = '1';
+        }
         el.classList.remove('locked');
     } else {
         // Keep this accurate for Arena 1: dash is not available yet
         el.textContent = 'SHIFT: DASH (LOCKED)';
         el.classList.add('locked');
+        el.style.opacity = '0.5';
     }
 }
 
@@ -750,7 +807,7 @@ export function showBadgeUnlock(badge) {
 }
 
 export function showGameOver() {
-    const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
+    const elapsed = Math.floor(gameState.time?.runSeconds ?? 0);
     document.getElementById('final-time').textContent = 
         Math.floor(elapsed / 60) + ':' + (elapsed % 60).toString().padStart(2, '0');
     document.getElementById('final-arena').textContent = gameState.currentArena;
@@ -784,6 +841,22 @@ function maybeShowArena1DashTutorialOnFirstDeath() {
     } else {
         tipEl.textContent = 'Defeat the King to unlock Dash Strike (SHIFT).';
     }
+}
+
+// Show dash tutorial on first game start (one-time)
+export function showDashTutorialOnFirstStart() {
+    const key = STORAGE_PREFIX + 'tutorial_dash_first_start';
+    if (safeLocalStorageGet(key, false)) return;
+    safeLocalStorageSet(key, true);
+    
+    // Show tutorial callout after a brief delay (let intro cinematic play)
+    setTimeout(() => {
+        if (gameState.dashStrikeEnabled) {
+            showTutorialCallout('dash-first-start', 'Press SHIFT to dash through danger!', 3000);
+        } else {
+            showTutorialCallout('dash-first-start', 'Defeat Boss 1 to unlock Dash Strike (SHIFT)', 3000);
+        }
+    }, 2000);
 }
 
 // Display death recap with recent damage and tips
@@ -939,7 +1012,7 @@ export function showStartScreen() {
 
 // Get elapsed time in seconds
 export function getElapsedTime() {
-    return Math.floor((Date.now() - gameStartTime) / 1000);
+    return Math.floor(gameState.time?.runSeconds ?? 0);
 }
 
 // Arena Select functions

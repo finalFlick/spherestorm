@@ -1,4 +1,6 @@
 // Game Identity
+import { log } from '../systems/debugLog.js';
+
 export const GAME_TITLE = 'Manta Sphere';
 export const VERSION = '0.4.0';  // Semantic versioning - see VERSION file and .cursorrules
 export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_';
@@ -10,7 +12,7 @@ export const STORAGE_PREFIX = GAME_TITLE.toLowerCase().replace(/\s+/g, '') + '_'
 // Unbundled dev (index.dev.html): window.__DEV_MODE__ = true
 // See .env.example for configuration template
 
-/* global ENV_DEBUG_SECRET, ENV_PLAYTEST_URL, ENV_PLAYTEST_TOKEN */
+/* global ENV_DEBUG_SECRET, ENV_PLAYTEST_URL, ENV_PLAYTEST_TOKEN, ENV_COMMIT_HASH */
 // Build-injected globals (exist when bundled)
 // Falls back to window.__DEV_MODE__ for unbundled dev
 const RUNTIME_CONFIG = (typeof window !== 'undefined' && window.__RUNTIME_CONFIG__) || null;
@@ -29,6 +31,12 @@ const PLAYTEST_URL =
 const PLAYTEST_TOKEN =
     (RUNTIME_CONFIG && typeof RUNTIME_CONFIG.playtestToken === 'string' && RUNTIME_CONFIG.playtestToken) ||
     (typeof ENV_PLAYTEST_TOKEN !== 'undefined' ? ENV_PLAYTEST_TOKEN : '');
+
+// Commit hash (bundled builds) - useful for debug/version display
+const COMMIT_HASH_VALUE =
+    (RUNTIME_CONFIG && typeof RUNTIME_CONFIG.commitHash === 'string' && RUNTIME_CONFIG.commitHash) ||
+    (typeof ENV_COMMIT_HASH !== 'undefined' ? ENV_COMMIT_HASH : '');
+export const COMMIT_HASH = COMMIT_HASH_VALUE || 'dev';
 
 // Playtest feedback configuration (from .env)
 export const PLAYTEST_CONFIG = PLAYTEST_URL ? {
@@ -50,7 +58,8 @@ export function enableDebugMode() {
     DEBUG_CONFIG.tags.SCORE = true;
     DEBUG_CONFIG.tags.STATE = true;
     DEBUG_CONFIG.tags.SAFETY = true;
-    console.log('%c[DEBUG MODE]', 'color: #ffdd44; font-weight: bold', 'Enabled (dev build)');
+    DEBUG_CONFIG.tags.DEBUG = true;
+    log('DEBUG', 'debug_mode_enabled', { build: 'dev' });
     return true;
 }
 
@@ -96,6 +105,39 @@ export const HEART_DROP_CHANCE = { normal: 0.03, elite: 0.10, boss: 1.0 };
 export const HEART_HEAL = { normal: 15, elite: 25, boss: 50 };
 export const HEART_TTL = 600;
 export const XP_GEM_TTL = 900;  // 15 seconds at 60fps
+export const DEFAULT_LIVES = 3;  // Default starting lives for new runs
+
+// Difficulty modes configuration
+export const DIFFICULTY_CONFIG = {
+    easy: { 
+        hpMult: 0.7, 
+        dpsMult: 0.6, 
+        spawnMult: 0.8, 
+        telegraphMult: 1.5, 
+        scoreMult: 0.5 
+    },
+    normal: { 
+        hpMult: 1.0, 
+        dpsMult: 1.0, 
+        spawnMult: 1.0, 
+        telegraphMult: 1.0, 
+        scoreMult: 1.0 
+    },
+    hard: { 
+        hpMult: 1.3, 
+        dpsMult: 1.2, 
+        spawnMult: 1.2, 
+        telegraphMult: 0.8, 
+        scoreMult: 1.5 
+    },
+    nightmare: { 
+        hpMult: 1.6, 
+        dpsMult: 1.5, 
+        spawnMult: 1.4, 
+        telegraphMult: 0.65, 
+        scoreMult: 2.0 
+    }
+};
 
 export const WAVE_STATE = {
     WAVE_INTRO: 'WAVE_INTRO',

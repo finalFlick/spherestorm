@@ -3,7 +3,8 @@ import { gameState, resetGameState } from './core/gameState.js';
 import { initScene, createGround, onWindowResize, render, scene, renderer, camera } from './core/scene.js';
 import { initInput, resetInput, checkCutsceneSkip, cleanupInput } from './core/input.js';
 import { resetAllEntities, enemies, getCurrentBoss } from './core/entities.js';
-import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG_ENABLED, GAME_TITLE, VERSION, enableDebugMode, PLAYTEST_CONFIG } from './config/constants.js';
+import { WAVE_STATE, UI_UPDATE_INTERVAL, DEBUG_ENABLED, GAME_TITLE, VERSION, COMMIT_HASH, enableDebugMode, PLAYTEST_CONFIG, DEFAULT_LIVES } from './config/constants.js';
+import { setDifficulty, getDifficultyConfig } from './core/gameState.js';
 
 import { createPlayer, updatePlayer, resetPlayer, player } from './entities/player.js';
 import { updateEnemies, clearEnemyGeometryCache } from './entities/enemies.js';
@@ -12,8 +13,8 @@ import { updateBoss } from './entities/boss.js';
 import { updateWaveSystem } from './systems/waveSystem.js';
 import { spawnSpecificEnemy } from './entities/enemies.js';
 import { spawnBoss } from './entities/boss.js';
-import { shootProjectile, updateProjectiles, resetLastShot, initProjectilePool } from './systems/projectiles.js';
-import { updateXpGems, updateHearts, spawnArena1ModulePickup, updateModulePickups, clearModulePickups } from './systems/pickups.js';
+import { shootProjectile, updateProjectiles, resetLastShot, initProjectilePool, clearProjectiles } from './systems/projectiles.js';
+import { updateXpGems, updateHearts, spawnArena1ModulePickup, updateModulePickups, clearModulePickups, applyXp, updateChests } from './systems/pickups.js';
 import { initModuleProgress } from './systems/moduleProgress.js';
 import { resetDamageTime, setPlayerRef, clearDamageLog } from './systems/damage.js';
 import { initBadges, resetActiveBadges, updateStatBadges } from './systems/badges.js';
@@ -49,7 +50,8 @@ import {
     initAnnouncementSkip,
     showStartBanner,
     showBossAnnouncement,
-    hideBossAnnouncement
+    hideBossAnnouncement,
+    showDashTutorialOnFirstStart
 } from './ui/hud.js';
 
 import {
@@ -60,6 +62,9 @@ import {
     showBadgeCollection,
     hideBadgeCollection
 } from './ui/leaderboardUI.js';
+
+
+import { ARENA_XP_REWARDS } from './config/arenaXP.js';
 
 import { showModulesScreen, hideModulesScreen } from './ui/modulesUI.js';
 import { initRosterUI } from './ui/rosterUI.js';
@@ -77,6 +82,7 @@ import {
 
 let lastUIUpdate = 0;
 let lastFrameTime = 0;
+let lastCutsceneActive = false;
 
 // Event listener cleanup tracking
 const eventCleanup = [];
@@ -115,12 +121,19 @@ function cleanupGameState() {
     // across game sessions. They are set up once in init() and should never be removed.
     resetLogState();
     lastFrameTime = 0;
+    lastUIUpdate = 0;
 }
 
 // Helper: Apply starting lives from tuning config (called at run start)
+// Defaults to DEFAULT_LIVES constant, but can be overridden by TUNING for debug
 function applyStartingLives() {
-    const livesRaw = Number(TUNING.playerStartingLives ?? 1);
-    gameState.lives = Math.max(1, Math.min(9, Math.round(livesRaw || 1)));
+    const livesRaw = Number(TUNING.playerStartingLives);
+    if (Number.isFinite(livesRaw) && livesRaw > 0) {
+        gameState.lives = Math.max(1, Math.min(9, Math.round(livesRaw)));
+    } else {
+        // Use default from constants
+        gameState.lives = DEFAULT_LIVES;
+    }
 }
 
 // Helper: Unlock all mechanics up to and including the specified arena
@@ -143,6 +156,50 @@ function unlockMechanicsForArena(arenaNumber) {
     if (arenaNumber >= 6) {
         gameState.unlockedMechanics.hybridChaos = true;
     }
+}
+
+function getCumulativeArenaXp(arenaNumber) {
+    let totalXp = 0;
+    for (let arena = 1; arena < arenaNumber; arena++) {
+        const reward = ARENA_XP_REWARDS?.[arena];
+        if (reward && Number.isFinite(reward.totalXp)) {
+            totalXp += reward.totalXp;
+        }
+    }
+    return totalXp;
+}
+
+function applyBaselineLevelScaling(levelUpsToApply) {
+    const levels = Math.max(0, Math.floor(levelUpsToApply || 0));
+
+    for (let i = 0; i < levels; i++) {
+        gameState.level++;
+        gameState.score += 50;
+
+        const upgradeIndex = i % 4;
+        switch (upgradeIndex) {
+            case 0:
+                gameState.stats.damage = Math.floor(gameState.stats.damage * 1.25);
+                break;
+            case 1:
+                gameState.stats.attackSpeed *= 1.2;
+                break;
+            case 2:
+                gameState.stats.moveSpeed *= 1.15;
+                break;
+            case 3:
+                gameState.stats.maxHealth += 25;
+                gameState.maxHealth = gameState.stats.maxHealth;
+                gameState.health = Math.min(gameState.health + 25, gameState.maxHealth);
+                break;
+        }
+
+        if (i % 3 === 0) {
+            gameState.stats.projectileCount++;
+        }
+    }
+
+    gameState.pendingLevelUps = 0;
 }
 
 async function init() {
@@ -176,7 +233,7 @@ async function init() {
     // Show version display
     const versionEl = document.getElementById('version-display');
     if (versionEl) {
-        versionEl.textContent = `v${VERSION}`;
+        versionEl.textContent = `v${VERSION} (${COMMIT_HASH})`;
     }
     
     initScene();
@@ -399,9 +456,15 @@ async function init() {
     // Pause menu feedback button
     const pauseFeedbackBtn = document.getElementById('pause-feedback-btn');
     if (pauseFeedbackBtn) {
+        // Update button state based on feedback config
+        if (!isFeedbackEnabled()) {
+            pauseFeedbackBtn.disabled = true;
+            pauseFeedbackBtn.title = 'Feedback not configured. Add PLAYTEST_URL and PLAYTEST_TOKEN to .env and rebuild.';
+            pauseFeedbackBtn.style.opacity = '0.5';
+        }
         addTrackedListener(pauseFeedbackBtn, 'click', (e) => {
             e.stopPropagation(); // Prevent resume trigger
-            showFeedbackOverlay('pause');
+            showFeedbackOverlay('pause'); // Still shows overlay with warning if disabled
         });
     }
 
@@ -461,17 +524,29 @@ async function init() {
     // Main menu feedback button
     const menuFeedbackBtn = document.getElementById('menu-feedback-btn');
     if (menuFeedbackBtn) {
+        // Update button state based on feedback config
+        if (!isFeedbackEnabled()) {
+            menuFeedbackBtn.disabled = true;
+            menuFeedbackBtn.title = 'Feedback not configured. Add PLAYTEST_URL and PLAYTEST_TOKEN to .env and rebuild.';
+            menuFeedbackBtn.style.opacity = '0.5';
+        }
         addTrackedListener(menuFeedbackBtn, 'click', () => {
-            showFeedbackOverlay('menu');
+            showFeedbackOverlay('menu'); // Still shows overlay with warning if disabled
         });
     }
     
     // Death screen feedback button
     const deathFeedbackBtn = document.getElementById('death-feedback-btn');
     if (deathFeedbackBtn) {
+        // Update button state based on feedback config
+        if (!isFeedbackEnabled()) {
+            deathFeedbackBtn.disabled = true;
+            deathFeedbackBtn.title = 'Feedback not configured. Add PLAYTEST_URL and PLAYTEST_TOKEN to .env and rebuild.';
+            deathFeedbackBtn.style.opacity = '0.5';
+        }
         addTrackedListener(deathFeedbackBtn, 'click', () => {
             hideGameOver();
-            showFeedbackOverlay('death');
+            showFeedbackOverlay('death'); // Still shows overlay with warning if disabled
         });
     }
     
@@ -568,12 +643,15 @@ function startGame() {
     // Don't set waveState yet - wait for intro to finish
     gameState.waveState = null;
     gameState.waveTimer = 0;
-    setGameStartTime(Date.now());
+    setGameStartTime(0);
     
     // Stop menu music and start adaptive arena music
     PulseMusic.stopMenuMusic();
     PulseMusic.resume();
     PulseMusic.onArenaChange(1);
+    
+    // Show dash tutorial on first game start
+    showDashTutorialOnFirstStart();
     PulseMusic.startMusicLoop();
     
     animate();
@@ -590,7 +668,7 @@ function restartGame() {
     hideBossHealthBar();
     
     gameState.running = true;
-    setGameStartTime(Date.now());
+    setGameStartTime(0);
     
     // Restart music
     PulseMusic.resume();
@@ -628,32 +706,12 @@ function startAtArena(arenaNumber) {
     MenuScene.pause();
     
     cleanupGameState();
-    
-    // Arena level scaling configuration
-    const arenaScaling = {
-        1: { level: 1, damage: 10, projCount: 1, speed: 0.15, maxHealth: 100 },
-        2: { level: 4, damage: 16, projCount: 1, speed: 0.17, maxHealth: 125 },
-        3: { level: 7, damage: 20, projCount: 2, speed: 0.19, maxHealth: 150 },
-        4: { level: 10, damage: 25, projCount: 2, speed: 0.22, maxHealth: 175 },
-        5: { level: 13, damage: 31, projCount: 3, speed: 0.25, maxHealth: 200 },
-        6: { level: 17, damage: 39, projCount: 3, speed: 0.28, maxHealth: 250 }
-    };
-    
-    const scaling = arenaScaling[arenaNumber];
-    
-    // Scale player stats
-    gameState.level = scaling.level;
-    gameState.stats.damage = scaling.damage;
-    gameState.stats.projectileCount = scaling.projCount;
-    gameState.stats.moveSpeed = scaling.speed;
-    gameState.stats.maxHealth = scaling.maxHealth;
-    gameState.maxHealth = scaling.maxHealth;
-    gameState.health = scaling.maxHealth;
-    
-    // Also add some progression for other stats
-    gameState.stats.attackSpeed = 1 + (arenaNumber - 1) * 0.15;
-    gameState.stats.projectileSpeed = 0.8 + (arenaNumber - 1) * 0.05;
-    gameState.stats.pickupRange = 3 + (arenaNumber - 1) * 0.3;
+
+    // Award cumulative XP from all previous arenas to match progression
+    const previousArenaXp = getCumulativeArenaXp(arenaNumber);
+    if (previousArenaXp > 0) {
+        applyXp(previousArenaXp);
+    }
     
     // Set arena and unlock mechanics
     gameState.currentArena = arenaNumber;
@@ -672,7 +730,7 @@ function startAtArena(arenaNumber) {
     gameState.running = true;
     gameState.waveState = WAVE_STATE.WAVE_INTRO;
     gameState.waveTimer = 0;
-    setGameStartTime(Date.now());
+    setGameStartTime(0);
     
     // Stop menu music and start adaptive arena music
     PulseMusic.stopMenuMusic();
@@ -681,6 +739,12 @@ function startAtArena(arenaNumber) {
     PulseMusic.startMusicLoop();
     
     updateUI();
+
+    // Auto-apply baseline scaling for pending level-ups (no upgrade prompts)
+    if (gameState.pendingLevelUps > 0) {
+        applyBaselineLevelScaling(gameState.pendingLevelUps);
+        updateUI();
+    }
     animate();
 }
 
@@ -691,15 +755,20 @@ function gameOver() {
     // Stop music with game over stinger
     PulseMusic.onGameOver();
     
-    const score = gameState.score;
+    // Apply difficulty score multiplier
+    const diffConfig = getDifficultyConfig();
+    const baseScore = gameState.score;
+    const adjustedScore = Math.floor(baseScore * diffConfig.scoreMult);
+    
     const arena = gameState.currentArena;
     const wave = gameState.currentWave;
     const level = gameState.level;
     const time = getElapsedTime();
+    const difficulty = gameState.currentDifficulty;
     
-    // Check for high score
-    if (checkHighScore(score)) {
-        showHighScoreEntry(score, arena, wave, level, time, (position) => {
+    // Check for high score (use adjusted score for comparison)
+    if (checkHighScore(adjustedScore)) {
+        showHighScoreEntry(adjustedScore, arena, wave, level, time, difficulty, (position) => {
             showGameOver();
         });
     } else {
@@ -710,8 +779,8 @@ function gameOver() {
 function tryConsumeLifeAndRespawn() {
     if (!gameState.running) return false;
 
-    // Only active when starting lives > 1 (default is 1, preserving current behavior)
-    if (!gameState.lives || gameState.lives <= 1) return false;
+    // Check if player has lives remaining
+    if (!gameState.lives || gameState.lives <= 0) return false;
 
     gameState.lives = Math.max(0, gameState.lives - 1);
 
@@ -732,7 +801,8 @@ function animate(currentTime) {
     
     // Calculate delta time normalized to 60fps (16.67ms per frame)
     // If lastFrameTime is 0 (first frame), use 1.0 as delta
-    const delta = lastFrameTime === 0 ? 1.0 : (currentTime - lastFrameTime) / 16.67;
+    const rawDeltaMs = lastFrameTime === 0 ? 0 : (currentTime - lastFrameTime);
+    const delta = lastFrameTime === 0 ? 1.0 : rawDeltaMs / 16.67;
     lastFrameTime = currentTime;
     
     // Clamp delta to prevent huge jumps (e.g., when tab is inactive)
@@ -741,6 +811,25 @@ function animate(currentTime) {
     // Apply slow-mo time scale
     const timeScale = getTimeScale();
     clampedDelta *= timeScale;
+
+    // True seconds deltas (clamped to match max 3-frame jump)
+    const realDeltaSec = Math.min(rawDeltaMs / 1000, 0.05);
+    let simDeltaSec = realDeltaSec * timeScale;
+    if (gameState.paused || gameState.announcementPaused) {
+        simDeltaSec = 0;
+    }
+
+    // Advance time tracking
+    gameState.time.realSeconds += realDeltaSec;
+    gameState.time.simSeconds += simDeltaSec;
+    if (!gameState.paused && !gameState.cutsceneActive && !gameState.announcementPaused && !gameState.introCinematicActive) {
+        gameState.time.runSeconds += realDeltaSec;
+    }
+
+    if (gameState.cutsceneActive && !lastCutsceneActive) {
+        clearProjectiles();
+    }
+    lastCutsceneActive = gameState.cutsceneActive;
     
     if (!gameState.paused) {
         // Increment frame counter for cooldown tracking
@@ -773,6 +862,36 @@ function animate(currentTime) {
             
             // Always update wave system (handles announcement timers)
             updateWaveSystem();
+
+            // Cutscene whitelist: boss demo + optional player movement only
+            if (gameState.cutsceneActive && !gameState.announcementPaused) {
+                checkCutsceneSkip();
+
+                if (currentBoss) {
+                    updateBoss();
+                }
+
+                if (currentBoss?.aiState === 'demo_dodge_wait' || gameState.interactiveDodgeTutorial) {
+                    updatePlayer(clampedDelta);
+                }
+
+                if (cinematicActive && currentBoss?.aiState !== 'demo_dodge_wait') {
+                    updateCinematic(camera, player);
+                }
+
+                updateParticles(clampedDelta);
+                updateTrail();
+                updateMaterialFlashes();
+                PulseMusic.update(gameState, enemies, currentBoss);
+
+                const now = gameState.time.realSeconds;
+                if (now - lastUIUpdate > (UI_UPDATE_INTERVAL / 1000)) {
+                    updateUI();
+                    lastUIUpdate = now;
+                }
+                renderer.render(scene, camera);
+                return;
+            }
             
             // Skip combat updates during announcement pause (but allow wave timer to tick)
             if (gameState.announcementPaused) {
@@ -800,8 +919,8 @@ function animate(currentTime) {
                 
                 // Only update particles and UI during announcements
                 updateParticles(clampedDelta);
-                const now = Date.now();
-                if (now - lastUIUpdate > UI_UPDATE_INTERVAL) {
+                const now = gameState.time.realSeconds;
+                if (now - lastUIUpdate > (UI_UPDATE_INTERVAL / 1000)) {
                     updateUI();
                     lastUIUpdate = now;
                 }
@@ -824,6 +943,7 @@ function animate(currentTime) {
             updateXpGems(clampedDelta);
             updateHearts(clampedDelta);
             updateModulePickups();  // Update hidden module pickups
+            updateChests();         // Update item chests
             updateParticles(clampedDelta);
             updateTrail();
             updateMaterialFlashes();  // Frame-based material flash resets
@@ -845,8 +965,8 @@ function animate(currentTime) {
                 return;
             }
             
-            const now = Date.now();
-            if (now - lastUIUpdate > UI_UPDATE_INTERVAL) {
+            const now = gameState.time.realSeconds;
+            if (now - lastUIUpdate > (UI_UPDATE_INTERVAL / 1000)) {
                 updateUI();
                 lastUIUpdate = now;
             }
@@ -934,19 +1054,6 @@ function setupDebugControls() {
         addTrackedListener(spawnEnemyBtn, 'click', () => {
             const enemyType = document.getElementById('debug-enemy-select').value;
             debugSpawnEnemy(enemyType);
-        });
-    }
-    
-    // Warp to arena/wave
-    const warpBtn = document.getElementById('debug-warp-btn');
-    if (warpBtn) {
-        addTrackedListener(warpBtn, 'click', () => {
-            const arenaEl = document.getElementById('debug-warp-arena');
-            const waveEl = document.getElementById('debug-warp-wave');
-            if (!arenaEl || !waveEl) return;
-            const arena = parseInt(arenaEl.value, 10) || 1;
-            const wave = parseInt(waveEl.value, 10) || 1;
-            debugWarpToArenaWave(arena, wave);
         });
     }
     
@@ -1064,14 +1171,6 @@ function setupDebugControls() {
         min: 0.25,
         max: 3.0,
         format: (v) => `${Number(v).toFixed(2)}x`
-    });
-
-    const writeXpDespawn = bindSlider('debug-tuning-xp-despawn', 'debug-tuning-xp-despawn-value', {
-        getValue: () => Math.round(Number(TUNING.xpDespawnSeconds || 15)),
-        setValue: (v) => (TUNING.xpDespawnSeconds = Math.round(v)),
-        min: 1,
-        max: 120,
-        format: (v) => `${Math.round(v)}s`
     });
 
     const writeBreathingRoom = bindSlider('debug-tuning-breathing-room', 'debug-tuning-breathing-room-value', {
@@ -1225,7 +1324,6 @@ function setupDebugControls() {
             TUNING.spawnRateMultiplier = 1.0;
             TUNING.enemySpeedMultiplier = 1.0;
             TUNING.gravityMultiplier = 1.0;
-            TUNING.xpDespawnSeconds = 15;
             TUNING.breathingRoomSeconds = 1.5;
             TUNING.stressPauseThreshold = 6;
             TUNING.landingStunFrames = 0;
@@ -1247,7 +1345,6 @@ function setupDebugControls() {
             if (writeSpawnRate) writeSpawnRate();
             if (writeEnemySpeed) writeEnemySpeed();
             if (writeGravity) writeGravity();
-            if (writeXpDespawn) writeXpDespawn();
             if (writeBreathingRoom) writeBreathingRoom();
             if (writeStressThreshold) writeStressThreshold();
             if (writeLandingStun) writeLandingStun();
@@ -1287,7 +1384,7 @@ function startEmptyArena() {
     gameState.running = true;
     gameState.waveState = WAVE_STATE.WAVE_INTRO;
     gameState.waveTimer = 0;
-    setGameStartTime(Date.now());
+    setGameStartTime(0);
     
     PulseMusic.stopMenuMusic();
     PulseMusic.resume();
@@ -1417,36 +1514,8 @@ function debugGiveLevels(count) {
         log('DEBUG', 'give_levels_failed', { reason: 'game_not_running' });
         return;
     }
-    
-    for (let i = 0; i < count; i++) {
-        gameState.level++;
-        gameState.score += 50;
-        
-        // Apply a balanced set of upgrades
-        const upgradeIndex = i % 4;
-        switch(upgradeIndex) {
-            case 0:
-                gameState.stats.damage = Math.floor(gameState.stats.damage * 1.25);
-                break;
-            case 1:
-                gameState.stats.attackSpeed *= 1.2;
-                break;
-            case 2:
-                gameState.stats.moveSpeed *= 1.15;
-                break;
-            case 3:
-                gameState.stats.maxHealth += 25;
-                gameState.maxHealth = gameState.stats.maxHealth;
-                gameState.health = Math.min(gameState.health + 25, gameState.maxHealth);
-                break;
-        }
-        
-        // Every 3rd level, add projectile
-        if (i % 3 === 0) {
-            gameState.stats.projectileCount++;
-        }
-    }
-    
+
+    applyBaselineLevelScaling(count);
     updateUI();
     log('DEBUG', 'levels_given', { count, newLevel: gameState.level });
 }

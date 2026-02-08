@@ -8,7 +8,7 @@ export const gameState = {
     introCinematicActive: false,
     health: 100,
     maxHealth: 100,
-    lives: 1,
+    lives: DEFAULT_LIVES,
     xp: 0,
     xpToLevel: 10,
     level: 1,
@@ -69,6 +69,7 @@ export const gameState = {
     currentBossRef: null,
     
     // Frame-based post-defeat timers (run even after boss removed)
+    xpVacuumTimer: 0,
     portalSpawnTimer: 0,
     portalSpawnPos: null,
     victoryParticleWave: undefined,  // undefined = not active, 0-2 = active waves
@@ -94,16 +95,29 @@ export const gameState = {
     
     // Frame counter for cooldown tracking
     frameCount: 0,
+
+    // Time tracking (seconds)
+    time: {
+        simSeconds: 0,
+        realSeconds: 0,
+        runSeconds: 0
+    },
+    
+    // Projectile-modifying items (collected from chests)
+    heldItems: [],  // Array of item id strings (e.g., ['pierce', 'chain'])
     
     // Arena 1 Boss Chase state - boss appears multiple times across waves
-    arena1ChaseState: null  // Initialized when Arena 1 starts
+    arena1ChaseState: null,  // Initialized when Arena 1 starts
+    
+    // Difficulty mode (persists to localStorage)
+    currentDifficulty: 'normal'
 };
 
 export function resetGameState() {
     Object.assign(gameState, {
         health: 100,
         maxHealth: 100,
-        lives: 1,
+        lives: DEFAULT_LIVES,
         xp: 0,
         xpToLevel: 10,
         level: 1,
@@ -126,11 +140,14 @@ export function resetGameState() {
         introMinions: [],
         currentBossRef: null,
         // Frame-based post-defeat timers
+        xpVacuumTimer: 0,
         portalSpawnTimer: 0,
         portalSpawnPos: null,
         victoryParticleWave: undefined,
         victoryParticleTimer: 0,
-        victoryParticlePos: null
+        victoryParticlePos: null,
+        // Items
+        heldItems: []
     });
     gameState.unlockedMechanics = {
         pillars: false,
@@ -177,6 +194,11 @@ export function resetGameState() {
     gameState.shownModifiers = {};
     gameState.frameCount = 0;
     gameState.arena1ChaseState = null;
+    gameState.time = {
+        simSeconds: 0,
+        realSeconds: 0,
+        runSeconds: 0
+    };
 }
 
 // Initialize Arena 1 boss chase state
@@ -210,4 +232,25 @@ export function initArena1ChaseState() {
 // Reset Arena 1 chase state (on death/restart)
 export function resetArena1ChaseState() {
     gameState.arena1ChaseState = null;
+}
+
+// Initialize difficulty from localStorage on module load
+const savedDifficulty = safeLocalStorageGet(STORAGE_PREFIX + 'difficulty', 'normal');
+if (['easy', 'normal', 'hard', 'nightmare'].includes(savedDifficulty)) {
+    gameState.currentDifficulty = savedDifficulty;
+} else {
+    gameState.currentDifficulty = 'normal';
+}
+
+// Save difficulty to localStorage
+export function setDifficulty(difficulty) {
+    if (['easy', 'normal', 'hard', 'nightmare'].includes(difficulty)) {
+        gameState.currentDifficulty = difficulty;
+        safeLocalStorageSet(STORAGE_PREFIX + 'difficulty', difficulty);
+    }
+}
+
+// Get current difficulty config
+export function getDifficultyConfig() {
+    return DIFFICULTY_CONFIG[gameState.currentDifficulty] || DIFFICULTY_CONFIG.normal;
 }
