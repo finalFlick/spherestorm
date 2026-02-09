@@ -564,6 +564,12 @@ Wave modifiers alter spawn behavior and difficulty. Some are random, others are 
 
 ## Threat Budget System
 
+**Difficulty Scaling Philosophy:**
+- Enemy HP does **not** scale with arena or wave progression (hit counts stay learnable)
+- Difficulty comes from **spawn count, composition, and enemy damage** rather than HP bloat
+- Wave budgets scale with arena to spawn more enemies (not tankier enemies)
+- Wave modifiers (elite, swarm, rush) adjust spawn composition and pacing
+
 ### Budget Calculation
 
 Each wave receives a threat budget:

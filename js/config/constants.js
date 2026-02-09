@@ -229,19 +229,20 @@ export const THREAT_BUDGET = {
         waterBalloon: { durability: 25, damage: 10, cognitive: 4 }
     },
     waveBudgets: {
-        lesson: { total: 800, maxCognitive: 20 },        // Doubled from 400, 15
-        integration: { total: 1500, maxCognitive: 40 },  // Doubled from 750, 30
-        exam: { total: 2500, maxCognitive: 50 }          // Doubled from 1250, 40
+        // Increased budgets to compensate for removing HP scaling - difficulty via spawn count/composition
+        lesson: { total: 1000, maxCognitive: 25 },        // Increased from 800
+        integration: { total: 1800, maxCognitive: 45 },  // Increased from 1500
+        exam: { total: 3000, maxCognitive: 60 }          // Increased from 2500
     },
     // Arena-specific budget overrides (applied before arena scaling)
     arenaBudgetOverrides: {
         1: {
-            lesson: { total: 700 },      // Doubled from 350 - more tiny puffers
-            integration: { total: 1100 }, // Doubled from 550 - more mixed enemies
-            exam: { total: 1500 }         // Doubled from 750 - more pressure
+            lesson: { total: 900 },      // Increased from 700
+            integration: { total: 1300 }, // Increased from 1100
+            exam: { total: 1800 }         // Increased from 1500
         }
     },
-    arenaScaling: { 1: 1.0, 2: 1.2, 3: 1.4, 4: 1.6, 5: 1.8, 6: 2.0 }
+    arenaScaling: { 1: 1.0, 2: 1.3, 3: 1.6, 4: 1.9, 5: 2.2, 6: 2.5 }  // Increased scaling to maintain pressure
 };
 
 // Mid-wave pacing configuration
@@ -254,11 +255,12 @@ export const PACING_CONFIG = {
 };
 
 // Wave modifiers for variety
+// Note: After removing arena/wave HP scaling, modifiers use smaller HP multipliers
 export const WAVE_MODIFIERS = {
     elite: { 
         name: 'ELITE ASSAULT', 
-        budgetMult: 0.7,
-        healthMult: 2.0, 
+        budgetMult: 0.85,  // Increased from 0.7 (more elites, not just tankier)
+        healthMult: 1.25,  // Reduced from 2.0 (modest HP boost, not main difficulty lever)
         xpMult: 2.5,
         forceTypes: null
     },
@@ -271,9 +273,9 @@ export const WAVE_MODIFIERS = {
     },
     swarm: { 
         name: 'SWARM', 
-        budgetMult: 1.5,
+        budgetMult: 1.6,  // Increased from 1.5 (more enemies)
         forceTypes: ['grunt', 'fastBouncer'], 
-        healthMult: 0.5
+        healthMult: 0.75  // Reduced from 0.5 (still weaker but not popcorn)
     },
     harbingers: { 
         name: 'HARBINGERS', 
@@ -418,6 +420,25 @@ export const SLOW_MO_LERP_SPEED = 0.1;  // Interpolation speed for slow-mo trans
 export const SCREEN_FLASH_DEFAULT_DURATION = 6;  // Default frames for screen flash effect
 export const SPLITLING_SPAWN_STUN_FRAMES = 30;  // Stun frames for newly spawned splitlings
 
+// Per-arena upgrade caps (prevents runaway stat growth)
+// Caps apply to both baseline auto-scaling and manual upgrades
+export const ARENA_UPGRADE_CAPS = {
+    1: { damage: 2, attackSpeed: 2, moveSpeed: 1, maxHealth: 2, pickupRange: 2, projectileCount: 1 },
+    2: { damage: 3, attackSpeed: 3, moveSpeed: 2, maxHealth: 3, pickupRange: 3, projectileCount: 2 },
+    3: { damage: 4, attackSpeed: 4, moveSpeed: 3, maxHealth: 4, pickupRange: 4, projectileCount: 3 },
+    4: { damage: 5, attackSpeed: 5, moveSpeed: 4, maxHealth: 5, pickupRange: 5, projectileCount: 4 },
+    5: { damage: 6, attackSpeed: 6, moveSpeed: 5, maxHealth: 6, pickupRange: 6, projectileCount: 5 },
+    6: { damage: 7, attackSpeed: 7, moveSpeed: 6, maxHealth: 7, pickupRange: 7, projectileCount: 6 }
+};
+
+// Stat maximums (hard caps regardless of arena)
+export const STAT_MAXIMUMS = {
+    moveSpeed: 0.22,  // Target: Arena 2 shouldn't feel like "Flash"
+    damage: 50,       // Reasonable damage cap
+    attackSpeed: 0.8, // Fire rate cap
+    projectileCount: 8 // Max projectiles
+};
+
 // Underwater ambience configuration
 export const AMBIENCE_CONFIG = {
     enabled: true,  // Master toggle (default ON)
@@ -459,4 +480,13 @@ export const AMBIENCE_CONFIG = {
     
     // Combat safe zone (bubbles/fish avoid this area)
     safeZoneRadius: 25,                        // Center 25 units is combat area
+};
+
+// Treasure Runner configuration
+export const TREASURE_RUNNER = {
+    spawnTimeMin: 30,      // seconds into wave (minimum)
+    spawnTimeMax: 45,      // seconds into wave (maximum)
+    spawnProbability: 0.3, // 30% chance if conditions met
+    escapeRadius: 5,       // units from arena edge to despawn
+    stuckTeleportTime: 2  // seconds before teleport hop if stuck
 };
