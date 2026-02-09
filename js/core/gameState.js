@@ -50,7 +50,8 @@ export const gameState = {
     debug: {
         enabled: false,
         noEnemies: false,
-        invincible: false
+        invincible: false,
+        showHitboxes: false  // DEBUG-only: visualize collision boxes
     },
     
     // Dash Strike ability state (unlocked via Boss 1 module)
@@ -107,8 +108,25 @@ export const gameState = {
     // Projectile-modifying items (collected from chests)
     heldItems: [],  // Array of item id strings (e.g., ['pierce', 'chain'])
     
+    // Per-arena upgrade tracking (for caps enforcement)
+    upgradeCountsByArena: {},  // { arena: { damage: 0, attackSpeed: 0, ... } }
+    
+    // Blueprint system: chest items that require level-up to activate
+    blueprints: {
+        pending: new Set(),   // Collected but inactive: 'pierce', 'chain', 'explosion'
+        unlocked: new Set()   // Active for the run
+    },
+    
     // Arena 1 Boss Chase state - boss appears multiple times across waves
     arena1ChaseState: null,  // Initialized when Arena 1 starts
+    
+    // Treasure Runner spawn tracking
+    treasureRunner: {
+        spawnedThisWave: false,
+        spawnedThisRun: 0,
+        maxPerWave: 1,
+        maxPerRun: 2
+    },
     
     // Difficulty mode (persists to localStorage)
     currentDifficulty: 'normal'
@@ -148,7 +166,14 @@ export function resetGameState() {
         victoryParticleTimer: 0,
         victoryParticlePos: null,
         // Items
-        heldItems: []
+        heldItems: [],
+        // Blueprints
+        blueprints: {
+            pending: new Set(),
+            unlocked: new Set()
+        },
+        // Upgrade tracking
+        upgradeCountsByArena: {}
     });
     gameState.unlockedMechanics = {
         pillars: false,
@@ -175,7 +200,8 @@ export function resetGameState() {
     gameState.debug = {
         enabled: false,
         noEnemies: false,
-        invincible: false
+        invincible: false,
+        showHitboxes: false  // DEBUG-only: visualize collision boxes
     };
     
     // Reset Dash Strike ability state
@@ -195,6 +221,12 @@ export function resetGameState() {
     gameState.shownModifiers = {};
     gameState.frameCount = 0;
     gameState.arena1ChaseState = null;
+    gameState.treasureRunner = {
+        spawnedThisWave: false,
+        spawnedThisRun: 0,
+        maxPerWave: 1,
+        maxPerRun: 2
+    };
     gameState.time = {
         simSeconds: 0,
         realSeconds: 0,

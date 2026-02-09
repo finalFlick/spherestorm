@@ -2,8 +2,11 @@ import { gameState } from '../core/gameState.js';
 import { CORE_UPGRADES } from '../config/upgrades.js';
 import { MODULE_CONFIG } from '../config/modules.js';
 import { TUNING } from '../config/tuning.js';
+import { ARENA_UPGRADE_CAPS, STAT_MAXIMUMS } from '../config/constants.js';
+import { PROJECTILE_ITEMS, getActiveCombination } from '../config/items.js';
 import { getModuleLevel, isModuleUnlocked } from '../systems/moduleProgress.js';
 import { PulseMusic } from '../systems/pulseMusic.js';
+import { updateItemHUD } from '../systems/pickups.js';
 
 // Build the eligible upgrade pool based on core upgrades + unlocked modules
 function getEligibleUpgrades() {
@@ -24,6 +27,24 @@ function getEligibleUpgrades() {
                 moduleLevel: level,
                 isActiveAbility: config.isActiveAbility || false
             });
+        }
+    }
+    
+    // Add pending blueprint unlocks (chest items that need level-up to activate)
+    if (gameState.blueprints && gameState.blueprints.pending && gameState.blueprints.pending.size > 0) {
+        for (const blueprintId of gameState.blueprints.pending) {
+            const item = PROJECTILE_ITEMS[blueprintId];
+            if (item) {
+                pool.push({
+                    id: `unlock_${blueprintId}`,
+                    name: `Activate: ${item.name.toUpperCase()}`,
+                    icon: '📜',
+                    desc: item.description,
+                    type: 'blueprint',
+                    blueprintId: blueprintId,
+                    isBlueprint: true
+                });
+            }
         }
     }
     
@@ -80,6 +101,46 @@ export function showUpgradeMenu() {
 }
 
 export function selectUpgrade(upgrade) {
+    // Handle blueprint unlocks (chest items that require level-up to activate)
+    if (upgrade.isBlueprint && upgrade.blueprintId) {
+        const blueprintId = upgrade.blueprintId;
+        
+        // Initialize blueprints if needed
+        if (!gameState.blueprints) {
+            gameState.blueprints = {
+                pending: new Set(),
+                unlocked: new Set()
+            };
+        }
+        
+        // Move from pending to unlocked
+        gameState.blueprints.pending.delete(blueprintId);
+        gameState.blueprints.unlocked.add(blueprintId);
+        
+        // Add to heldItems so existing projectile code works (minimal churn)
+        if (!gameState.heldItems.includes(blueprintId)) {
+            gameState.heldItems.push(blueprintId);
+        }
+        
+        // Check for combo unlock
+        const combo = getActiveCombination(gameState.heldItems);
+        if (combo) {
+            // Show combo notification will be handled by updateItemHUD
+        }
+        
+        // Update HUD to show active item
+        updateItemHUD();
+        
+        document.getElementById('upgrade-menu').style.display = 'none';
+        
+        if (gameState.pendingLevelUps > 0) {
+            levelUp();
+        } else {
+            gameState.paused = false;
+        }
+        return;
+    }
+    
     // Handle active abilities (like Dash Strike) specially
     if (upgrade.isActiveAbility) {
         // Enable the ability on the player
@@ -93,6 +154,36 @@ export function selectUpgrade(upgrade) {
             };
         }
     } else {
+        // Initialize upgrade tracking for current arena if needed
+        const arena = gameState.currentArena;
+        if (!gameState.upgradeCountsByArena[arena]) {
+            gameState.upgradeCountsByArena[arena] = {
+                damage: 0,
+                attackSpeed: 0,
+                moveSpeed: 0,
+                maxHealth: 0,
+                pickupRange: 0,
+                projectileCount: 0
+            };
+        }
+        const counts = gameState.upgradeCountsByArena[arena];
+        const caps = ARENA_UPGRADE_CAPS[arena] || ARENA_UPGRADE_CAPS[6];
+        
+        // Check if upgrade is capped (skip modules and special abilities)
+        const statName = upgrade.stat;
+        if (statName && caps[statName] !== undefined) {
+            if (counts[statName] >= caps[statName]) {
+                // Soft-cap: reduce effect to 50% instead of blocking
+                if (upgrade.mult) {
+                    upgrade = { ...upgrade, mult: 1 + (upgrade.mult - 1) * 0.5 };
+                } else if (upgrade.add) {
+                    upgrade = { ...upgrade, add: Math.floor(upgrade.add * 0.5) };
+                }
+            } else {
+                counts[statName]++;
+            }
+        }
+        
         // Standard stat upgrade
         if (upgrade.mult) {
             let mult = upgrade.mult;
@@ -105,8 +196,22 @@ export function selectUpgrade(upgrade) {
             }
 
             gameState.stats[upgrade.stat] *= mult;
+            
+            // Apply hard cap (stat maximums)
+            if (upgrade.stat === 'attackSpeed' && gameState.stats.attackSpeed > STAT_MAXIMUMS.attackSpeed) {
+                gameState.stats.attackSpeed = STAT_MAXIMUMS.attackSpeed;
+            } else if (upgrade.stat === 'moveSpeed' && gameState.stats.moveSpeed > STAT_MAXIMUMS.moveSpeed) {
+                gameState.stats.moveSpeed = STAT_MAXIMUMS.moveSpeed;
+            }
         } else if (upgrade.add) {
             gameState.stats[upgrade.stat] += upgrade.add;
+            
+            // Apply hard cap (stat maximums)
+            if (upgrade.stat === 'damage' && gameState.stats.damage > STAT_MAXIMUMS.damage) {
+                gameState.stats.damage = STAT_MAXIMUMS.damage;
+            } else if (upgrade.stat === 'projectileCount' && gameState.stats.projectileCount > STAT_MAXIMUMS.projectileCount) {
+                gameState.stats.projectileCount = STAT_MAXIMUMS.projectileCount;
+            }
         }
         
         if (upgrade.stat === 'maxHealth') {

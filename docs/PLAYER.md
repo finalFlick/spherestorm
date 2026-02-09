@@ -201,12 +201,18 @@ When landing from a jump, the player bounces up to 3 times with diminishing heig
 - Reuses oldest when pool exhausted
 - Prevents memory leaks
 
-**Projectile Item Modifiers:**
-Items collected from chests can modify projectile behavior:
+**Projectile Item Modifiers (Blueprint System):**
+Items collected from chests are **blueprints** that require a level-up choice to activate:
 - **Pierce**: Projectile passes through 1 extra target before being consumed
 - **Chain**: On hit, a secondary bolt arcs to 1 nearby enemy (50% damage, 12-unit range)
 - **Explosion**: On hit, deals 40% AoE damage within 3-unit radius
 - **Combo — Razor Swarm**: Having both Pierce and Chain active
+
+**Blueprint Unlock Flow:**
+1. Pick up chest → Item added to "pending blueprints" (not active yet)
+2. On next level-up → Blueprint appears as an upgrade choice
+3. Select blueprint → Item becomes active for the rest of the run
+4. Once active, item works exactly as before (minimal code churn)
 
 ---
 
@@ -254,7 +260,27 @@ Starting values (level 1, no upgrades):
 
 ### Upgrades
 
-The game uses a two-tier upgrade system:
+The game uses a two-tier upgrade system with per-arena caps to prevent runaway stat growth:
+
+#### Baseline Auto-Scaling
+
+When starting at later arenas (or accumulating XP), stats automatically scale with reduced multipliers:
+- **Damage:** +5% per level (cycles every 4 levels)
+- **Attack Speed:** +4% per level (cycles every 4 levels)
+- **Move Speed:** +2% per level (cycles every 4 levels) - **Capped at 0.22** (prevents "Flash-speed" by Arena 2)
+- **Max Health:** +10 HP per level (cycles every 4 levels)
+- **Projectile Count:** +1 every 6 levels (slowed from every 3)
+
+**Per-Arena Caps:** Each arena limits how many times each stat can be upgraded (baseline + manual combined):
+- **Arena 1:** damage: 2, attackSpeed: 2, moveSpeed: 1, maxHealth: 2, pickupRange: 2, projectileCount: 1
+- **Arena 2:** damage: 3, attackSpeed: 3, moveSpeed: 2, maxHealth: 3, pickupRange: 3, projectileCount: 2
+- **Arena 3+:** Progressively higher caps
+
+**Hard Maximums:** Even with caps, stats cannot exceed:
+- **Move Speed:** 0.22 (prevents Arena 2 zooming)
+- **Damage:** 50
+- **Attack Speed:** 0.8
+- **Projectile Count:** 8
 
 #### Core Upgrades (Always Available)
 
@@ -262,29 +288,33 @@ These 4 upgrades are always in the level-up pool from game start:
 
 **Damage Up**
 - **Icon:** ⚔️
-- **Effect:** +25% damage (multiplicative)
+- **Effect:** +10% damage (multiplicative)
 - **Stat:** `damage`
-- **Stacking:** Multiplicative (1.25x per upgrade)
+- **Stacking:** Multiplicative (1.10x per upgrade)
+- **Per-Arena Cap:** Limited upgrades per arena to encourage build variety
 
 **Attack Speed**
 - **Icon:** ⚡
-- **Effect:** +25% fire rate (multiplicative)
+- **Effect:** +8% fire rate (multiplicative)
 - **Stat:** `attackSpeed`
 - **Formula:** Fire rate = 500ms / attackSpeed
-- **Stacking:** Multiplicative (1.25x per upgrade)
+- **Stacking:** Multiplicative (1.08x per upgrade)
+- **Per-Arena Cap:** Limited upgrades per arena to prevent runaway scaling
 
 **Max Health**
 - **Icon:** ❤️
-- **Effect:** +25 max HP (additive)
+- **Effect:** +15 max HP (additive)
 - **Stat:** `maxHealth`
-- **Stacking:** Additive (+25 per upgrade)
+- **Stacking:** Additive (+15 per upgrade)
 - **Note:** Does NOT heal current HP
+- **Per-Arena Cap:** Limited upgrades per arena
 
 **XP Magnet**
 - **Icon:** 🧲
-- **Effect:** +30% pickup range (multiplicative)
+- **Effect:** +20% pickup range (multiplicative)
 - **Stat:** `pickupRange`
-- **Stacking:** Multiplicative (1.3x per upgrade)
+- **Stacking:** Multiplicative (1.20x per upgrade)
+- **Per-Arena Cap:** Limited upgrades per arena
 
 #### Future Unlockable Upgrades
 
@@ -371,6 +401,64 @@ Modules are persistent upgrades that carry across runs and feature mastery progr
 - 3 random upgrades offered
 - Can repeat upgrades (stacking)
 - Choice made via UI buttons
+
+---
+
+### Difficulty Modes
+
+The game supports selectable difficulty modes that adjust enemy scaling, spawn budgets, and telegraph windows:
+
+**Available Modes:**
+- **Easy** - Reduced enemy HP/DPS, more generous telegraphs, lower spawn budgets
+- **Normal** - Baseline difficulty (default)
+- **Hard** - Increased enemy HP/DPS, tighter telegraphs, higher spawn budgets
+- **Nightmare** - Maximum challenge with aggressive scaling
+
+**Difficulty Selection:**
+- Selectable from main menu before starting a run
+- Selection persists to localStorage between sessions
+- Cannot be changed mid-run (ensures leaderboard integrity)
+- Current difficulty displayed in HUD
+
+**Scaling Effects:**
+- **Enemy HP:** Multiplied by difficulty HP multiplier
+- **Enemy Damage:** Multiplied by difficulty DPS multiplier
+- **Spawn Budgets:** Multiplied by difficulty spawn multiplier
+- **Telegraph Windows:** Adjusted by difficulty telegraph multiplier
+- **Score Multiplier:** Affects final score (higher difficulty = higher scores)
+
+**Leaderboard Integration:**
+- Leaderboard entries show difficulty badge (E/N/H/NM)
+- Scores are comparable within the same difficulty mode
+
+---
+
+### Lives & Checkpoint System
+
+The game uses a **3-life system** (configurable via `DEFAULT_LIVES` constant) to reduce frustration from instant permadeath:
+
+**Default Lives:** 3
+
+**Life Consumption:**
+- Death with lives remaining consumes 1 life
+- Arena restarts cleanly (wave resets, enemies cleared, pickups reset)
+- Player respawns at arena start position
+- Upgrades and progress within the arena are retained
+
+**Game Over:**
+- Triggers when all lives are exhausted (0 lives remaining)
+- Shows game over screen with score and death recap
+- Lives display visible in HUD at all times
+
+**Life Persistence:**
+- Lives carry across arena transitions
+- Lives reset to default when starting a new run
+- Lives are NOT restored between sessions (each run starts fresh)
+
+**Visual Feedback:**
+- Lives displayed as heart icons in HUD
+- Death screen shows remaining lives count
+- Clear indication when life is consumed vs game over
 
 ---
 
@@ -595,6 +683,7 @@ During gameplay, a small key-cap diagram appears in the **bottom-right** of the 
 **Pause Behavior:**
 - Unlocking pointer pauses game
 - Music pauses with game
+- Audio volume sliders (Master/Music/SFX) persist between sessions
 - "PAUSED" indicator displays
 
 ---

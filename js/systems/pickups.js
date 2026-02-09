@@ -63,6 +63,43 @@ export function spawnXpGem(position, value) {
     });
 }
 
+// Treasure Runner reward orb - distinct gold visual, high contrast
+export function spawnTreasureRewardOrb(position, value) {
+    if (!value || value <= 0 || !Number.isFinite(value)) {
+        console.warn('[Treasure] Skipping reward orb spawn - invalid value:', value);
+        return;
+    }
+    
+    // Larger, more prominent gem (gold color, pulsing glow)
+    const orb = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.3, 0), // Larger than normal gem
+        new THREE.MeshBasicMaterial({
+            color: 0xffd700, // Gold
+            transparent: true,
+            opacity: 1.0,
+            emissive: 0xffd700,
+            emissiveIntensity: 0.8
+        })
+    );
+    
+    orb.position.copy(position);
+    const surfaceHeight = getSurfaceHeight(position.x, position.z);
+    orb.baseY = surfaceHeight + 0.6;
+    orb.position.y = orb.baseY;
+    orb.value = value * (gameState.stats.xpMultiplier || 1);
+    orb.bobOffset = Math.random() * Math.PI * 2;
+    orb.isTreasureReward = true; // Flag for special handling
+    orb.pulseTimer = 0; // For pulsing animation
+    
+    scene.add(orb);
+    xpGems.push(orb); // Use same array, but with special visual
+    
+    log('SPAWN', 'treasure_reward_orb', {
+        position: orb.position.clone(),
+        value: orb.value
+    });
+}
+
 export function spawnHeart(position, healAmount) {
     const heartGroup = new THREE.Group();
     const heartMat = new THREE.MeshBasicMaterial({
@@ -113,6 +150,16 @@ export function updateXpGems(delta) {
         const newY = baseY + Math.sin(time + gem.bobOffset) * 0.2;
         gem.position.set(gem.position.x, newY, gem.position.z);
         gem.rotation.y += 0.05;
+        
+        // Treasure reward orb pulsing animation
+        if (gem.isTreasureReward && gem.material) {
+            gem.pulseTimer = (gem.pulseTimer || 0) + 1;
+            const pulse = 0.8 + Math.sin(gem.pulseTimer * 0.1) * 0.2; // Pulsing emissive
+            gem.material.emissiveIntensity = pulse;
+            // Slight scale pulse for extra visibility
+            const scalePulse = 1.0 + Math.sin(gem.pulseTimer * 0.1) * 0.1;
+            gem.scale.setScalar(scalePulse);
+        }
         
         const dist = gem.position.distanceTo(player.position);
         
@@ -948,12 +995,21 @@ export function updateChests() {
 }
 
 /**
- * Handle chest collection: grant a random projectile item.
+ * Handle chest collection: grant a random projectile item as blueprint (requires level-up to activate).
  */
 function collectChest(chest, index) {
-    // Pick a random item the player doesn't already have
+    // Initialize blueprints if needed
+    if (!gameState.blueprints) {
+        gameState.blueprints = {
+            pending: new Set(),
+            unlocked: new Set()
+        };
+    }
+    
+    // Pick a random item the player doesn't already have (pending or unlocked)
     const allIds = Object.keys(PROJECTILE_ITEMS);
-    const available = allIds.filter(id => !gameState.heldItems.includes(id));
+    const unavailable = new Set([...gameState.blueprints.pending, ...gameState.blueprints.unlocked, ...gameState.heldItems]);
+    const available = allIds.filter(id => !unavailable.has(id));
 
     if (available.length === 0) {
         // Player has all items — grant XP instead
@@ -961,17 +1017,13 @@ function collectChest(chest, index) {
         showUnlockNotification('Chest: +50 XP (all items owned)');
     } else {
         const itemId = available[Math.floor(Math.random() * available.length)];
-        gameState.heldItems.push(itemId);
+        
+        // Add to pending blueprints (not active until level-up unlock)
+        gameState.blueprints.pending.add(itemId);
 
         const item = PROJECTILE_ITEMS[itemId];
-        showUnlockNotification(`Item: ${item.name} — ${item.description}`);
-        log('SPAWN', 'item_collected', { item: itemId, held: [...gameState.heldItems] });
-
-        // Check for combo unlock
-        const combo = getActiveCombination(gameState.heldItems);
-        if (combo) {
-            showUnlockNotification(`Combo unlocked: ${combo.name}!`);
-        }
+        showUnlockNotification(`Blueprint: ${item.name} — Spend a level-up to activate!`);
+        log('SPAWN', 'blueprint_collected', { item: itemId, pending: [...gameState.blueprints.pending] });
     }
 
     // VFX
@@ -1007,7 +1059,7 @@ export function clearChests() {
 /**
  * Update the item HUD display to show currently held items.
  */
-function updateItemHUD() {
+export function updateItemHUD() {
     let container = document.getElementById('item-hud');
     if (!container) {
         // Create container on first use
