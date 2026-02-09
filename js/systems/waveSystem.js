@@ -1,11 +1,11 @@
 import { gameState, getDifficultyConfig } from '../core/gameState.js';
 import { enemies, getCurrentBoss, setCurrentBoss } from '../core/entities.js';
 import { player } from '../entities/player.js';
-import { spawnWaveEnemy } from '../entities/enemies.js';
+import { spawnWaveEnemy, spawnSpecificEnemy } from '../entities/enemies.js';
 import { spawnBoss, spawnIntroMinions, triggerDemoAbility, endDemoMode, prepareBossForCutscene, endCutsceneAndRepositionPlayer } from '../entities/boss.js';
 import { clearProjectiles } from './projectiles.js';
 import { updateArenaPortal, clearArenaPortal, spawnBossEntrancePortal, freezeBossEntrancePortal, updateBossEntrancePortal, maybeSpawnChest } from './pickups.js';
-import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION, SPAWN_CHOREOGRAPHY, CINEMATIC_BOSS_HOLD_FRAMES } from '../config/constants.js';
+import { WAVE_STATE, WAVE_CONFIG, ENEMY_CAPS, THREAT_BUDGET, PACING_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, BOSS_INTRO_CINEMATIC_DURATION, BOSS_INTRO_SLOWMO_DURATION, BOSS_INTRO_SLOWMO_SCALE, BOSS1_INTRO_DEMO, BOSS_INTRO_TOTAL_DURATION, SPAWN_CHOREOGRAPHY, CINEMATIC_BOSS_HOLD_FRAMES, TREASURE_RUNNER } from '../config/constants.js';
 import { ARENA_CONFIG, getArenaWaves } from '../config/arenas.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import { generateArena } from '../arena/generator.js';
@@ -97,6 +97,11 @@ function handleWaveIntro() {
         // Reset budget breather flags for new wave
         gameState.budgetBreather50 = false;
         gameState.budgetBreather75 = false;
+        
+        // Reset treasure runner spawn flag for new wave
+        if (gameState.treasureRunner) {
+            gameState.treasureRunner.spawnedThisWave = false;
+        }
         
         const maxWaves = getMaxWaves();
         const isLessonWave = (gameState.currentWave === 1);
@@ -550,7 +555,55 @@ function handleWaveActive() {
     // Softlock failsafe: track stall when budget exhausted but enemies remain
     updateSoftlockFailsafe();
     
+    // Maybe spawn treasure runner (mid-wave special spawn)
+    maybeSpawnTreasureRunner();
+    
     checkWaveComplete();
+}
+
+// Spawn treasure runner if conditions are met
+function maybeSpawnTreasureRunner() {
+    // Conditions:
+    // 1. Not already spawned this wave
+    // 2. Not exceeded run limit
+    // 3. Wave time between min/max
+    // 4. Not in stress pause
+    // 5. Not during boss fight
+    // 6. Random probability check
+    // 7. Arena 2+ only
+    
+    if (!gameState.treasureRunner) return;
+    if (gameState.treasureRunner.spawnedThisWave) return;
+    if (gameState.treasureRunner.spawnedThisRun >= gameState.treasureRunner.maxPerRun) return;
+    if (gameState.currentArena < 2) return; // Arena 2+ only
+    if (gameState.bossActive) return; // Skip during boss fights
+    if (gameState.stressPauseActive) return;
+    
+    // Convert wave frame counter to seconds (60fps)
+    const waveTimeSeconds = gameState.waveFrameCounter / 60;
+    if (waveTimeSeconds < TREASURE_RUNNER.spawnTimeMin) return;
+    if (waveTimeSeconds > TREASURE_RUNNER.spawnTimeMax) return;
+    
+    // Random probability check (or debug force spawn)
+    const forceSpawn = TUNING.forceTreasureRunner && gameState.debug && gameState.debug.enabled;
+    if (!forceSpawn && Math.random() > TREASURE_RUNNER.spawnProbability) return;
+    
+    // Spawn the runner
+    const runner = spawnSpecificEnemy('treasureRunner', player.position);
+    if (runner) {
+        gameState.treasureRunner.spawnedThisWave = true;
+        gameState.treasureRunner.spawnedThisRun++;
+        
+        log('SPAWN', 'treasure_runner_spawned', {
+            wave: gameState.currentWave,
+            arena: gameState.currentArena,
+            waveTime: parseFloat(waveTimeSeconds.toFixed(1)),
+            spawnedThisRun: gameState.treasureRunner.spawnedThisRun
+        });
+        
+        // Audio/visual feedback on spawn
+        PulseMusic.onRunnerSpawn?.();
+    }
 }
 
 // Calculate threat cost for an enemy type

@@ -4,7 +4,7 @@ import { enemies, obstacles, hazardZones, tempVec3 } from '../core/entities.js';
 import { player } from './player.js';
 import { cameraAngleX } from '../core/input.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
-import { ENEMY_CAPS, WAVE_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, THREAT_BUDGET, SPLITLING_SPAWN_STUN_FRAMES, SCHOOL_CONFIG, SPAWN_CHOREOGRAPHY } from '../config/constants.js';
+import { ENEMY_CAPS, WAVE_CONFIG, WAVE_MODIFIERS, COGNITIVE_LIMITS, THREAT_BUDGET, SPLITLING_SPAWN_STUN_FRAMES, SCHOOL_CONFIG, SPAWN_CHOREOGRAPHY, TREASURE_RUNNER } from '../config/constants.js';
 import { spawnParticle, spawnEnemyDeathVfx, spawnShieldBreakVFX } from '../effects/particles.js';
 import { createHazardZone } from '../arena/generator.js';
 import { takeDamage, canTakeCollisionDamage, resetDamageCooldown, tickDamageCooldown } from '../systems/damage.js';
@@ -882,8 +882,9 @@ function spawnEnemyAtPosition(enemyType, x, z) {
         size: typeData.size
     });
     
-    const arenaScale = 1 + (gameState.currentArena - 1) * 0.15;
-    const waveScale = 1 + (gameState.currentWave - 1) * 0.05;
+    // Arena/wave HP scaling removed - hit counts stay learnable within a difficulty
+    // Only wave modifier and difficulty can change HP now
+    const arenaDmgScale = 1 + (gameState.currentArena - 1) * 0.10;  // Reduced from 0.15 for gentler damage scaling
     
     // Apply wave modifier health multiplier
     let healthMult = 1.0;
@@ -902,11 +903,13 @@ function spawnEnemyAtPosition(enemyType, x, z) {
     // Apply difficulty multipliers
     const diffConfig = getDifficultyConfig();
     
-    enemy.health = Math.floor(typeData.health * arenaScale * waveScale * healthMult * diffConfig.hpMult);
+    // Enemy HP: base * modifier * difficulty only (no arena/wave scaling)
+    enemy.health = Math.floor(typeData.health * healthMult * diffConfig.hpMult);
     enemy.maxHealth = enemy.health;
     // Optional: 10% speed reduction for better pacing (less frantic feel)
     enemy.speed = typeData.speed * (1 + gameState.currentArena * 0.02) * 0.9;
-    enemy.damage = Math.floor(typeData.damage * arenaScale * diffConfig.dpsMult);
+    // Enemy damage: gentle arena scaling + difficulty
+    enemy.damage = Math.floor(typeData.damage * arenaDmgScale * diffConfig.dpsMult);
     enemy.size = typeData.size;
     enemy.baseSize = typeData.size;
     enemy.isBoss = false;
@@ -1600,6 +1603,8 @@ export function spawnSpecificEnemy(typeName, nearPosition) {
     scene.add(enemy);
     enemies.push(enemy);
     PulseMusic.onEnemySpawn(enemy);
+    
+    return enemy;
 }
 
 // Spawn Pillar Police on all pillars (for Arena 2-3)
@@ -1761,6 +1766,7 @@ export function updateEnemies(delta) {
             case 'teleporter': updateTeleporterEnemy(enemy); break;
             case 'pillarHopper': updatePillarHopperEnemy(enemy); break;
             case 'wardenSupport': updateWardenSupportEnemy(enemy); break;
+            case 'flee': updateFleeEnemy(enemy); break;
             default: updateChaseEnemy(enemy);
         }
         
@@ -2370,6 +2376,156 @@ function updateTeleporterEnemy(enemy) {
     }
 }
 
+// Helper: Find nearest point on arena edge
+function findNearestEdgePoint(position) {
+    const ARENA_BOUND = 42;  // Arena extends from -42 to +42
+    const x = position.x;
+    const z = position.z;
+    
+    // Calculate distance to each edge
+    const distToLeft = Math.abs(x - (-ARENA_BOUND));
+    const distToRight = Math.abs(x - ARENA_BOUND);
+    const distToTop = Math.abs(z - (-ARENA_BOUND));
+    const distToBottom = Math.abs(z - ARENA_BOUND);
+    
+    // Find closest edge
+    const minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+    
+    // Return point on closest edge
+    if (minDist === distToLeft) {
+        return new THREE.Vector3(-ARENA_BOUND, position.y, z);
+    } else if (minDist === distToRight) {
+        return new THREE.Vector3(ARENA_BOUND, position.y, z);
+    } else if (minDist === distToTop) {
+        return new THREE.Vector3(x, position.y, -ARENA_BOUND);
+    } else {
+        return new THREE.Vector3(x, position.y, ARENA_BOUND);
+    }
+}
+
+// Helper: Calculate distance to nearest arena edge
+function distanceToEdge(position) {
+    const ARENA_BOUND = 42;
+    const distX = Math.min(Math.abs(position.x - (-ARENA_BOUND)), Math.abs(position.x - ARENA_BOUND));
+    const distZ = Math.min(Math.abs(position.z - (-ARENA_BOUND)), Math.abs(position.z - ARENA_BOUND));
+    return Math.min(distX, distZ);
+}
+
+// Helper: Despawn treasure runner (escaped or killed)
+function despawnTreasureRunner(enemy, escaped) {
+    if (escaped) {
+        // Spawn escape particle effect
+        spawnParticle(enemy.position, 0xffd700, 10);
+        PulseMusic.onRunnerEscape?.();
+        log('SPAWN', 'runner_escaped', { position: enemy.position.clone() });
+    }
+    
+    // Remove from scene and array
+    scene.remove(enemy);
+    const index = enemies.indexOf(enemy);
+    if (index > -1) {
+        enemies.splice(index, 1);
+    }
+    
+    // Clean up geometry/materials if needed
+    if (enemy.geometry) enemy.geometry.dispose();
+    if (enemy.material) enemy.material.dispose();
+    if (enemy.children) {
+        enemy.children.forEach(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        });
+    }
+}
+
+// Treasure Runner - flees toward arena edge
+function updateFleeEnemy(enemy) {
+    const tuningMult = getEnemySpeedTuningMultiplier();
+    const ARENA_BOUND = 42;
+    
+    // Initialize flee state if needed
+    if (!enemy.fleeTarget) {
+        enemy.fleeTarget = findNearestEdgePoint(enemy.position);
+        enemy.fleeTargetTimer = 30 + Math.random() * 30; // 0.5-1s at 60fps
+        enemy.lastPosition = enemy.position.clone();
+        enemy.stuckTimer = 0;
+        enemy.trailTimer = 0; // For glow trail particles
+    }
+    
+    // Glow trail effect - spawn particle every 5 frames
+    enemy.trailTimer = (enemy.trailTimer || 0) + 1;
+    if (enemy.trailTimer >= 5) {
+        enemy.trailTimer = 0;
+        spawnParticle(enemy.position.clone(), 0xffd700, 1); // Gold trail particle
+    }
+    
+    // Update target edge point every 0.5-1s (avoids corner loops)
+    enemy.fleeTargetTimer--;
+    if (enemy.fleeTargetTimer <= 0) {
+        enemy.fleeTarget = findNearestEdgePoint(enemy.position);
+        enemy.fleeTargetTimer = 30 + Math.random() * 30; // 0.5-1s at 60fps
+    }
+    
+    // Calculate direction toward edge target
+    tempVec3.subVectors(enemy.fleeTarget, enemy.position);
+    tempVec3.y = 0;
+    const distToTarget = tempVec3.length();
+    
+    if (distToTarget > 0.1) {
+        tempVec3.normalize();
+        
+        // Apply obstacle steering to avoid getting stuck
+        const steerForce = calculateSteeringForce(enemy, tempVec3);
+        tempVec3.add(steerForce);
+        tempVec3.normalize();
+        
+        // Move toward edge
+        enemy.position.x += tempVec3.x * enemy.speed * tuningMult;
+        enemy.position.z += tempVec3.z * enemy.speed * tuningMult;
+        
+        // Zig-zag if blocked (add perpendicular component)
+        if (distToTarget < 2 && Math.random() < 0.1) {
+            const perp = new THREE.Vector3(-tempVec3.z, 0, tempVec3.x);
+            enemy.position.x += perp.x * enemy.speed * 0.5 * tuningMult;
+            enemy.position.z += perp.z * enemy.speed * 0.5 * tuningMult;
+        }
+    }
+    
+    // Check if reached escape radius
+    const distToEdge = distanceToEdge(enemy.position);
+    if (distToEdge < TREASURE_RUNNER.escapeRadius) {
+        despawnTreasureRunner(enemy, true);
+        return;
+    }
+    
+    // Stuck detection: teleport hop if no progress for 2s
+    const moved = enemy.position.distanceTo(enemy.lastPosition);
+    if (moved < 0.01) {
+        enemy.stuckTimer++;
+    } else {
+        enemy.stuckTimer = 0;
+    }
+    enemy.lastPosition.copy(enemy.position);
+    
+    const stuckFrames = TREASURE_RUNNER.stuckTeleportTime * 60; // Convert seconds to frames
+    if (enemy.stuckTimer > stuckFrames) {
+        // Teleport hop toward edge
+        const hopDist = 5;
+        tempVec3.subVectors(enemy.fleeTarget, enemy.position);
+        tempVec3.y = 0;
+        tempVec3.normalize();
+        enemy.position.x += tempVec3.x * hopDist;
+        enemy.position.z += tempVec3.z * hopDist;
+        enemy.stuckTimer = 0;
+        
+        // Clamp to arena bounds
+        enemy.position.x = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, enemy.position.x));
+        enemy.position.z = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, enemy.position.z));
+        
+        spawnParticle(enemy.position, 0xffd700, 5);
+    }
+}
+
 // Pillar Police - hops between pillar tops, hunts players who camp on pillars
 function updatePillarHopperEnemy(enemy) {
     const tuningMult = getEnemySpeedTuningMultiplier();
@@ -2594,6 +2750,7 @@ function updateWardenSupportEnemy(enemy) {
                         ally.maxShieldHP = ally.shieldHP;
                         ally.wardenSource = enemy;  // Track who granted it
                         ally.shieldBroken = false;
+                        ally.shieldGrantedTime = gameState.frameCount;  // Track when shield was granted (for visibility fix)
 
                         // Create shield visual (reuse existing function)
                         if (!ally.shieldMesh) {

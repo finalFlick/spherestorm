@@ -17,6 +17,8 @@ This document provides comprehensive reference for SPHERESTORM's enemy system, i
 
 SPHERESTORM uses a **weighted spawn system** with **cognitive caps** to create challenging but readable combat encounters. Enemies unlock progressively across arenas, teaching mechanics incrementally.
 
+**Important:** Enemy HP does **not** scale with arena or wave progression. Hit counts remain consistent and learnable within a difficulty mode. Difficulty comes from **spawn count, composition, and enemy damage** rather than HP bloat.
+
 ### Core Concepts
 
 **Spawn Weighting:**
@@ -247,6 +249,7 @@ SPHERESTORM uses a **weighted spawn system** with **cognitive caps** to create c
 - **Anemone Core HP:** 12
 - Breaking the anemone core disables the aura and **shatters all granted shields instantly**
 - Shield granted uses existing shield bubble visual (blue)
+- **Shield Visibility:** Newly granted shields stay fully visible for ~2 seconds (readability fix)
 - On Guardian Crab death: **all granted shields shatter instantly** (cascade effect)
   - Slow-mo + cascade audio feedback
   - Individual shield break VFX per protected enemy
@@ -474,6 +477,67 @@ SPHERESTORM uses a **weighted spawn system** with **cognitive caps** to create c
 **Description:** Masters of spatial manipulation. Teleporters blink to random positions near you every few seconds, making them frustratingly hard to pin down. Their unpredictable movement demands constant vigilance.
 
 **Teaching Purpose:** Dealing with mobility, prediction, adaptation
+
+---
+
+### Treasure Runner
+
+**Tagline:** Fleeing Fortune
+
+**Stats:**
+- Size: 0.50 (Standard)
+- Health: 8 (low - easy to kill if caught)
+- Speed: 0.08 (fast - challenging to catch)
+- Damage: 5 (low damage, not a threat, just runs)
+- Color: Gold (0xffd700)
+- XP Value: 0 (no base XP - reward comes from drop)
+
+**Spawn Info:**
+- Weight: 0 (special spawn only, not in normal wave pool)
+- Arena Intro: 2
+- **Special Spawn:** Mid-wave, probability-based
+
+**Behavior:** Flee
+- Spawns mid-wave (30-45 seconds into wave)
+- Attempts to flee toward arena edge
+- Paths away from player using steering behavior
+- If blocked, performs zig-zag + dash burst
+- If stuck >2 seconds, teleports to new position
+- Despawns if reaches escape radius (5 units from edge)
+- Max 1 per wave, max 2 per run
+
+**Spawn Rules:**
+- Only spawns in Arena 2+
+- Does not spawn during boss fights
+- Does not spawn during stress pauses
+- 30% probability if conditions met
+- Spawns at random position near player
+
+**Visual Profile:**
+- Type: Glow
+- Glow Intensity: 0.9 (very bright)
+- Pulse Speed: 0.15 (fast pulse)
+- Distinct gold color makes it highly visible
+
+**Movement Signature:** Dash
+
+**Telegraph:** None (non-threatening, no telegraph needed)
+
+**Death VFX:** Burst (20 particles, gold 0xffd700)
+
+**Reward:**
+- Drops bonus XP reward orb (15 XP) if killed before escaping
+- Reward orb has distinct gold visual with pulsing animation
+- High contrast makes reward easy to spot
+
+**Audio:**
+- `onRunnerSpawn()` - Ascending chime when runner spawns
+- `onRunnerKilled()` - Victory chime when runner is killed
+- `onRunnerEscape()` - Subtle descending note if runner escapes
+
+**Description:** A rare treasure carrier that spawns mid-wave and attempts to escape to the arena edge. Kill it before it escapes to claim bonus rewards! Creates an optional risk/reward moment: ignore for safety or chase for rewards.
+
+**Teaching Purpose:** Risk/reward decision-making, optional objectives
 
 ---
 

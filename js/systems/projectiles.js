@@ -13,7 +13,7 @@ import { cameraAngleX } from '../core/input.js';
 import { handleEnemyDeath, shatterWardenGrantedShields } from '../entities/enemies.js';
 import { killBoss, checkBossRetreat } from '../entities/boss.js';
 import { spawnParticle, spawnShieldHitVFX, spawnShieldBreakVFX } from '../effects/particles.js';
-import { spawnXpGem, spawnHeart } from './pickups.js';
+import { spawnXpGem, spawnHeart, spawnTreasureRewardOrb } from './pickups.js';
 import { takeDamage, canTakeCollisionDamage, resetDamageCooldown } from './damage.js';
 import { HEART_DROP_CHANCE, HEART_HEAL } from '../config/constants.js';
 import { PROJECTILE_ITEMS } from '../config/items.js';
@@ -438,8 +438,16 @@ export function updateProjectiles(delta) {
                     
                     handleEnemyDeath(enemy);
                     
-                    spawnXpGem(enemy.position, enemy.xpValue);
-                    spawnParticle(enemy.position, enemy.baseColor, 5);
+                    // Treasure Runner special reward drop
+                    if (enemy.enemyType === 'treasureRunner') {
+                        const bonusXp = 15;
+                        spawnTreasureRewardOrb(enemy.position, bonusXp);
+                        spawnParticle(enemy.position, 0xffd700, 20);
+                        PulseMusic.onRunnerKilled?.();
+                    } else {
+                        spawnXpGem(enemy.position, enemy.xpValue);
+                        spawnParticle(enemy.position, enemy.baseColor, 5);
+                    }
                     
                     // Heart drop
                     if (Math.random() < (enemy.isElite ? HEART_DROP_CHANCE.elite : HEART_DROP_CHANCE.normal)) {
@@ -606,8 +614,17 @@ function applyOnHitItemEffects(proj, hitTarget, damageDealt) {
                 spawnParticle(nearby.position, 0xff6622, 2);
                 if (nearby.health <= 0) {
                     handleEnemyDeath(nearby);
-                    spawnXpGem(nearby.position, nearby.xpValue);
-                    spawnParticle(nearby.position, nearby.baseColor, 5);
+                    
+                    // Treasure Runner special reward drop
+                    if (nearby.enemyType === 'treasureRunner') {
+                        const bonusXp = 15;
+                        spawnTreasureRewardOrb(nearby.position, bonusXp);
+                        spawnParticle(nearby.position, 0xffd700, 20);
+                        PulseMusic.onRunnerKilled?.();
+                    } else {
+                        spawnXpGem(nearby.position, nearby.xpValue);
+                        spawnParticle(nearby.position, nearby.baseColor, 5);
+                    }
                     if (nearby.isGroup || nearby.type === 'Group') {
                         nearby.traverse(child => { if (child.material) child.material.dispose(); });
                     } else {
@@ -718,8 +735,22 @@ export function finalizeEnemyKill(enemy, enemyIndex = -1) {
 
     handleEnemyDeath(enemy);
 
-    spawnXpGem(enemy.position, enemy.xpValue);
-    spawnParticle(enemy.position, enemy.baseColor, 5);
+    // Treasure Runner special reward drop
+    if (enemy.enemyType === 'treasureRunner') {
+        // Spawn bonus XP reward orb (high contrast, distinct visual)
+        const bonusXp = 15; // Generous bonus for catching the runner
+        spawnTreasureRewardOrb(enemy.position, bonusXp);
+        spawnParticle(enemy.position, 0xffd700, 20); // Gold burst
+        PulseMusic.onRunnerKilled?.();
+        log('SPAWN', 'treasure_runner_killed', {
+            position: enemy.position.clone(),
+            bonusXp: bonusXp
+        });
+    } else {
+        // Normal enemy XP drop
+        spawnXpGem(enemy.position, enemy.xpValue);
+        spawnParticle(enemy.position, enemy.baseColor, 5);
+    }
 
     if (Math.random() < (enemy.isElite ? HEART_DROP_CHANCE.elite : HEART_DROP_CHANCE.normal)) {
         spawnHeart(enemy.position.clone(), enemy.isElite ? HEART_HEAL.elite : HEART_HEAL.normal);

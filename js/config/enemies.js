@@ -316,6 +316,32 @@ export const ENEMY_TYPES = {
         movementSignature: 'orbiter',
         telegraph: { type: 'crouch', duration: 200, color: 0xcccccc },
         deathVfx: { color: 0xffffff, count: 10, type: 'burst' }
+    },
+    treasureRunner: {
+        name: 'Treasure Runner',
+        size: 0.50,          // Standard size
+        health: 8,           // Low health - easy to kill if caught
+        speed: 0.08,         // Fast - challenging to catch
+        damage: 5,           // Low damage (not a threat, just runs)
+        color: 0xffd700,     // Gold - distinct and eye-catching
+        xpValue: 0,          // No base XP (reward comes from drop)
+        behavior: 'flee',
+        spawnWeight: 0,      // Special spawn only
+        arenaIntro: 2,       // Introduced in Arena 2+
+        isSpecialSpawn: true, // Flag for special spawn system
+        // Roster display fields
+        tagline: 'Fleeing Fortune',
+        description: 'A rare treasure carrier that spawns mid-wave and attempts to escape to the arena edge. Kill it before it escapes to claim bonus rewards!',
+        behaviorText: 'Flees toward arena edge; drops reward if killed before escaping',
+        // Visual profile: bright glow with trail effect
+        visualProfile: {
+            type: 'glow',
+            glowIntensity: 0.9,  // Very bright
+            pulseSpeed: 0.15      // Fast pulse
+        },
+        movementSignature: 'dash',
+        telegraph: null,  // No telegraph needed (non-threatening)
+        deathVfx: { color: 0xffd700, count: 20, type: 'burst' }
     }
 };
 
