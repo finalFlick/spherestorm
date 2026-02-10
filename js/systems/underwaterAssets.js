@@ -4,7 +4,6 @@
 
 import { scene } from '../core/scene.js';
 import { UNDERWATER_ASSETS_CONFIG as C } from '../config/constants.js';
-import { getSpeedBowlsForArena } from '../config/arenas.js';
 import { wobble, deformGeometry, applyMossVertexColors, getMossMask, applyVertexColorLerp } from '../utils/proceduralMesh.js';
 import { Textures, applyPbr } from '../systems/textures.js';
 
@@ -253,57 +252,86 @@ function createRockFormation(cfg, seed) {
     return group;
 }
 
-// Arena 1 skate park: place rocks/coral near each speed bowl so the outer ring reads as a distinct zone
-function initSkateParkBowlDecor() {
-    if (arenaNum !== 1 || !isCategoryEnabled('rocks') || !C.rocks?.enabled) return;
-    const bowls = getSpeedBowlsForArena(1);
-    const cfg = C.rocks;
-    const rocksPerBowl = 2;
-    bowls.forEach((b, bowlIndex) => {
-        for (let r = 0; r < rocksPerBowl; r++) {
-            const angle = (r / rocksPerBowl) * Math.PI * 2 + bowlIndex * 0.7;
-            const dist = 10 + Math.random() * 4;
-            const x = b.cx + Math.cos(angle) * dist;
-            const z = b.cz + Math.sin(angle) * dist;
-            const formation = createRockFormation(cfg, 9000 + bowlIndex * 10 + r);
-            formation.position.set(x, Math.random() * 0.05, z);
+// Arena 1 reef city decorative anchors: boulevard edges + district pockets + kelp streetlights.
+function initReefCityDecor() {
+    if (arenaNum !== 1) return;
+
+    const boulevardSpots = [
+        { x: -12, z: -30 }, { x: 12, z: -30 },
+        { x: -12, z: -18 }, { x: 12, z: -18 },
+        { x: -30, z: -12 }, { x: -18, z: -12 },
+        { x: 18, z: -12 }, { x: 30, z: -12 },
+        { x: -30, z: 12 }, { x: -18, z: 12 },
+        { x: 18, z: 12 }, { x: 30, z: 12 },
+        { x: -12, z: 18 }, { x: 12, z: 18 },
+        { x: -12, z: 30 }, { x: 12, z: 30 }
+    ];
+    const districtSpots = [
+        { x: -34, z: -34 }, { x: 34, z: -34 }, { x: -34, z: 34 }, { x: 34, z: 34 }
+    ];
+
+    if (isCategoryEnabled('coral') && C.coral?.enabled) {
+        boulevardSpots.forEach((pos, i) => {
+            const cluster = createCoralCluster(C.coral, 8200 + i);
+            cluster.position.set(pos.x, 0, pos.z);
+            cluster.rotation.y = Math.random() * Math.PI * 2;
+            cluster.scale.setScalar(0.7 + Math.random() * 0.25);
+            scene.add(cluster);
+            coralClusters.push(cluster);
+            disposed.push(() => {
+                scene.remove(cluster);
+                cluster.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+            });
+        });
+    }
+
+    if (isCategoryEnabled('rocks') && C.rocks?.enabled) {
+        districtSpots.forEach((pos, i) => {
+            const formation = createRockFormation(C.rocks, 8300 + i);
+            formation.position.set(pos.x, Math.random() * 0.05, pos.z);
             formation.rotation.y = Math.random() * Math.PI * 2;
             formation.scale.setScalar(0.7);
             scene.add(formation);
             rockFormations.push(formation);
-            disposed.push(() => { scene.remove(formation); formation.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); });
-        }
-    });
-}
+            disposed.push(() => {
+                scene.remove(formation);
+                formation.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+            });
+        });
+    }
 
-// Arena 1 skatepark zones: coral near halfpipe, rocks/kelp near tunnel and treasure gap
-function initSkateParkZoneDecor() {
-    if (arenaNum !== 1) return;
-    const halfpipeSpots = [{ x: 56, z: -40 }, { x: 58, z: -46 }];
-    const tunnelSpots = [{ x: -56, z: 44 }, { x: -58, z: 50 }];
-    const treasureSpots = [{ x: 50, z: 52 }, { x: 52, z: 48 }];
-    if (isCategoryEnabled('coral') && C.coral?.enabled) {
-        halfpipeSpots.forEach((pos, i) => {
-            const cluster = createCoralCluster(C.coral, 8000 + i);
-            cluster.position.set(pos.x, 0, pos.z);
-            cluster.rotation.y = Math.random() * Math.PI * 2;
-            cluster.scale.setScalar(0.8);
-            scene.add(cluster);
-            coralClusters.push(cluster);
-            disposed.push(() => { scene.remove(cluster); cluster.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); });
-        });
+    // Decorative kelp streetlights (visual only).
+    const poleMat = new THREE.MeshBasicMaterial({ color: 0x22664a, transparent: true, opacity: 0.75 });
+    const bulbMat = new THREE.MeshBasicMaterial({ color: 0x77ffdd, transparent: true, opacity: 0.8 });
+    const lightPositions = [];
+    for (let z = -36; z <= 36; z += 12) {
+        if (Math.abs(z) < 8) continue;
+        lightPositions.push({ x: -9, z }, { x: 9, z });
     }
-    if (isCategoryEnabled('rocks') && C.rocks?.enabled) {
-        [...tunnelSpots, ...treasureSpots].forEach((pos, i) => {
-            const formation = createRockFormation(C.rocks, 8100 + i);
-            formation.position.set(pos.x, Math.random() * 0.05, pos.z);
-            formation.rotation.y = Math.random() * Math.PI * 2;
-            formation.scale.setScalar(0.6);
-            scene.add(formation);
-            rockFormations.push(formation);
-            disposed.push(() => { scene.remove(formation); formation.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); });
-        });
+    for (let x = -36; x <= 36; x += 12) {
+        if (Math.abs(x) < 8) continue;
+        lightPositions.push({ x, z: -9 }, { x, z: 9 });
     }
+    lightPositions.forEach((pos, i) => {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.1, 1.6, 6), poleMat.clone());
+        pole.position.set(pos.x, 0.8, pos.z);
+        pole.rotation.z = Math.sin(i * 0.7) * 0.08;
+        scene.add(pole);
+        disposed.push(() => {
+            scene.remove(pole);
+            pole.geometry.dispose();
+            if (pole.material) pole.material.dispose();
+        });
+
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), bulbMat.clone());
+        bulb.position.set(pos.x, 1.7, pos.z);
+        scene.add(bulb);
+        disposed.push(() => {
+            scene.remove(bulb);
+            bulb.geometry.dispose();
+            bulb.material.dispose();
+        });
+    });
 }
 
 // ---- 4. Seaweed Beds ----
@@ -1280,8 +1308,7 @@ export function initUnderwaterAssets(arenaBound, arenaNumber) {
     initAnemones();
     initRocks();
     if (arenaNum === 1) {
-        initSkateParkBowlDecor();
-        initSkateParkZoneDecor();
+        initReefCityDecor();
     }
     initSeaweedBeds();
     initScatter();

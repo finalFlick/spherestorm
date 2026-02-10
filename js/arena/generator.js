@@ -1,7 +1,7 @@
 import { scene, ground, resizeGroundForArena, applyArenaVisualProfile } from '../core/scene.js';
 import { gameState } from '../core/gameState.js';
 import { obstacles, hazardZones, arenaWalls, arenaZones, arenaEvents } from '../core/entities.js';
-import { ARENA_CONFIG, getArenaBounds, getSpeedBowlsForArena, BOWL_HOLE_RADIUS } from '../config/arenas.js';
+import { ARENA_CONFIG, getArenaBounds } from '../config/arenas.js';
 import { setVisualCalibrationWall } from '../systems/visualCalibrationWall.js';
 import { cachePillarPositions } from '../entities/enemies.js';
 import { initAmbience, cleanupAmbience } from '../systems/ambience.js';
@@ -12,8 +12,6 @@ import { initArenaZonesForArena } from '../systems/arenaZones.js';
 import { addPufferkeepCastle, removePufferkeepCastle } from './pufferkeepCastle.js';
 import { initSpawnFactory, spawn } from './spawnFactory.js';
 import { getArenaLayout } from '../config/arenaLayouts.js';
-import { deformGeometry, applyMossVertexColors } from '../utils/proceduralMesh.js';
-import { Textures, applyPbr, ensureUv2 } from '../systems/textures.js';
 import { TUNING } from '../config/tuning.js';
 import { applyEmissiveMultiplier } from '../systems/materialUtils.js';
 
@@ -49,9 +47,9 @@ export function generateArena(arenaNumber) {
     if (layout) {
         buildFromLayout(layout);
         if (arenaNum === 1) {
-            addArena1SkateParkBowls();
+            addArena1ReefCityLayout();
             addPufferkeepCastle();
-            addArena1ZoneDecals();
+            addArena1CityDecals();
         }
     } else {
         if (arenaData.features.includes('pillars')) addPillars(arenaNum);
@@ -62,9 +60,8 @@ export function generateArena(arenaNumber) {
         if (arenaData.features.includes('landmarks')) {
             addArena1Landmarks();
             if (arenaNum === 1) {
-                addArena1SkateParkBowls();
-                addArena1SkateparkLayout();
-                addArena1CityDistrict();
+                addArena1ReefCityLayout();
+                addArena1CityDecals();
             }
         }
     }
@@ -493,304 +490,166 @@ function addPlatformHeightIndicators(arenaNum) {
     }
 }
 
-// Arena 1 underwater skate park: visible bowl geometry (visual-only, no collision)
-function addArena1SkateParkBowls() {
-    const bowls = getSpeedBowlsForArena(1);
-    const stoneColor = 0x555566;
-    const mossColor = 0x3b5b3b;
-    const bowlRadius = 12;
-    const phiLength = 0.38 * Math.PI;
-    const rimY = bowlRadius * Math.cos(phiLength);
+// Arena 1 reef city decorative pass (visual only, no collision).
+// Collision geometry is provided by ARENA_1_LAYOUT.
+function addArena1ReefCityLayout() {
+    // Kelp "streetlights" along boulevard edges
+    const kelpPoleMat = new THREE.MeshStandardMaterial({ color: 0x2f6a58, roughness: 0.85 });
+    const kelpGlowMat = new THREE.MeshBasicMaterial({ color: 0x66e2cc, transparent: true, opacity: 0.85 });
+    const addStreetlight = (x, z) => {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 3.8, 8), kelpPoleMat);
+        pole.position.set(x, 1.9, z);
+        pole.castShadow = true;
+        pole.receiveShadow = true;
+        scene.add(pole);
+        arenaLandmarks.push(pole);
 
-    const floorRadius = BOWL_HOLE_RADIUS;
-    const bowlBottomY = rimY - bowlRadius + 0.02;
-
-    bowls.forEach((b, i) => {
-        const useStoneTex = !!Textures.stoneSeabed?.albedo;
-        const stoneMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 1,
-            metalness: useStoneTex ? 1 : 0,
-            vertexColors: !useStoneTex,
-            side: THREE.DoubleSide
-        });
-        if (useStoneTex) {
-            applyPbr(stoneMat, Textures.stoneSeabed, { repeatX: 4, repeatY: 4 });
-        } else {
-            stoneMat.color.setHex(stoneColor);
-            stoneMat.roughness = 0.95;
-            stoneMat.metalness = 0;
-        }
-        const sphereGeom = new THREE.SphereGeometry(
-            bowlRadius, 32, 16, 0, phiLength, 0, Math.PI * 2
-        );
-        sphereGeom.rotateX(Math.PI);
-        sphereGeom.translate(0, rimY, 0);
-        deformGeometry(sphereGeom, 0.08, i * 7);
-        if (!useStoneTex) applyMossVertexColors(sphereGeom, stoneColor, mossColor, i * 11);
-
-        const dish = new THREE.Mesh(sphereGeom, stoneMat);
-        dish.position.set(b.cx, 0, b.cz);
-        dish.receiveShadow = true;
-        scene.add(dish);
-        arenaLandmarks.push(dish);
-
-        const floorGeom = new THREE.CircleGeometry(floorRadius, 32);
-        ensureUv2(floorGeom);
-        const floorMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 1,
-            metalness: 1
-        });
-        if (Textures.groundSand?.albedo) {
-            applyPbr(floorMat, Textures.groundSand, { repeatX: floorRadius / 5, repeatY: floorRadius / 5 });
-            floorMat.color.setRGB(1.35, 1.35, 1.35);
-        } else {
-            floorMat.color.setHex(0x2a2a4a);
-            floorMat.roughness = 0.8;
-            floorMat.metalness = 0.2;
-        }
-        const floor = new THREE.Mesh(floorGeom, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.set(b.cx, bowlBottomY, b.cz);
-        floor.receiveShadow = true;
-        scene.add(floor);
-        arenaLandmarks.push(floor);
-
-        const copingGeom = new THREE.RingGeometry(bowlRadius - 0.4, bowlRadius + 0.3, 32);
-        const copingMat = new THREE.MeshStandardMaterial({
-            color: 0x444455,
-            roughness: 0.9,
-            metalness: 0
-        });
-        const coping = new THREE.Mesh(copingGeom, copingMat);
-        coping.rotation.x = -Math.PI / 2;
-        coping.position.set(b.cx, 0.02, b.cz);
-        scene.add(coping);
-        arenaLandmarks.push(coping);
-    });
-
-    const bankRadius = 58;
-    const bankAngles = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
-    bankAngles.forEach((angle, i) => {
-        const cx = Math.cos(angle) * bankRadius;
-        const cz = Math.sin(angle) * bankRadius;
-        const bankGeom = new THREE.CylinderGeometry(5, 5.5, 2.5, 24, 1, false, 0, Math.PI * 0.5);
-        deformGeometry(bankGeom, 0.06, i * 13);
-        applyMossVertexColors(bankGeom, stoneColor, mossColor, i * 17);
-        const bankStoneMat = new THREE.MeshStandardMaterial({
-            color: stoneColor,
-            roughness: 0.95,
-            metalness: 0,
-            vertexColors: true
-        });
-        const bank = new THREE.Mesh(bankGeom, bankStoneMat);
-        bank.position.set(cx, 1.25, cz);
-        bank.rotation.x = Math.PI / 2;
-        bank.rotation.z = -angle;
-        bank.receiveShadow = true;
-        scene.add(bank);
-        arenaLandmarks.push(bank);
-    });
-}
-
-// Arena 1 full skatepark: collision geometry (central rim, halfpipe, ramp, tunnel, treasure islands, slalom)
-function addArena1SkateparkLayout() {
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x4a5a6a, roughness: 0.7 });
-    const platformMat = new THREE.MeshStandardMaterial({ color: 0x5a6a5a, roughness: 0.6 });
-
-    // --- Central Bowl Rim: circle radius ~22, 12 segments with 3 entry gaps ---
-    const rimRadius = 22;
-    const rimSegments = 12;
-    const rimSegmentAngle = (Math.PI * 2) / rimSegments;
-    const rimBoxW = 2.2;
-    const rimBoxH = 1.2;
-    const gapIndices = [0, 4, 8];  // Three gaps for entry/exit
-    for (let i = 0; i < rimSegments; i++) {
-        if (gapIndices.includes(i)) continue;
-        const a = i * rimSegmentAngle - Math.PI / 2;
-        const cx = Math.cos(a) * rimRadius;
-        const cz = Math.sin(a) * rimRadius;
-        createObstacle(cx, cz, rimBoxW, rimBoxH, 2.5, wallMat);
-    }
-
-    // --- Coral Halfpipe (NE quadrant): U-curve around (44, -44), opening toward center (SW) ---
-    const hpCx = 44;
-    const hpCz = -44;
-    const hpWidth = 14;
-    const hpLegLen = 22;
-    const wallH = 2.8;
-    const wallThick = 2;
-    // Left wall (west side of U)
-    createObstacle(hpCx - hpWidth / 2 - wallThick / 2, hpCz + hpLegLen / 2, wallThick, wallH, hpLegLen + 2, wallMat);
-    // Right wall (east side of U)
-    createObstacle(hpCx + hpWidth / 2 + wallThick / 2, hpCz + hpLegLen / 2, wallThick, wallH, hpLegLen + 2, wallMat);
-    // Curved end (arc of boxes at top of U)
-    const arcCount = 8;
-    for (let i = 0; i < arcCount; i++) {
-        const t = (i + 0.5) / arcCount;
-        const angle = Math.PI * t;
-        const ax = hpCx + Math.cos(angle) * (hpWidth / 2 + wallThick);
-        const az = hpCz + hpLegLen + Math.sin(angle) * (hpWidth / 2 + wallThick);
-        createObstacle(ax, az, 2.5, wallH, 2, wallMat);
-    }
-
-    // --- Sunken Ramp (east commit lane): corridor x 50-70, z -25 to 25, jump gap z -5 to 5 ---
-    const rampZMin = -25;
-    const rampZMax = 25;
-    const rampXLeft = 50;
-    const rampXRight = 70;
-    const rampWallH = 2.5;
-    const gapZMin = -5;
-    const gapZMax = 5;
-    // Left wall: two segments (below and above gap)
-    createObstacle(rampXLeft, (rampZMin + gapZMin) / 2, 2, rampWallH, (gapZMin - rampZMin) + 1, wallMat);
-    createObstacle(rampXLeft, (gapZMax + rampZMax) / 2, 2, rampWallH, (rampZMax - gapZMax) + 1, wallMat);
-    // Right wall: two segments
-    createObstacle(rampXRight, (rampZMin + gapZMin) / 2, 2, rampWallH, (gapZMin - rampZMin) + 1, wallMat);
-    createObstacle(rampXRight, (gapZMax + rampZMax) / 2, 2, rampWallH, (rampZMax - gapZMax) + 1, wallMat);
-
-    // --- Kelp Tunnel (SW quadrant): curving corridor around (-44, 44) with one pocket ---
-    const tunCx = -44;
-    const tunCz = 44;
-    const tunWallH = 2.6;
-    const tunSegs = [
-        { x: tunCx - 12, z: tunCz, sx: 3, sz: 10 },
-        { x: tunCx - 8, z: tunCz + 14, sx: 12, sz: 3 },
-        { x: tunCx + 6, z: tunCz + 10, sx: 3, sz: 12 },
-        { x: tunCx + 10, z: tunCz - 6, sx: 14, sz: 3 },
-        { x: tunCx, z: tunCz - 14, sx: 3, sz: 10 }
-    ];
-    tunSegs.forEach(s => createObstacle(s.x, s.z, s.sx, tunWallH, s.sz, wallMat));
-
-    // --- Treasure Gap (SE quadrant): elevated platforms, jump-able gaps ---
-    const platH = 1.8;
-    const platSize = 4;
-    const treasurePlats = [
-        { x: 40, z: 40 },
-        { x: 46, z: 44 },
-        { x: 42, z: 50 },
-        { x: 50, z: 46 }
-    ];
-    treasurePlats.forEach(p => createObstacle(p.x, p.z, platSize, platH, platSize, platformMat));
-
-    // --- Seaweed Slalom (south band z 70-110): S-curve pillars ---
-    const slalomZMin = 72;
-    const slalomZMax = 108;
-    const pillarSize = 1.8;
-    const pillarH = 2.2;
-    const slalomMat = new THREE.MeshStandardMaterial({ color: 0x3a5a4a, roughness: 0.8 });
-    const sCurve = (t) => {
-        const x = 15 * Math.sin(t * Math.PI * 2);
-        const z = slalomZMin + t * (slalomZMax - slalomZMin);
-        return { x, z };
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), kelpGlowMat);
+        lamp.position.set(x, 3.95, z);
+        scene.add(lamp);
+        arenaLandmarks.push(lamp);
     };
-    const numPillars = 16;
-    for (let i = 0; i < numPillars; i++) {
-        const t = (i + 0.5) / numPillars;
-        const { x, z } = sCurve(t);
-        createObstacle(x, z, pillarSize, pillarH, pillarSize, slalomMat);
+    for (let z = -36; z <= 36; z += 12) {
+        if (Math.abs(z) < 8) continue;
+        addStreetlight(-9, z);
+        addStreetlight(9, z);
+    }
+    for (let x = -36; x <= 36; x += 12) {
+        if (Math.abs(x) < 8) continue;
+        addStreetlight(x, -9);
+        addStreetlight(x, 9);
     }
 
-    addArena1ZoneDecals();
-}
+    // Shell-built storefront arches (district identity cues)
+    const shellMat = new THREE.MeshStandardMaterial({ color: 0x7a6d5c, roughness: 0.75, metalness: 0.05 });
+    const storefronts = [
+        { x: -22, z: -8, rot: Math.PI / 2 },
+        { x: 22, z: -8, rot: Math.PI / 2 },
+        { x: -22, z: 8, rot: Math.PI / 2 },
+        { x: 22, z: 8, rot: Math.PI / 2 },
+        { x: -8, z: -22, rot: 0 },
+        { x: 8, z: -22, rot: 0 },
+        { x: -8, z: 22, rot: 0 },
+        { x: 8, z: 22, rot: 0 }
+    ];
+    storefronts.forEach((s, i) => {
+        const arch = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.22, 8, 20, Math.PI), shellMat);
+        arch.rotation.set(Math.PI / 2, s.rot, 0);
+        arch.position.set(s.x, 1.1, s.z);
+        arch.castShadow = true;
+        scene.add(arch);
+        arenaLandmarks.push(arch);
 
-// Arena 1 outer-ring city district: walkable catwalks + decorative pods (outside skatepark combat zone)
-function addArena1CityDistrict() {
-    const ringRadius = 100;
-    const segmentCount = 8;
-    const catwalkMat = new THREE.MeshStandardMaterial({ color: 0x2a4a5a, roughness: 0.75 });
-    for (let i = 0; i < segmentCount; i++) {
-        const a = (i / segmentCount) * Math.PI * 2;
-        const cx = Math.cos(a) * ringRadius;
-        const cz = Math.sin(a) * ringRadius;
-        createObstacle(cx, cz, 12, 0.5, 5, catwalkMat);
-    }
-    // Landmark pods (visual-only): a few domes along the ring
-    const podMat = new THREE.MeshStandardMaterial({ color: 0x3a5a6a, roughness: 0.8 });
-    const podAngles = [0.2, 1.2, 2.8, 4.5];
-    podAngles.forEach(a => {
-        const domeGeom = new THREE.SphereGeometry(4, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5);
-        const rad = a * Math.PI;
-        const px = Math.cos(rad) * (ringRadius - 6);
-        const pz = Math.sin(rad) * (ringRadius - 6);
-        const dome = new THREE.Mesh(domeGeom, podMat.clone());
-        dome.position.set(px, 2, pz);
-        dome.receiveShadow = true;
-        scene.add(dome);
-        arenaLandmarks.push(dome);
+        const sign = new THREE.Mesh(
+            new THREE.CircleGeometry(0.35, 12),
+            new THREE.MeshBasicMaterial({
+                color: [0xffdd66, 0x66ddff, 0xff88cc, 0x88ffbb][i % 4],
+                transparent: true,
+                opacity: 0.75
+            })
+        );
+        sign.rotation.x = -Math.PI / 2;
+        sign.position.set(s.x, 0.03, s.z);
+        scene.add(sign);
+        arenaLandmarks.push(sign);
     });
 }
 
-// Zone decals for top-down readability (safe=teal, boost=green, reward=gold)
-function addArena1ZoneDecals() {
+// City decals for top-down readability (boulevards + plaza + districts)
+function addArena1CityDecals() {
     const decalMat = (color, opacity) => new THREE.MeshBasicMaterial({
         color,
         transparent: true,
         opacity,
         side: THREE.DoubleSide
     });
-    // Central bowl: ring teal/blue
+    // Primary boulevards (14-unit clear lanes)
+    const nsBoulevard = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 84),
+        decalMat(0x2a4f5f, 0.12)
+    );
+    nsBoulevard.rotation.x = -Math.PI / 2;
+    nsBoulevard.position.set(0, 0.01, 0);
+    scene.add(nsBoulevard);
+    arenaLandmarks.push(nsBoulevard);
+
+    const ewBoulevard = new THREE.Mesh(
+        new THREE.PlaneGeometry(84, 14),
+        decalMat(0x2a4f5f, 0.12)
+    );
+    ewBoulevard.rotation.x = -Math.PI / 2;
+    ewBoulevard.position.set(0, 0.01, 0);
+    scene.add(ewBoulevard);
+    arenaLandmarks.push(ewBoulevard);
+
+    // Boulevard center lines for glanceability during charges
+    const nsLine = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 84), decalMat(0x66ddee, 0.18));
+    nsLine.rotation.x = -Math.PI / 2;
+    nsLine.position.set(0, 0.012, 0);
+    scene.add(nsLine);
+    arenaLandmarks.push(nsLine);
+
+    const ewLine = new THREE.Mesh(new THREE.PlaneGeometry(84, 1.2), decalMat(0x66ddee, 0.18));
+    ewLine.rotation.x = -Math.PI / 2;
+    ewLine.position.set(0, 0.012, 0);
+    scene.add(ewLine);
+    arenaLandmarks.push(ewLine);
+
+    // Central plaza: safe reset ring
     const centerRing = new THREE.Mesh(
-        new THREE.RingGeometry(20, 24, 32),
-        decalMat(0x2a4a5a, 0.15)
+        new THREE.RingGeometry(10, 12, 32),
+        decalMat(0x2a6a6a, 0.2)
     );
     centerRing.rotation.x = -Math.PI / 2;
     centerRing.position.y = 0.01;
     scene.add(centerRing);
     arenaLandmarks.push(centerRing);
-    // Halfpipe: U-zone outline green (boost)
-    const hpW = 16;
-    const hpH = 24;
-    const hpOutline = new THREE.Mesh(
-        new THREE.PlaneGeometry(hpW, hpH),
-        decalMat(0x22aa44, 0.12)
-    );
-    hpOutline.rotation.x = -Math.PI / 2;
-    hpOutline.position.set(44, 0.01, -33);
-    scene.add(hpOutline);
-    arenaLandmarks.push(hpOutline);
-    // Tunnel: rect blue
-    const tunOutline = new THREE.Mesh(
-        new THREE.PlaneGeometry(28, 24),
-        decalMat(0x2a4a5a, 0.1)
-    );
-    tunOutline.rotation.x = -Math.PI / 2;
-    tunOutline.position.set(-44, 0.01, 44);
-    scene.add(tunOutline);
-    arenaLandmarks.push(tunOutline);
-    // Treasure: small gold circles at platform centers
-    [[40, 40], [46, 44], [42, 50], [50, 46]].forEach(([x, z]) => {
-        const gold = new THREE.Mesh(
-            new THREE.CircleGeometry(2.5, 16),
-            decalMat(0xaa8844, 0.2)
+
+    // Side alleys (risk/reward pockets)
+    [
+        { x: -23, z: -8, sx: 10, sz: 4 },
+        { x: 23, z: -8, sx: 10, sz: 4 },
+        { x: -23, z: 8, sx: 10, sz: 4 },
+        { x: 23, z: 8, sx: 10, sz: 4 },
+        { x: -8, z: -23, sx: 4, sz: 10 },
+        { x: 8, z: -23, sx: 4, sz: 10 },
+        { x: -8, z: 23, sx: 4, sz: 10 },
+        { x: 8, z: 23, sx: 4, sz: 10 }
+    ].forEach((a, i) => {
+        const alley = new THREE.Mesh(
+            new THREE.PlaneGeometry(a.sx, a.sz),
+            decalMat(i % 2 === 0 ? 0x2f5a4a : 0x345a6a, 0.12)
         );
-        gold.rotation.x = -Math.PI / 2;
-        gold.position.set(x, 0.01, z);
-        scene.add(gold);
-        arenaLandmarks.push(gold);
+        alley.rotation.x = -Math.PI / 2;
+        alley.position.set(a.x, 0.011, a.z);
+        scene.add(alley);
+        arenaLandmarks.push(alley);
     });
-    // Slalom: S-band teal
-    const slalomDecal = new THREE.Mesh(
-        new THREE.PlaneGeometry(46, 38),
-        decalMat(0x2a5a5a, 0.1)
-    );
-    slalomDecal.rotation.x = -Math.PI / 2;
-    slalomDecal.position.set(0, 0.01, 90);
-    scene.add(slalomDecal);
-    arenaLandmarks.push(slalomDecal);
+
+    // District identity rings
+    [
+        { x: -34, z: -34, color: 0x22aa66 },
+        { x: 34, z: -34, color: 0x44aaff },
+        { x: -34, z: 34, color: 0xaa88ff },
+        { x: 34, z: 34, color: 0xffaa44 }
+    ].forEach(d => {
+        const ring = new THREE.Mesh(new THREE.RingGeometry(3, 4.5, 18), decalMat(d.color, 0.18));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(d.x, 0.012, d.z);
+        scene.add(ring);
+        arenaLandmarks.push(ring);
+    });
 }
 
-// Arena 1 landmarks - visual-only orientation aids
+// Arena 1 landmarks - reef city orientation aids
 function addArena1Landmarks() {
-    // Center reset pad marker (visual-only) - psychological "home base" anchor
-    // Matches Arena 1 plan: radius 12, subtle blue tint, slightly above ground to avoid z-fighting
+    // Central plaza marker
     const resetPad = new THREE.Mesh(
         new THREE.CircleGeometry(12, 32),
         new THREE.MeshBasicMaterial({
-            color: 0x3a3a5a,
+            color: 0x2c4c5c,
             transparent: true,
-            opacity: 0.2,
+            opacity: 0.22,
             side: THREE.DoubleSide
         })
     );
@@ -799,42 +658,42 @@ function addArena1Landmarks() {
     scene.add(resetPad);
     arenaLandmarks.push(resetPad);
     
-    // Cardinal direction lines - subtle orientation guides
+    // Boulevard edge guides
     const lineMat = new THREE.MeshBasicMaterial({
-        color: 0x3a3a5a,
+        color: 0x2f6a74,
         transparent: true,
-        opacity: 0.2
+        opacity: 0.18
     });
-    
-    for (let i = 0; i < 4; i++) {
-        const lineGeom = new THREE.PlaneGeometry(2, 40);
-        const line = new THREE.Mesh(lineGeom, lineMat);
+    const edgeLines = [
+        { x: -7, z: 0, sx: 1.2, sz: 84 },
+        { x: 7, z: 0, sx: 1.2, sz: 84 },
+        { x: 0, z: -7, sx: 84, sz: 1.2 },
+        { x: 0, z: 7, sx: 84, sz: 1.2 }
+    ];
+    edgeLines.forEach(l => {
+        const line = new THREE.Mesh(new THREE.PlaneGeometry(l.sx, l.sz), lineMat);
         line.rotation.x = -Math.PI / 2;
-        line.rotation.z = (i / 4) * Math.PI * 2;
-        line.position.y = 0.01;
+        line.position.set(l.x, 0.011, l.z);
         scene.add(line);
         arenaLandmarks.push(line);
-    }
-    
-    // Corner warning zones - visual danger indicators
-    const cornerMat = new THREE.MeshBasicMaterial({
-        color: 0x4a2a2a,  // Slightly red tint
+    });
+
+    // District markers at block corners
+    const districtMat = new THREE.MeshBasicMaterial({
+        color: 0x445577,
         transparent: true,
-        opacity: 0.2,
+        opacity: 0.16,
         side: THREE.DoubleSide
     });
-    
-    const cornerPositions = [[-40, -40], [40, -40], [-40, 40], [40, 40]];
-    cornerPositions.forEach(([x, z]) => {
-        const warningGeom = new THREE.CircleGeometry(5, 16);
-        const warning = new THREE.Mesh(warningGeom, cornerMat);
-        warning.rotation.x = -Math.PI / 2;
-        warning.position.set(x, 0.01, z);
-        scene.add(warning);
-        arenaLandmarks.push(warning);
+    [[-36, -36], [36, -36], [-36, 36], [36, 36]].forEach(([x, z]) => {
+        const marker = new THREE.Mesh(new THREE.CircleGeometry(4.6, 16), districtMat);
+        marker.rotation.x = -Math.PI / 2;
+        marker.position.set(x, 0.01, z);
+        scene.add(marker);
+        arenaLandmarks.push(marker);
     });
-    
-    // Pufferkeep Castle - King Red Puffer's throne backdrop
+
+    // Pufferkeep Castle - boulevard terminus anchor
     addPufferkeepCastle();
 }
 

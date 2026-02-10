@@ -64,7 +64,7 @@ Victory → Next Arena
 
 **Waves:** 7 (boss chase structure: 3+2+2)
 
-**Features:** Flat terrain, landmarks
+**Features:** Flat terrain, reef city lanes, landmarks
 
 **Color Theme:** Dark Blue-Gray (0x2a2a4a)
 
@@ -77,10 +77,19 @@ Victory → Next Arena
 **Featured Enemy:** Red Puffer (only enemy type)
 
 **Geometry:**
-- Arena 1 is **layout-driven**: obstacles and landmarks come from `js/config/arenaLayouts.js` (`ARENA_1_LAYOUT`). This includes central bowl rim, halfpipe, ramp, tunnel, treasure platforms, slalom pillars, city catwalks, reset pad, cardinal lines, corner decals, city domes, and coral/rock prefabs.
-- Bowl geometry (skate park bowls), Pufferkeep Castle, and zone decals are still generated in code in `js/arena/generator.js` when Arena 1 uses a layout.
+- Arena 1 is **layout-driven**: obstacles and landmarks come from `js/config/arenaLayouts.js` (`ARENA_1_LAYOUT`) as a reef-city street grid.
+- The city has two major boulevards crossing at center: **King's Way** (north-south) and **Reef Row** (east-west), each 14 units wide and obstacle-free for boss charges.
+- The center is an open **plaza reset zone** (radius 12) with four district blocks around it: Kelp Market, Coral Towers, Shell Archive, and Anemone Gardens.
+- City blocks are simple coral/shell building masses with clear alleys (risk/reward pockets), not platforming geometry.
+- Visual dressing and readability decals are generated in `js/arena/generator.js` (`addArena1ReefCityLayout()`, `addArena1CityDecals()`) with Pufferkeep Castle at the north boulevard terminus.
 - Player spawn and optional enemy spawner positions are defined in the layout.
 - Anti-edge spawn bias (discourages corner camping); min distance from corner: 15 units.
+
+**Zone Mapping (Arena 1):**
+- `plazaReset` (center circle, r=12): enemy speed reduced (0.6x)
+- `alleyCompression` (side alley rectangles): enemy speed reduced (0.8x)
+- `districtReward` (4 district pockets): boosts reward/chest roll opportunities
+- `outerReef` (ring r=60→105): mild ambient drift current for atmosphere
 
 **Spawn Readability (Arena 1 specific):**
 - Spawns prefer a **forward 180° arc** relative to player movement when possible (reduces rear “off-screen” spawns)
@@ -109,9 +118,10 @@ Total: 7 wave encounters + 3 boss encounters
 
 **Boss:** RED PUFFER KING
 - Charge attacks
-- Summons Fast Bouncers
+- Summons Red Puffer minions
 - Shield mechanic introduction
 - Tests pressure management
+- **Reef-city interaction:** During charge, the King bulldozes through city obstacles with debris/shake VFX while preserving lane readability.
 
 **Victory Unlocks:** Pillars & Cover mechanics
 

@@ -337,7 +337,11 @@ export const SPAWN_CHOREOGRAPHY = {
     arena1: {
         1: 'random',  // Wave 1: learning, random spawns
         2: 'lane',    // Wave 2: lane flood from one direction
-        3: 'pincer'   // Wave 3: pincer from two directions
+        3: 'pincer',  // Wave 3: pincer from two directions
+        4: 'flank',   // Wave 4: boulevard + alley pressure
+        5: 'flank',   // Wave 5: sustained flank patterns
+        6: 'burst',   // Wave 6: any direction
+        7: 'burst'    // Wave 7: exam pressure from all directions
     },
     // Other arenas use random by default (can be extended)
     edgeSpawnDistance: 40,   // How far from center to spawn (near arena edge)

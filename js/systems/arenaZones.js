@@ -1,4 +1,4 @@
-// Arena zone triggers: flow modifiers (momentum, slow, reward) for Arena 1 skatepark and future arenas.
+// Arena zone triggers: flow modifiers (plaza reset, alleys, district reward) for Arena 1 reef city.
 // Zones are defined by bounds; updateArenaZones applies effects to player and enemies each frame.
 // Also updates Arena 1 heading-stability (anti-backpedal) and dynamic events (geyser, current, predator).
 
@@ -38,43 +38,55 @@ export function initArenaZonesForArena(arenaNum) {
     arenaZones.length = 0;
     if (arenaNum !== 1) return;
 
-    // Coral Halfpipe (NE): interior U, momentum zone. Bounds approximate interior.
+    // Central plaza reset zone.
     arenaZones.push({
-        type: 'halfpipeMomentum',
-        shape: 'rect',
-        bounds: { minX: 37, maxX: 51, minZ: -44, maxZ: -22 },
-        params: { boost: 0.018, inwardPull: 0.008, tangentAxis: 'z' }
-    });
-
-    // Kelp Tunnel (SW): compression, slightly speed enemies.
-    arenaZones.push({
-        type: 'tunnelCompression',
-        shape: 'rect',
-        bounds: { minX: -56, maxX: -30, minZ: 34, maxZ: 54 },
-        params: { playerStrafeMult: 0.85, enemySpeedMult: 1.15 }
-    });
-
-    // Seaweed Slalom (south band): reset zone, slow enemies more than player.
-    arenaZones.push({
-        type: 'slalomReset',
-        shape: 'rect',
-        bounds: { minX: -22, maxX: 22, minZ: 72, maxZ: 108 },
+        type: 'plazaReset',
+        shape: 'circle',
+        bounds: { cx: 0, cz: 0, r: 12 },
         params: { enemySpeedMult: 0.6 }
     });
 
-    // Treasure Gap (SE): reward zone, higher chest/reward odds when player inside.
-    arenaZones.push({
-        type: 'treasureGapReward',
-        shape: 'rect',
-        bounds: { minX: 36, maxX: 54, minZ: 36, maxZ: 54 },
-        params: {}
+    // Alley compression zones: small side streets around the boulevards.
+    const alleys = [
+        { minX: -28, maxX: -18, minZ: -10, maxZ: -6 },
+        { minX: 18, maxX: 28, minZ: -10, maxZ: -6 },
+        { minX: -28, maxX: -18, minZ: 6, maxZ: 10 },
+        { minX: 18, maxX: 28, minZ: 6, maxZ: 10 },
+        { minX: -10, maxX: -6, minZ: -28, maxZ: -18 },
+        { minX: 6, maxX: 10, minZ: -28, maxZ: -18 },
+        { minX: -10, maxX: -6, minZ: 18, maxZ: 28 },
+        { minX: 6, maxX: 10, minZ: 18, maxZ: 28 }
+    ];
+    alleys.forEach(bounds => {
+        arenaZones.push({
+            type: 'alleyCompression',
+            shape: 'rect',
+            bounds,
+            params: { enemySpeedMult: 0.8 }
+        });
     });
 
-    // City district (outer ring ~80–105): mild current drift for atmosphere, no combat impact.
+    // District reward pockets.
+    const districts = [
+        { minX: -38, maxX: -30, minZ: -38, maxZ: -30 },
+        { minX: 30, maxX: 38, minZ: -38, maxZ: -30 },
+        { minX: -38, maxX: -30, minZ: 30, maxZ: 38 },
+        { minX: 30, maxX: 38, minZ: 30, maxZ: 38 }
+    ];
+    districts.forEach(bounds => {
+        arenaZones.push({
+            type: 'districtReward',
+            shape: 'rect',
+            bounds,
+            params: {}
+        });
+    });
+
+    // Outer reef drift ring.
     arenaZones.push({
-        type: 'cityDistrict',
+        type: 'outerReef',
         shape: 'circle',
-        bounds: { cx: 0, cz: 0, r: 105, rInner: 80 },
+        bounds: { cx: 0, cz: 0, r: 105, rInner: 60 },
         params: { driftStrength: 0.003 }
     });
 }
@@ -120,32 +132,9 @@ export function updateArenaZones(player, delta) {
     for (const zone of arenaZones) {
         if (!isInZone(px, pz, zone)) continue;
 
-        if (zone.type === 'halfpipeMomentum') {
-            const p = zone.params;
-            const cx = (zone.bounds.minX + zone.bounds.maxX) / 2;
-            const cz = (zone.bounds.minZ + zone.bounds.maxZ) / 2;
-            _toCenter.x = cx - px;
-            _toCenter.z = cz - pz;
-            const len = Math.sqrt(_toCenter.x * _toCenter.x + _toCenter.z * _toCenter.z) || 1;
-            _toCenter.x /= len;
-            _toCenter.z /= len;
-            _tangent.x = -_toCenter.z;
-            _tangent.z = _toCenter.x;
-            const v = player.velocity;
-            const alongTangent = v.x * _tangent.x + v.z * _tangent.z;
-            if (alongTangent < 0) {
-                _tangent.x = -_tangent.x;
-                _tangent.z = -_tangent.z;
-            }
-            const boost = (p.boost || 0.018) * mult;
-            player.velocity.x += _tangent.x * boost;
-            player.velocity.z += _tangent.z * boost;
-            const pull = (p.inwardPull || 0.008) * mult;
-            player.position.x += _toCenter.x * pull;
-            player.position.z += _toCenter.z * pull;
-        } else if (zone.type === 'treasureGapReward') {
+        if (zone.type === 'districtReward') {
             gameState.arenaZoneTreasureGap = true;
-        } else if (zone.type === 'cityDistrict') {
+        } else if (zone.type === 'outerReef') {
             const b = zone.bounds;
             _toCenter.x = px - b.cx;
             _toCenter.z = pz - b.cz;
@@ -171,9 +160,9 @@ export function updateArenaZones(player, delta) {
         let speedMult = 1;
         for (const zone of arenaZones) {
             if (!isInZone(ex, ez, zone)) continue;
-            if (zone.type === 'tunnelCompression' && zone.params.enemySpeedMult)
+            if (zone.type === 'alleyCompression' && zone.params.enemySpeedMult)
                 speedMult *= zone.params.enemySpeedMult;
-            else if (zone.type === 'slalomReset' && zone.params.enemySpeedMult)
+            else if (zone.type === 'plazaReset' && zone.params.enemySpeedMult)
                 speedMult *= zone.params.enemySpeedMult;
         }
         enemy.arenaZoneSpeedMult = speedMult;

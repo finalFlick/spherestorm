@@ -402,6 +402,8 @@ export function spawnBoss(arenaNumber) {
     // Charge trail state (Red Puffer King P2+ leaves damage trails)
     boss.chargeTrails = [];
     boss.lastChargeTrailPos = new THREE.Vector3();
+    boss.bulldozedObstacles = [];
+    boss.bulldozeDebris = [];
     
     // Burrow state
     boss.burrowTarget = new THREE.Vector3();
@@ -734,6 +736,10 @@ export function updateBoss() {
     
     const boss = currentBoss;
     boss.aiTimer++;
+
+    // Reef city bulldoze polish: obstacle shake + debris cleanup.
+    updateObstacleBulldozeShake();
+    updateBulldozeDebris(boss);
 
     // Shieldfather idle/ability visuals (Arena 2 boss mesh)
     if (boss.isShieldfather) {
@@ -2356,6 +2362,7 @@ function continueCurrentAbility(boss) {
             // FIX: Reset emissive color from lock-in flash (gold -> base color)
             if (boss.bodyMaterial && boss.aiTimer === 0) {
                 boss.bodyMaterial.emissive.setHex(boss.baseColor);
+                clearBulldozedObstacleFlags(boss);
             }
             
             // FIX: Force boss to face charge direction during charging
@@ -2379,6 +2386,21 @@ function continueCurrentAbility(boss) {
             }
             
             boss.position.add(boss.chargeDirection.clone().multiplyScalar(boss.chargeSpeed));
+
+            // Reef city bulldoze pass: boss plows through obstacles with debris feedback.
+            const bulldozeRadius = boss.size + 1.5;
+            for (const obs of obstacles) {
+                if (!obs || obs.isTemporary || !obs.collisionData) continue;
+                if (obs.userData?._bulldozed) continue;
+
+                const dist = distanceToObstacle2D(boss.position, obs.collisionData);
+                if (dist > bulldozeRadius) continue;
+
+                if (!obs.userData) obs.userData = {};
+                obs.userData._bulldozed = true;
+                boss.bulldozedObstacles.push(obs);
+                spawnBulldozeVFX(boss, obs, boss.chargeDirection);
+            }
             
             // Red Puffer King P2+: Leave damage trails during charge
             if (gameState.currentArena === 1 && boss.phase >= 2) {
@@ -2422,6 +2444,7 @@ function continueCurrentAbility(boss) {
                 boss.aiState = 'wall_impact';
                 boss.aiTimer = 0;
                 boss.wallChargeCount = (boss.wallChargeCount || 0) + 1;
+                clearBulldozedObstacleFlags(boss);
                 
                 // Reset trail position for next charge
                 boss.lastChargeTrailPos.set(0, 0, 0);
@@ -4540,6 +4563,113 @@ function isPointNearWall(px, pz, wallX, wallZ, halfLength, wallAngle) {
     return distSq < 4;  // Within 2 units of wall
 }
 
+function distanceToObstacle2D(pos, collisionData) {
+    const nearestX = Math.max(collisionData.minX, Math.min(pos.x, collisionData.maxX));
+    const nearestZ = Math.max(collisionData.minZ, Math.min(pos.z, collisionData.maxZ));
+    const dx = pos.x - nearestX;
+    const dz = pos.z - nearestZ;
+    return Math.sqrt(dx * dx + dz * dz);
+}
+
+function spawnBulldozeVFX(boss, obstacle, direction) {
+    const c = obstacle.collisionData;
+    const centerX = (c.minX + c.maxX) * 0.5;
+    const centerZ = (c.minZ + c.maxZ) * 0.5;
+    const origin = new THREE.Vector3(centerX, Math.max(0.3, c.topY * 0.35), centerZ);
+    const matColor = obstacle.material?.color?.getHex?.() ?? 0x66ccb0;
+    spawnParticle(origin.clone(), matColor, 10);
+
+    if (!obstacle.userData) obstacle.userData = {};
+    if (!obstacle.userData.bulldozeBasePos) {
+        obstacle.userData.bulldozeBasePos = obstacle.position.clone();
+    }
+    obstacle.userData.bulldozeShakeFrames = 12;
+    obstacle.userData.bulldozeShakeAmp = 0.22;
+
+    const debrisCount = 8 + Math.floor(Math.random() * 5); // 8-12
+    for (let i = 0; i < debrisCount; i++) {
+        const size = 0.12 + Math.random() * 0.18;
+        const chunk = new THREE.Mesh(
+            new THREE.BoxGeometry(size, size, size),
+            new THREE.MeshBasicMaterial({
+                color: matColor,
+                transparent: true,
+                opacity: 0.85
+            })
+        );
+        chunk.position.copy(origin);
+        chunk.position.x += (Math.random() - 0.5) * 1.3;
+        chunk.position.z += (Math.random() - 0.5) * 1.3;
+        const forward = direction || new THREE.Vector3(1, 0, 0);
+        chunk.userData.vx = forward.x * (0.08 + Math.random() * 0.2) + (Math.random() - 0.5) * 0.14;
+        chunk.userData.vy = 0.08 + Math.random() * 0.12;
+        chunk.userData.vz = forward.z * (0.08 + Math.random() * 0.2) + (Math.random() - 0.5) * 0.14;
+        chunk.userData.life = 30;
+        scene.add(chunk);
+        boss.bulldozeDebris.push(chunk);
+    }
+}
+
+function updateBulldozeDebris(boss) {
+    if (!boss?.bulldozeDebris || boss.bulldozeDebris.length === 0) return;
+    for (let i = boss.bulldozeDebris.length - 1; i >= 0; i--) {
+        const d = boss.bulldozeDebris[i];
+        if (!d?.userData) {
+            boss.bulldozeDebris.splice(i, 1);
+            continue;
+        }
+        d.userData.life--;
+        d.position.x += d.userData.vx;
+        d.position.y += d.userData.vy;
+        d.position.z += d.userData.vz;
+        d.userData.vy -= 0.018;
+        d.userData.vx *= 0.97;
+        d.userData.vz *= 0.97;
+        if (d.material?.opacity !== undefined) {
+            d.material.opacity = Math.max(0, d.userData.life / 30);
+        }
+        if (d.userData.life <= 0) {
+            scene.remove(d);
+            if (d.geometry) d.geometry.dispose();
+            if (d.material) d.material.dispose();
+            boss.bulldozeDebris.splice(i, 1);
+        }
+    }
+}
+
+function updateObstacleBulldozeShake() {
+    for (const obs of obstacles) {
+        const data = obs?.userData;
+        if (!data?.bulldozeBasePos) continue;
+        const base = data.bulldozeBasePos;
+        const frames = data.bulldozeShakeFrames || 0;
+        if (frames > 0) {
+            data.bulldozeShakeFrames = frames - 1;
+            const amp = (data.bulldozeShakeAmp || 0.2) * (frames / 12);
+            obs.position.set(
+                base.x + (Math.random() - 0.5) * amp,
+                base.y + (Math.random() - 0.5) * (amp * 0.35),
+                base.z + (Math.random() - 0.5) * amp
+            );
+        } else {
+            obs.position.copy(base);
+        }
+    }
+}
+
+function clearBulldozedObstacleFlags(boss) {
+    if (!boss?.bulldozedObstacles) return;
+    for (const obs of boss.bulldozedObstacles) {
+        if (!obs?.userData) continue;
+        obs.userData._bulldozed = false;
+        obs.userData.bulldozeShakeFrames = 0;
+        if (obs.userData.bulldozeBasePos) {
+            obs.position.copy(obs.userData.bulldozeBasePos);
+        }
+    }
+    boss.bulldozedObstacles.length = 0;
+}
+
 function getTellDuration(boss) {
     const phaseKey = `phase${boss.phase}`;
     const tells = {};
@@ -5015,6 +5145,16 @@ export function killBoss() {
     const currentBoss = getCurrentBoss();
     if (!currentBoss || currentBoss.isDying) return;
     currentBoss.isDying = true;
+
+    clearBulldozedObstacleFlags(currentBoss);
+    if (currentBoss.bulldozeDebris && currentBoss.bulldozeDebris.length > 0) {
+        for (const d of currentBoss.bulldozeDebris) {
+            scene.remove(d);
+            if (d.geometry) d.geometry.dispose();
+            if (d.material) d.material.dispose();
+        }
+        currentBoss.bulldozeDebris.length = 0;
+    }
     
     // ==================== COMPREHENSIVE VFX CLEANUP ====================
     // Belt-and-suspenders: clear ALL boss-owned VFX to prevent lingering visuals/damage

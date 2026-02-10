@@ -12,102 +12,73 @@ export function getArenaLayout(arenaNumber) {
     return undefined;
 }
 
-// Arena 1: The Training Grounds — layout drives landmarks, skatepark obstacles, city district, and prefabs.
-// Bowls and complex landmarks (Pufferkeep Castle, zone decals) are still added by generator as special types
-// or we define them here as type "bowl" / "arena1Decals" / "pufferkeepCastle" and implement in factory.
-// For now we use a hybrid: layout for obstacles + simple landmarks + prefabs; generator still runs
-// addArena1SkateParkBowls, addArena1Landmarks (reset pad, lines, corners, castle), addArena1SkateparkLayout,
-// addArena1CityDistrict when USE_ARENA_1_LAYOUT is false. When true, layout objects below replace the
-// obstacle/landmark placement from those functions (see plan: migrate step 3).
+// Arena 1: The Training Grounds — underwater reef city street grid.
+// Layout drives collision geometry (city blocks + alleys), plaza/district landmarks, and prefabs.
+// Generator still adds Arena 1 city-themed decals + decorative landmarks and Pufferkeep Castle.
 export const ARENA_1_LAYOUT = {
     playerSpawn: { x: 0, z: 0 },
     objects: [
-        // Central bowl rim (12 segments, 3 gaps at 0, 4, 8)
-        { type: 'obstacle', x: 0, z: 19.5, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 7.2, z: 18, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 13.5, z: 13.5, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 18, z: 7.2, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 19.5, z: 0, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 18, z: -7.2, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 13.5, z: -13.5, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 7.2, z: -18, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: 0, z: -19.5, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: -7.2, z: -18, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: -13.5, z: -13.5, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        { type: 'obstacle', x: -18, z: -7.2, sizeX: 2.2, height: 1.2, sizeZ: 2.5, materialKey: 'wall' },
-        // Halfpipe walls
-        { type: 'obstacle', x: 37, z: -33, sizeX: 2, height: 2.8, sizeZ: 24, materialKey: 'wall' },
-        { type: 'obstacle', x: 51, z: -33, sizeX: 2, height: 2.8, sizeZ: 24, materialKey: 'wall' },
-        { type: 'obstacle', x: 44, z: -54, sizeX: 2.5, height: 2.8, sizeZ: 2, materialKey: 'wall' },
-        { type: 'obstacle', x: 46.5, z: -54, sizeX: 2.5, height: 2.8, sizeZ: 2, materialKey: 'wall' },
-        { type: 'obstacle', x: 49, z: -54, sizeX: 2.5, height: 2.8, sizeZ: 2, materialKey: 'wall' },
-        { type: 'obstacle', x: 51.5, z: -54, sizeX: 2.5, height: 2.8, sizeZ: 2, materialKey: 'wall' },
-        { type: 'obstacle', x: 54, z: -54, sizeX: 2.5, height: 2.8, sizeZ: 2, materialKey: 'wall' },
-        { type: 'obstacle', x: 56.5, z: -54, sizeX: 2.5, height: 2.8, sizeZ: 2, materialKey: 'wall' },
-        { type: 'obstacle', x: 59, z: -54, sizeX: 2.5, height: 2.8, sizeZ: 2, materialKey: 'wall' },
-        // Ramp walls (east)
-        { type: 'obstacle', x: 50, z: -15, sizeX: 2, height: 2.5, sizeZ: 21, materialKey: 'wall' },
-        { type: 'obstacle', x: 50, z: 15, sizeX: 2, height: 2.5, sizeZ: 21, materialKey: 'wall' },
-        { type: 'obstacle', x: 70, z: -15, sizeX: 2, height: 2.5, sizeZ: 21, materialKey: 'wall' },
-        { type: 'obstacle', x: 70, z: 15, sizeX: 2, height: 2.5, sizeZ: 21, materialKey: 'wall' },
-        // Tunnel (SW)
-        { type: 'obstacle', x: -56, z: 44, sizeX: 3, height: 2.6, sizeZ: 10, materialKey: 'wall' },
-        { type: 'obstacle', x: -44, z: 51, sizeX: 12, height: 2.6, sizeZ: 3, materialKey: 'wall' },
-        { type: 'obstacle', x: -38, z: 44, sizeX: 3, height: 2.6, sizeZ: 12, materialKey: 'wall' },
-        { type: 'obstacle', x: -34, z: 37, sizeX: 14, height: 2.6, sizeZ: 3, materialKey: 'wall' },
-        { type: 'obstacle', x: -44, z: 37, sizeX: 3, height: 2.6, sizeZ: 10, materialKey: 'wall' },
-        // Treasure platforms
-        { type: 'obstacle', x: 40, z: 40, sizeX: 4, height: 1.8, sizeZ: 4, materialKey: 'platform' },
-        { type: 'obstacle', x: 46, z: 44, sizeX: 4, height: 1.8, sizeZ: 4, materialKey: 'platform' },
-        { type: 'obstacle', x: 42, z: 50, sizeX: 4, height: 1.8, sizeZ: 4, materialKey: 'platform' },
-        { type: 'obstacle', x: 50, z: 46, sizeX: 4, height: 1.8, sizeZ: 4, materialKey: 'platform' },
-        // Slalom pillars (S-curve z 72–108)
-        { type: 'obstacle', x: 0, z: 74, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: 10.6, z: 78, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: -10.6, z: 82, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: 10.6, z: 86, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: 0, z: 90, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: -10.6, z: 94, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: 10.6, z: 98, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: 0, z: 102, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        { type: 'obstacle', x: -10.6, z: 106, sizeX: 1.8, height: 2.2, sizeZ: 1.8, materialKey: 'slalom' },
-        // City catwalks (ring radius 100)
-        { type: 'obstacle', x: 100, z: 0, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        { type: 'obstacle', x: 70.7, z: 70.7, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        { type: 'obstacle', x: 0, z: 100, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        { type: 'obstacle', x: -70.7, z: 70.7, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        { type: 'obstacle', x: -100, z: 0, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        { type: 'obstacle', x: -70.7, z: -70.7, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        { type: 'obstacle', x: 0, z: -100, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        { type: 'obstacle', x: 70.7, z: -70.7, sizeX: 12, height: 0.5, sizeZ: 5, materialKey: 'catwalk' },
-        // Landmarks (visual) — reset pad, cardinal lines, corner warnings; Pufferkeep Castle added by generator
+        // ---------------- Reef city blocks (collision) ----------------
+        // Keep boulevards clear: x in [-7, 7] and z in [-7, 7]
+        // Keep central plaza clear: r ~= 12
+        // NW district: Kelp Market
+        { type: 'obstacle', x: -29, z: -31, sizeX: 8, height: 3.2, sizeZ: 10, materialKey: 'wall' },
+        { type: 'obstacle', x: -17, z: -31, sizeX: 7, height: 2.9, sizeZ: 9, materialKey: 'wall' },
+        { type: 'obstacle', x: -31, z: -17, sizeX: 10, height: 3.0, sizeZ: 7, materialKey: 'wall' },
+        { type: 'obstacle', x: -18, z: -18, sizeX: 8, height: 2.7, sizeZ: 8, materialKey: 'wall' },
+        // NE district: Coral Towers
+        { type: 'obstacle', x: 17, z: -31, sizeX: 7, height: 2.9, sizeZ: 9, materialKey: 'wall' },
+        { type: 'obstacle', x: 29, z: -31, sizeX: 8, height: 3.3, sizeZ: 10, materialKey: 'wall' },
+        { type: 'obstacle', x: 18, z: -18, sizeX: 8, height: 2.8, sizeZ: 8, materialKey: 'wall' },
+        { type: 'obstacle', x: 31, z: -17, sizeX: 10, height: 3.0, sizeZ: 7, materialKey: 'wall' },
+        // SW district: Shell Archive
+        { type: 'obstacle', x: -31, z: 17, sizeX: 10, height: 3.0, sizeZ: 7, materialKey: 'wall' },
+        { type: 'obstacle', x: -18, z: 18, sizeX: 8, height: 2.8, sizeZ: 8, materialKey: 'wall' },
+        { type: 'obstacle', x: -29, z: 31, sizeX: 8, height: 3.2, sizeZ: 10, materialKey: 'wall' },
+        { type: 'obstacle', x: -16, z: 31, sizeX: 7, height: 2.8, sizeZ: 9, materialKey: 'wall' },
+        // SE district: Anemone Gardens
+        { type: 'obstacle', x: 18, z: 18, sizeX: 8, height: 2.8, sizeZ: 8, materialKey: 'wall' },
+        { type: 'obstacle', x: 31, z: 17, sizeX: 10, height: 3.1, sizeZ: 7, materialKey: 'wall' },
+        { type: 'obstacle', x: 16, z: 31, sizeX: 7, height: 2.9, sizeZ: 9, materialKey: 'wall' },
+        { type: 'obstacle', x: 29, z: 31, sizeX: 8, height: 3.3, sizeZ: 10, materialKey: 'wall' },
+
+        // ---------------- Landmarks + readable routing decals ----------------
         { type: 'landmark', typeId: 'resetPad', x: 0, z: 0, radius: 12 },
-        { type: 'landmark', typeId: 'cardinalLine', x: 0, z: 0, rot: 0 },
-        { type: 'landmark', typeId: 'cardinalLine', x: 0, z: 0, rot: Math.PI / 2 },
-        { type: 'landmark', typeId: 'cardinalLine', x: 0, z: 0, rot: Math.PI },
-        { type: 'landmark', typeId: 'cardinalLine', x: 0, z: 0, rot: (3 * Math.PI) / 2 },
-        { type: 'landmark', typeId: 'decal', x: -40, z: -40, radius: 5, color: 0x4a2a2a, opacity: 0.2 },
-        { type: 'landmark', typeId: 'decal', x: 40, z: -40, radius: 5, color: 0x4a2a2a, opacity: 0.2 },
-        { type: 'landmark', typeId: 'decal', x: -40, z: 40, radius: 5, color: 0x4a2a2a, opacity: 0.2 },
-        { type: 'landmark', typeId: 'decal', x: 40, z: 40, radius: 5, color: 0x4a2a2a, opacity: 0.2 },
-        // City domes
+        // Boulevard edge guides (x ~= +/-7, z ~= +/-7)
+        { type: 'landmark', typeId: 'decal', x: -7, z: 0, radius: 2.4, color: 0x2a5a6a, opacity: 0.14 },
+        { type: 'landmark', typeId: 'decal', x: 7, z: 0, radius: 2.4, color: 0x2a5a6a, opacity: 0.14 },
+        { type: 'landmark', typeId: 'decal', x: 0, z: -7, radius: 2.4, color: 0x2a5a6a, opacity: 0.14 },
+        { type: 'landmark', typeId: 'decal', x: 0, z: 7, radius: 2.4, color: 0x2a5a6a, opacity: 0.14 },
+        // District markers
+        { type: 'landmark', typeId: 'decal', x: -35, z: -35, radius: 5, color: 0x2a5a4a, opacity: 0.2 },
+        { type: 'landmark', typeId: 'decal', x: 35, z: -35, radius: 5, color: 0x2a4a6a, opacity: 0.2 },
+        { type: 'landmark', typeId: 'decal', x: -35, z: 35, radius: 5, color: 0x4a4a6a, opacity: 0.2 },
+        { type: 'landmark', typeId: 'decal', x: 35, z: 35, radius: 5, color: 0x6a4a2a, opacity: 0.2 },
+        // Outer city domes (visual only)
         { type: 'landmark', typeId: 'dome', x: 88, z: 29, radius: 4 },
         { type: 'landmark', typeId: 'dome', x: 29, z: 88, radius: 4 },
         { type: 'landmark', typeId: 'dome', x: -88, z: -29, radius: 4 },
         { type: 'landmark', typeId: 'dome', x: -29, z: -88, radius: 4 }
     ],
     prefabs: [
-        { type: 'coralCluster', x: 56, z: -40, scale: 0.8 },
-        { type: 'coralCluster', x: 58, z: -46, scale: 0.8 },
-        { type: 'rockCluster', x: -56, z: 44, scale: 0.6 },
-        { type: 'rockCluster', x: -58, z: 50, scale: 0.6 },
-        { type: 'rockCluster', x: 50, z: 52, scale: 0.6 },
-        { type: 'rockCluster', x: 52, z: 48, scale: 0.6 }
+        // Boulevard edge accents + district pocket flavor
+        { type: 'coralCluster', x: -12, z: -24, scale: 0.8 },
+        { type: 'coralCluster', x: 12, z: -24, scale: 0.8 },
+        { type: 'coralCluster', x: -12, z: 24, scale: 0.8 },
+        { type: 'coralCluster', x: 12, z: 24, scale: 0.8 },
+        { type: 'rockCluster', x: -24, z: -12, scale: 0.65 },
+        { type: 'rockCluster', x: 24, z: -12, scale: 0.65 },
+        { type: 'rockCluster', x: -24, z: 12, scale: 0.65 },
+        { type: 'rockCluster', x: 24, z: 12, scale: 0.65 }
     ],
     enemySpawners: [
-        { x: 50, z: 0 },
-        { x: -50, z: 0 },
-        { x: 0, z: 50 },
-        { x: 0, z: -50 }
+        { x: 56, z: 0 },   // East boulevard endpoint
+        { x: -56, z: 0 },  // West boulevard endpoint
+        { x: 0, z: 56 },   // South boulevard endpoint
+        { x: 0, z: -56 },  // North boulevard endpoint
+        { x: 32, z: 24 },  // Alley exits (SE/NE side)
+        { x: -32, z: 24 }, // Alley exits (SW/NW side)
+        { x: 24, z: -32 },
+        { x: -24, z: -32 }
     ]
 };
